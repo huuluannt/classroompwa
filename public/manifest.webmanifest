@@ -1,0 +1,17 @@
+{
+  "name": "ClassroomPWA",
+  "short_name": "Classroom",
+  "description": "Private PWA for teaching, classes, assignments, topics, grading, and learner management.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f8fb",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
