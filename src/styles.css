@@ -516,6 +516,7 @@ textarea { min-height: 88px; resize: vertical; }
   display: block;
 }
 .material-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) auto; }
+.peer-create-form { grid-template-columns: minmax(0, 1fr) 160px; margin-bottom: 10px; }
 .material-card {
   border: 1px solid #e1e7ef;
   border-radius: 8px;
@@ -524,6 +525,12 @@ textarea { min-height: 88px; resize: vertical; }
   display: grid;
   gap: 8px;
 }
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.save-score-button { margin: 0 0 8px auto; }
 .assignment-head > button:first-child {
   flex: 1;
 }
@@ -531,6 +538,10 @@ textarea { min-height: 88px; resize: vertical; }
   color: #15803d;
   font-weight: 800;
   margin: 8px 0 0;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .modal-backdrop {

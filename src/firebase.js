@@ -1,13 +1,11 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
@@ -16,8 +14,16 @@ export const hasFirebaseConfig = Object.values(firebaseConfig).every(Boolean);
 const app = hasFirebaseConfig ? initializeApp(firebaseConfig) : null;
 export const auth = app ? getAuth(app) : null;
 export const db = app ? getFirestore(app) : null;
-export const storage = app ? getStorage(app) : null;
 const provider = new GoogleAuthProvider();
+provider.addScope("https://www.googleapis.com/auth/drive.file");
+
+let googleAccessToken = "";
+
+function rememberGoogleAccessToken(result) {
+  const credential = GoogleAuthProvider.credentialFromResult(result);
+  googleAccessToken = credential?.accessToken || "";
+  return googleAccessToken;
+}
 
 export async function signInWithGoogle() {
   if (!auth) {
@@ -30,14 +36,30 @@ export async function signInWithGoogle() {
   }
 
   const result = await signInWithPopup(auth, provider);
+  rememberGoogleAccessToken(result);
   return result.user;
 }
 
+export async function getGoogleAccessToken() {
+  if (googleAccessToken) return googleAccessToken;
+  if (!auth) return "";
+  const result = await signInWithPopup(auth, provider);
+  return rememberGoogleAccessToken(result);
+}
+
+export function getGoogleDriveUserKey() {
+  return auth?.currentUser?.email || "local";
+}
+
 export async function signOutGoogle() {
+  googleAccessToken = "";
   if (auth) await signOut(auth);
 }
 
 export function observeAuth(callback) {
   if (!auth) return () => {};
-  return onAuthStateChanged(auth, callback);
+  return onAuthStateChanged(auth, (user) => {
+    if (!user) googleAccessToken = "";
+    callback(user);
+  });
 }

@@ -9,12 +9,11 @@ import {
   query,
   serverTimestamp,
   setDoc,
-  updateDoc,
   where
 } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { db, hasFirebaseConfig, storage } from "./firebase";
+import { db, hasFirebaseConfig } from "./firebase";
 import { ADMINS, seedClasses } from "./data";
+import { uploadDriveFile } from "./driveStorage";
 
 const LS_KEY = "classroompwa-state";
 
@@ -144,12 +143,20 @@ export async function joinClassByCode(user, form) {
   return pendingCourseFromMember(summary.classId, summary, member);
 }
 
-export async function uploadClassFile(courseId, folder, file) {
-  if (!hasFirebaseConfig || !file) return { fileName: file?.name || "", url: "" };
-  const fileRef = ref(storage, `classes/${courseId}/${folder}/${Date.now()}-${file.name}`);
-  await uploadBytes(fileRef, file);
-  const url = await getDownloadURL(fileRef);
-  return { fileName: file.name, url };
+export async function uploadClassFile(courseOrId, folder, file, shareOptions = {}) {
+  if (!file) return { fileName: "", url: "" };
+  if (!hasFirebaseConfig) return readFileAsDataUrl(file);
+  const courseId = typeof courseOrId === "string" ? courseOrId : courseOrId.id;
+  return uploadDriveFile(courseId, folder, file, shareOptions);
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ fileName: file.name, url: reader.result, previewUrl: reader.result, type: file.type });
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 async function hydrateCourse(id, data, includeAllMembers) {

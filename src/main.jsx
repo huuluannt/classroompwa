@@ -59,8 +59,19 @@ function readFileAsDataUrl(file) {
   });
 }
 
-async function uploadManyFiles(courseId, folder, files) {
-  return Promise.all(Array.from(files || []).map((file) => uploadClassFile(courseId, folder, file)));
+function classReaderEmails(course) {
+  return [
+    ...ADMINS,
+    ...course.members.filter((member) => member.status === "accepted").map((member) => member.email)
+  ];
+}
+
+function adminWriterEmails() {
+  return ADMINS;
+}
+
+async function uploadManyFiles(course, folder, files, shareOptions = {}) {
+  return Promise.all(Array.from(files || []).map((file) => uploadClassFile(course, folder, file, shareOptions)));
 }
 
 function materialFiles(item) {
@@ -537,7 +548,7 @@ function AnnouncementsCard({ admin, user, course, updateCourse }) {
   async function submitPost() {
     if (!content.trim() && files.length === 0) return;
     const attachments = hasFirebaseConfig
-      ? await uploadManyFiles(course.id, "announcements", files)
+      ? await uploadManyFiles(course, "announcements", files, { readerEmails: classReaderEmails(course), writerEmails: adminWriterEmails() })
       : await Promise.all(files.map(readFileAsDataUrl));
     updateCourse((current) => ({
       ...current,
@@ -595,10 +606,10 @@ function AnnouncementsCard({ admin, user, course, updateCourse }) {
             <div className="link-list">{extractUrls(item.content).map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}</div>
             {item.attachments?.length > 0 && (
               <div className="attachment-grid">
-                {item.attachments.map((file, index) => file.type?.startsWith("image/") || String(file.url).startsWith("data:image") ? (
-                  <a key={`${file.fileName}-${index}`} href={file.url} target="_blank" rel="noreferrer"><img src={file.url} alt={file.fileName} /></a>
+                {item.attachments.map((file, index) => file.type?.startsWith("image/") || String(file.previewUrl || file.url).startsWith("data:image") ? (
+                  <a key={`${file.fileName}-${index}`} href={file.webViewLink || file.url} target="_blank" rel="noreferrer"><img src={file.previewUrl || file.url} alt={file.fileName} /></a>
                 ) : (
-                  <a key={`${file.fileName}-${index}`} href={file.url} target="_blank" rel="noreferrer">{file.fileName}</a>
+                  <a key={`${file.fileName}-${index}`} href={file.webViewLink || file.url} target="_blank" rel="noreferrer">{file.fileName}</a>
                 ))}
               </div>
             )}
@@ -669,7 +680,15 @@ function GroupTopicCard({ admin, course, updateCourse }) {
       <div className="topic-grid">
         {course.groupTopics.map((topic) => (
           <article className="topic-card" key={topic.id}>
-            <div className="card-row-head"><strong>{topic.name}</strong>{admin && <button onClick={() => { setEditingId(topic.id); setDraft({ ...topic, memberEmails: topic.memberEmails.join(", ") }); }}>Edit</button>}</div>
+            <div className="card-row-head">
+              <strong>{topic.name}</strong>
+              {admin && (
+                <span className="row-actions">
+                  <button onClick={() => { setEditingId(topic.id); setDraft({ ...topic, memberEmails: topic.memberEmails.join(", ") }); }}>Edit</button>
+                  <button className="icon-danger" onClick={() => updateCourse((current) => ({ ...current, groupTopics: current.groupTopics.filter((item) => item.id !== topic.id) }))}><Trash2 size={15} /></button>
+                </span>
+              )}
+            </div>
             <p>{topic.topic}</p>
             <small>STT báo cáo: {topic.reportOrder}</small>
             <ul>{topic.memberEmails.map((email) => {
@@ -696,7 +715,9 @@ function MaterialsCard({ admin, course, updateCourse }) {
           <input type="file" multiple onChange={(event) => setFiles(Array.from(event.target.files || []))} />
           <button onClick={async () => {
             if (!title) return;
-            const uploaded = hasFirebaseConfig ? await uploadManyFiles(course.id, `materials/${title}`, files) : await Promise.all(files.map(readFileAsDataUrl));
+            const uploaded = hasFirebaseConfig
+              ? await uploadManyFiles(course, `materials/${title}`, files, { readerEmails: classReaderEmails(course), writerEmails: adminWriterEmails() })
+              : await Promise.all(files.map(readFileAsDataUrl));
             updateCourse((current) => ({ ...current, materials: [...current.materials, { id: crypto.randomUUID(), title, files: uploaded }] }));
             setTitle("");
             setFiles([]);
@@ -706,7 +727,10 @@ function MaterialsCard({ admin, course, updateCourse }) {
       <div className="list-stack">
         {course.materials.map((item) => (
           <article className="material-card" key={item.id}>
-            <strong>{item.title}</strong>
+            <div className="card-row-head">
+              <strong>{item.title}</strong>
+              {admin && <button className="icon-danger" onClick={() => updateCourse((current) => ({ ...current, materials: current.materials.filter((material) => material.id !== item.id) }))}><Trash2 size={15} /></button>}
+            </div>
             <div className="file-list">
               {materialFiles(item).map((file, index) => (
                 <button key={`${file.fileName}-${index}`} onClick={() => file.url && window.open(file.url, "_blank", "noopener,noreferrer")}><Download size={15} /> {file.fileName}</button>
@@ -756,7 +780,9 @@ function AssignmentItem({ admin, course, assignment, user, updateCourse }) {
 
   async function submitAssignment() {
     if (!fileName && !file) return;
-    const uploaded = file ? await uploadClassFile(course.id, `submissions/${assignment.id}/${user.email}`, file) : { fileName, url: "" };
+    const uploaded = file
+      ? await uploadClassFile(course, `submissions/${assignment.id}/${user.email}`, file, { readerEmails: adminWriterEmails(), writerEmails: adminWriterEmails() })
+      : { fileName, url: "" };
     updateCourse((current) => ({
       ...current,
       assignments: current.assignments.map((item) => item.id === assignment.id ? { ...item, submissions: [...(item.submissions || []), { email: user.email, submittedAt: new Date().toLocaleString("vi-VN"), ...uploaded }] } : item)
@@ -841,31 +867,51 @@ function createGradebook(course, updateCourse, assignmentId, type) {
 
 function GradebookItem({ admin, user, book, course, updateCourse }) {
   const [open, setOpen] = useState(false);
-  const rows = admin ? book.rows : book.rows.filter((row) => row.key === user.email || course.groupTopics.find((topic) => topic.id === row.key)?.memberEmails.includes(user.email));
+  const [draftRows, setDraftRows] = useState(book.rows);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    setDraftRows(book.rows);
+    setDirty(false);
+  }, [book.id, book.rows]);
+
+  const rows = admin
+    ? draftRows
+    : book.rows.filter((row) => row.key === user.email || course.groupTopics.find((topic) => topic.id === row.key)?.memberEmails.includes(user.email));
+
+  function changeDraftScore(rowKey, score) {
+    setDirty(true);
+    setDraftRows((current) => current.map((row) => row.key === rowKey ? { ...row, score } : row));
+  }
+
+  function saveScores() {
+    updateCourse((current) => ({
+      ...current,
+      gradebooks: current.gradebooks.map((item) => item.id === book.id ? { ...item, rows: draftRows } : item)
+    }));
+    setDirty(false);
+  }
+
   return (
     <article className="expand-card">
       <button onClick={() => setOpen(!open)}><strong>{book.title}</strong><small>{book.type === "group" ? "Topic Nhóm" : "Cá nhân"}</small></button>
       {open && (
-        <table className="data-table compact-table">
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.key}>
-                <td>{row.label}</td>
-                <td>{admin ? <input value={row.score} onChange={(event) => updateGrade(course, updateCourse, book.id, row.key, event.target.value)} /> : row.score || "Chưa có điểm"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <>
+          {admin && <button className="primary-action compact save-score-button" onClick={saveScores} disabled={!dirty}>Save</button>}
+          <table className="data-table compact-table">
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.key}>
+                  <td>{row.label}</td>
+                  <td>{admin ? <input value={row.score} onChange={(event) => changeDraftScore(row.key, event.target.value)} /> : row.score || "Chưa có điểm"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
     </article>
   );
-}
-
-function updateGrade(course, updateCourse, bookId, rowKey, score) {
-  updateCourse((current) => ({
-    ...current,
-    gradebooks: current.gradebooks.map((book) => book.id === bookId ? { ...book, rows: book.rows.map((row) => row.key === rowKey ? { ...row, score } : row) } : book)
-  }));
 }
 
 
@@ -902,22 +948,62 @@ function updatePersonalTopic(course, updateCourse, email, topic) {
 
 function PeerReviewCard({ admin, user, course, updateCourse }) {
   const [title, setTitle] = useState("");
+  const [sourceType, setSourceType] = useState("group");
+  const options = peerReviewOptions(course, sourceType);
+
+  function createReview() {
+    if (!title || options.length === 0) return;
+    updateCourse((current) => ({
+      ...current,
+      peerReviews: [
+        ...current.peerReviews,
+        {
+          id: crypto.randomUUID(),
+          title,
+          sourceType,
+          options: peerReviewOptions(current, sourceType),
+          responses: []
+        }
+      ]
+    }));
+    setTitle("");
+  }
+
   return (
     <>
       <PanelTitle
         title="Người học chấm điểm"
-        action={admin && <button className="primary-action compact" onClick={() => {
-          if (!title) return;
-          updateCourse((current) => ({ ...current, peerReviews: [...current.peerReviews, { id: crypto.randomUUID(), title, options: current.groupTopics.map((item) => `${item.name} - ${item.topic}`), responses: [] }] }));
-          setTitle("");
-        }}><Plus size={15} /> Thêm thẻ</button>}
+        action={admin && <button className="primary-action compact" onClick={createReview} disabled={!title || options.length === 0}><Plus size={15} /> Thêm thẻ</button>}
       />
-      {admin && <input className="wide-input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Tên thẻ chấm điểm mới" />}
+      {admin && (
+        <div className="inline-form peer-create-form">
+          <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Tên thẻ chấm điểm mới" />
+          <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
+            <option value="group">Nhóm</option>
+            <option value="personal">Cá nhân</option>
+          </select>
+        </div>
+      )}
       <div className="list-stack">
         {course.peerReviews.map((review) => <PeerReviewItem key={review.id} admin={admin} user={user} course={course} review={review} updateCourse={updateCourse} />)}
       </div>
     </>
   );
+}
+
+function peerReviewOptions(course, sourceType) {
+  if (sourceType === "personal") {
+    return course.personalTopics
+      .filter((item) => item.topic?.trim())
+      .map((item) => {
+        const member = course.members.find((learner) => learner.email === item.email);
+        return `${member?.name || item.email} - ${item.topic}`;
+      });
+  }
+
+  return course.groupTopics
+    .filter((item) => item.topic?.trim())
+    .map((item) => `${item.name} - ${item.topic}`);
 }
 
 
