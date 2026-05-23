@@ -68,6 +68,16 @@ body, button, input, textarea, select { font-size: 14px; }
   border-radius: 8px;
   font-weight: 800;
 }
+.login-error {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fff1f2;
+  color: #991b1b;
+  font-weight: 700;
+  line-height: 1.45;
+}
 .google-button span {
   width: 24px;
   height: 24px;
@@ -234,6 +244,10 @@ textarea { min-height: 88px; resize: vertical; }
   color: #fff;
   font-weight: 800;
   flex: 0 0 36px;
+}
+.avatar-image {
+  display: block;
+  object-fit: cover;
 }
 .avatar.small { width: 30px; height: 30px; flex-basis: 30px; font-size: 12px; }
 

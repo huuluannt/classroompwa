@@ -46,7 +46,8 @@ service cloud.firestore {
       match /members/{email} {
         allow read: if isAdmin()
           || isAcceptedMember(classId)
-          || (signedIn() && request.auth.token.email == email);
+          || (signedIn() && request.auth.token.email == email)
+          || (signedIn() && resource.data.email == request.auth.token.email);
 
         allow create: if isAdmin()
           || (

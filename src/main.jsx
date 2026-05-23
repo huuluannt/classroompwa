@@ -78,11 +78,30 @@ function materialFiles(item) {
   return item.files || [{ fileName: item.fileName, url: item.url }].filter((file) => file.fileName || file.url);
 }
 
+function ProfileAvatar({ user, label, small = false }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const className = small ? "avatar avatar-image small" : "avatar avatar-image";
+  if (user?.photoURL && !imageFailed) {
+    return (
+      <img
+        className={className}
+        src={user.photoURL}
+        alt=""
+        referrerPolicy="no-referrer"
+        onError={() => setImageFailed(true)}
+      />
+    );
+  }
+
+  return <span className={small ? "avatar small" : "avatar"}>{initials(label)}</span>;
+}
+
 function App() {
   const [user, setUser] = useState(null);
   const [classes, setClasses] = useState(loadLocalClasses);
   const [loading, setLoading] = useState(hasFirebaseConfig);
   const [error, setError] = useState("");
+  const [loginError, setLoginError] = useState("");
   const [selectedClassId, setSelectedClassId] = useState(classes[0]?.id);
   const [selectedCard, setSelectedCard] = useState("members");
   const [query, setQuery] = useState("");
@@ -136,15 +155,21 @@ function App() {
   }
 
   async function handleLogin(mode = "learner") {
-    const nextUser = mode === "admin"
-      ? { displayName: "Huynh Huu Luan", email: "hhluan@hcmus.edu.vn", photoURL: "", isDemo: true }
-      : await signInWithGoogle();
-    setUser({
-      displayName: nextUser.displayName || nextUser.email,
-      email: nextUser.email,
-      photoURL: nextUser.photoURL,
-      isDemo: nextUser.isDemo
-    });
+    setLoginError("");
+    try {
+      const nextUser = mode === "admin"
+        ? { displayName: "Huynh Huu Luan", email: "hhluan@hcmus.edu.vn", photoURL: "", isDemo: true }
+        : await signInWithGoogle();
+      setUser({
+        displayName: nextUser.displayName || nextUser.email,
+        email: nextUser.email,
+        photoURL: nextUser.photoURL,
+        isDemo: nextUser.isDemo
+      });
+    } catch (nextError) {
+      console.error(nextError);
+      setLoginError(formatLoginError(nextError));
+    }
   }
 
   async function handleLogout() {
@@ -154,7 +179,7 @@ function App() {
   }
 
   if (loading) return <LoadingScreen />;
-  if (!user) return <LoginScreen onLogin={handleLogin} />;
+  if (!user) return <LoginScreen onLogin={handleLogin} loginError={loginError} />;
 
   return (
     <main className="app-shell">
@@ -260,7 +285,28 @@ function LoadingScreen() {
   );
 }
 
-function LoginScreen({ onLogin }) {
+function formatLoginError(error) {
+  const code = error?.code || "";
+  if (code === "auth/unauthorized-domain") {
+    return "Dang nhap bi chan vi domain hien tai chua duoc them vao Firebase Auth > Settings > Authorized domains.";
+  }
+  if (code === "auth/operation-not-allowed") {
+    return "Google sign-in chua duoc bat trong Firebase Authentication > Sign-in method.";
+  }
+  if (code === "auth/popup-blocked") {
+    return "Trinh duyet da chan popup dang nhap. Hay cho phep popup cho trang nay roi thu lai.";
+  }
+  if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+    return "Popup dang nhap da dong truoc khi hoan tat. Hay thu lai va giu popup mo den khi dang nhap xong.";
+  }
+  if (code === "auth/invalid-api-key" || code.startsWith("auth/api-key-not-valid")) {
+    return "Firebase API key khong hop le. Kiem tra lai bien VITE_FIREBASE_API_KEY tren Vercel.";
+  }
+  if (code) return `Dang nhap khong thanh cong: ${code}`;
+  return "Dang nhap khong thanh cong. Kiem tra console hoac cau hinh Firebase.";
+}
+
+function LoginScreen({ onLogin, loginError }) {
   return (
     <section className="login-screen">
       <div className="login-card">
@@ -276,6 +322,7 @@ function LoginScreen({ onLogin }) {
           <span>G</span>
           Đăng nhập bằng Google
         </button>
+        {loginError && <p className="login-error" role="alert">{loginError}</p>}
         {!hasFirebaseConfig && (
           <>
             <button className="demo-admin-button" onClick={() => onLogin("admin")}>Demo admin</button>
@@ -349,7 +396,7 @@ function Sidebar(props) {
           </nav>
           <div className="account-box">
             <button className="account-trigger" onClick={() => setAccountOpen(!accountOpen)}>
-              <span className="avatar">{initials(user.displayName || user.email)}</span>
+              <ProfileAvatar user={user} label={user.displayName || user.email} />
               <span>
                 <strong>{user.displayName || user.email}</strong>
                 <small>{user.email}</small>
