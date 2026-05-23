@@ -187,7 +187,7 @@ function normalizeCourseForFirestore(course) {
 function withCourseDefaults(course) {
   return {
     pinned: false,
-    info: { title: course.name || "", size: 0, time: "", room: "", description: course.description || "" },
+    info: { title: course.name || "", size: 0, time: "", room: "", description: course.description || "", rules: "" },
     announcements: [],
     groupTopics: [],
     personalTopics: [],

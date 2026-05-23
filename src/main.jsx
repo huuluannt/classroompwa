@@ -19,7 +19,7 @@ import {
   UserPlus,
   X
 } from "lucide-react";
-import { ADMINS, baseCards, extraCardLabels, seedClasses } from "./data";
+import { ADMIN_PROFILES, ADMINS, baseCards, extraCardLabels } from "./data";
 import { hasFirebaseConfig, observeAuth, signInWithGoogle, signOutGoogle } from "./firebase";
 import {
   deleteCourseFromCloud,
@@ -44,6 +44,27 @@ function initials(value = "") {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("");
+}
+
+function extractUrls(text = "") {
+  return text.match(/https?:\/\/[^\s]+/g) || [];
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ fileName: file.name, url: reader.result, type: file.type });
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadManyFiles(courseId, folder, files) {
+  return Promise.all(Array.from(files || []).map((file) => uploadClassFile(courseId, folder, file)));
+}
+
+function materialFiles(item) {
+  return item.files || [{ fileName: item.fileName, url: item.url }].filter((file) => file.fileName || file.url);
 }
 
 function App() {
@@ -105,7 +126,7 @@ function App() {
 
   async function handleLogin(mode = "learner") {
     const nextUser = mode === "admin"
-      ? { displayName: "Huynh Huu Luan", email: "huuluannt@gmail.com", photoURL: "", isDemo: true }
+      ? { displayName: "Huynh Huu Luan", email: "hhluan@hcmus.edu.vn", photoURL: "", isDemo: true }
       : await signInWithGoogle();
     setUser({
       displayName: nextUser.displayName || nextUser.email,
@@ -368,7 +389,9 @@ function ClassRow({ course, selected, admin, onSelect, onAction }) {
 }
 
 function ClassPane({ admin, user, course, selectedCard, setSelectedCard, updateCourse }) {
+  const [cardMenuOpen, setCardMenuOpen] = useState(false);
   const cards = [...baseCards, ...course.extraCards.map((id) => ({ id, label: extraCardLabels[id] }))];
+  const addableCards = Object.entries(extraCardLabels).filter(([id]) => !course.extraCards.includes(id));
   return (
     <section className="rightpane">
       <div className="class-header">
@@ -386,17 +409,28 @@ function ClassPane({ admin, user, course, selectedCard, setSelectedCard, updateC
             </button>
           ))}
           {admin && (
-            <button
-              className="add-card"
-              onClick={() =>
-                updateCourse((current) => ({
-                  ...current,
-                  extraCards: current.extraCards.includes("personalTopic") ? [...new Set([...current.extraCards, "peerReview"])] : [...current.extraCards, "personalTopic"]
-                }))
-              }
-            >
-              <Plus size={16} />
-            </button>
+            <div className="add-card-wrap">
+              <button className="add-card" onClick={() => setCardMenuOpen(!cardMenuOpen)} aria-label="Add card type">
+                <Plus size={16} />
+              </button>
+              {cardMenuOpen && (
+                <div className="add-card-menu">
+                  {addableCards.length === 0 && <span>Đã có đủ card</span>}
+                  {addableCards.map(([id, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => {
+                        updateCourse((current) => ({ ...current, extraCards: [...current.extraCards, id] }));
+                        setSelectedCard(id);
+                        setCardMenuOpen(false);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </aside>
         <section className="detail-panel">
@@ -429,6 +463,7 @@ function PanelTitle({ title, action }) {
   );
 }
 
+
 function MembersCard({ admin, course, updateCourse }) {
   const accepted = course.members.filter((member) => member.status === "accepted");
   const pending = course.members.filter((member) => member.status === "pending");
@@ -436,11 +471,11 @@ function MembersCard({ admin, course, updateCourse }) {
     <>
       <PanelTitle title="Thành viên" />
       <div className="teacher-strip">
-        {ADMINS.map((email) => (
-          <div key={email}>
-            <span className="avatar small">{initials(email)}</span>
-            <strong>Giáo viên</strong>
-            <small>{email}</small>
+        {ADMIN_PROFILES.map((profile) => (
+          <div key={profile.email}>
+            <span className="avatar small">{initials(profile.name)}</span>
+            <strong>Giảng viên</strong>
+            <small>{profile.name} - {profile.email}</small>
           </div>
         ))}
       </div>
@@ -450,15 +485,15 @@ function MembersCard({ admin, course, updateCourse }) {
           {pending.map((member) => (
             <div className="pending-row" key={member.email}>
               <span>{member.name}</span>
-              <small>{member.email} · {member.studentId}</small>
+              <small>{member.email} - {member.studentId}</small>
               <button onClick={() => updateMemberStatus(course, updateCourse, member.email, "accepted")}><Check size={15} /> Accept</button>
               <button onClick={() => removeMember(course, updateCourse, member.email)}><X size={15} /> Reject</button>
             </div>
           ))}
         </section>
       )}
-      <table className="data-table">
-        <thead><tr><th>STT</th><th>Họ tên</th><th>Email</th><th>Mã số</th>{admin && <th />}</tr></thead>
+      <table className="data-table members-table">
+        <thead><tr><th className="stt-col">STT</th><th>Họ tên</th><th>Email</th><th>Mã số</th>{admin && <th />}</tr></thead>
         <tbody>
           {accepted.map((member) => (
             <tr key={member.email}>
@@ -488,33 +523,85 @@ function removeMember(course, updateCourse, email) {
   deleteMemberFromCloud(course.id, email);
 }
 
+
 function AnnouncementsCard({ admin, user, course, updateCourse }) {
   const [content, setContent] = useState("");
+  const [files, setFiles] = useState([]);
+  const [pinned, setPinned] = useState(false);
+
+  function addFiles(fileList) {
+    const nextFiles = Array.from(fileList || []);
+    if (nextFiles.length) setFiles((current) => [...current, ...nextFiles]);
+  }
+
+  async function submitPost() {
+    if (!content.trim() && files.length === 0) return;
+    const attachments = hasFirebaseConfig
+      ? await uploadManyFiles(course.id, "announcements", files)
+      : await Promise.all(files.map(readFileAsDataUrl));
+    updateCourse((current) => ({
+      ...current,
+      announcements: [
+        {
+          id: crypto.randomUUID(),
+          author: user.email,
+          role: admin ? "admin" : "learner",
+          content,
+          pinned,
+          attachments,
+          createdAt: new Date().toLocaleString("vi-VN")
+        },
+        ...current.announcements
+      ]
+    }));
+    setContent("");
+    setFiles([]);
+    setPinned(false);
+  }
+
+  const posts = [...course.announcements].sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)));
+
   return (
     <>
       <PanelTitle title="Thông báo" />
-      <div className="composer">
-        <textarea value={content} onChange={(event) => setContent(event.target.value)} placeholder="Đăng thông báo cho lớp" />
-        <button
-          className="primary-action compact"
-          onClick={() => {
-            if (!content.trim()) return;
-            updateCourse((current) => ({
-              ...current,
-              announcements: [{ id: crypto.randomUUID(), author: user.email, role: admin ? "admin" : "learner", content, createdAt: new Date().toLocaleString("vi-VN") }, ...current.announcements]
-            }));
-            setContent("");
-          }}
-        >
-          <Send size={15} /> Đăng tin
-        </button>
+      <div
+        className="composer drop-zone"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          addFiles(event.dataTransfer.files);
+        }}
+        onPaste={(event) => addFiles(event.clipboardData.files)}
+      >
+        <textarea value={content} onChange={(event) => setContent(event.target.value)} placeholder="Đăng thông báo cho lớp, dán URL hoặc Ctrl + V hình" />
+        <div className="composer-tools">
+          <label className="file-picker">
+            Browse
+            <input type="file" multiple accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip" onChange={(event) => addFiles(event.target.files)} />
+          </label>
+          <label className="check-row"><input type="checkbox" checked={pinned} onChange={(event) => setPinned(event.target.checked)} /> Pin</label>
+          <span>{files.length ? `${files.length} file đã chọn` : "Kéo thả file hoặc Ctrl + V hình"}</span>
+          <button className="primary-action compact" onClick={submitPost}><Send size={15} /> Đăng tin</button>
+        </div>
       </div>
       <div className="feed">
-        {course.announcements.map((item) => (
-          <article className={`feed-item ${item.role === "admin" ? "admin-post" : ""}`} key={item.id}>
-            <strong>{item.author}</strong>
-            <small>{item.createdAt}</small>
+        {posts.map((item) => (
+          <article className={`feed-item ${item.role === "admin" ? "admin-post" : ""} ${item.pinned ? "pinned-post" : ""}`} key={item.id}>
+            <div className="post-head">
+              <div><strong>{item.author}</strong><small>{item.createdAt}</small></div>
+              <button className="pin-button" onClick={() => updateCourse((current) => ({ ...current, announcements: current.announcements.map((post) => post.id === item.id ? { ...post, pinned: !post.pinned } : post) }))}>{item.pinned ? "Unpin" : "Pin"}</button>
+            </div>
             <p>{item.content}</p>
+            <div className="link-list">{extractUrls(item.content).map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}</div>
+            {item.attachments?.length > 0 && (
+              <div className="attachment-grid">
+                {item.attachments.map((file, index) => file.type?.startsWith("image/") || String(file.url).startsWith("data:image") ? (
+                  <a key={`${file.fileName}-${index}`} href={file.url} target="_blank" rel="noreferrer"><img src={file.url} alt={file.fileName} /></a>
+                ) : (
+                  <a key={`${file.fileName}-${index}`} href={file.url} target="_blank" rel="noreferrer">{file.fileName}</a>
+                ))}
+              </div>
+            )}
           </article>
         ))}
       </div>
@@ -522,9 +609,10 @@ function AnnouncementsCard({ admin, user, course, updateCourse }) {
   );
 }
 
+
 function InfoCard({ admin, course, updateCourse }) {
-  const [draft, setDraft] = useState(course.info);
-  const fields = [["title", "Title"], ["size", "Sĩ số"], ["time", "Thời gian"], ["room", "Phòng học"], ["description", "Description"]];
+  const [draft, setDraft] = useState({ rules: "", ...course.info });
+  const fields = [["title", "Title"], ["size", "Sĩ số"], ["time", "Thời gian"], ["room", "Phòng học"]];
   return (
     <>
       <PanelTitle title="Thông tin lớp học" action={admin && <button className="primary-action compact" onClick={() => updateCourse((current) => ({ ...current, info: draft }))}>Save</button>} />
@@ -532,38 +620,62 @@ function InfoCard({ admin, course, updateCourse }) {
         {fields.map(([key, label]) => (
           <label key={key}>
             <span>{label}</span>
-            {admin ? <input value={draft[key]} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} /> : <strong>{course.info[key]}</strong>}
+            {admin ? <input value={draft[key] || ""} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} /> : <strong>{course.info[key]}</strong>}
           </label>
         ))}
+        <label className="wide-field">
+          <span>Description</span>
+          {admin ? <textarea value={draft.description || ""} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /> : <p>{course.info.description}</p>}
+        </label>
+        <label className="wide-field">
+          <span>Quy định</span>
+          {admin ? <textarea value={draft.rules || ""} onChange={(event) => setDraft({ ...draft, rules: event.target.value })} /> : <p>{course.info.rules || "Chưa có quy định."}</p>}
+        </label>
       </div>
     </>
   );
 }
 
+
 function GroupTopicCard({ admin, course, updateCourse }) {
-  const [draft, setDraft] = useState({ name: "", topic: "", reportOrder: "", memberEmails: "" });
+  const empty = { name: "", topic: "", reportOrder: "", memberEmails: "" };
+  const [draft, setDraft] = useState(empty);
+  const [editingId, setEditingId] = useState(null);
+
+  function saveTopic() {
+    const topicData = { ...draft, memberEmails: draft.memberEmails.split(",").map((item) => item.trim()).filter(Boolean) };
+    updateCourse((current) => ({
+      ...current,
+      groupTopics: editingId
+        ? current.groupTopics.map((topic) => topic.id === editingId ? { ...topic, ...topicData } : topic)
+        : [...current.groupTopics, { ...topicData, id: crypto.randomUUID() }]
+    }));
+    setDraft(empty);
+    setEditingId(null);
+  }
+
   return (
     <>
       <PanelTitle title="Topic Nhóm" />
       {admin && (
-        <div className="inline-form">
+        <div className="inline-form topic-form">
           <input placeholder="Tên nhóm" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
           <input placeholder="Email thành viên, cách nhau bằng dấu phẩy" value={draft.memberEmails} onChange={(event) => setDraft({ ...draft, memberEmails: event.target.value })} />
           <input placeholder="Topic" value={draft.topic} onChange={(event) => setDraft({ ...draft, topic: event.target.value })} />
           <input placeholder="STT báo cáo" value={draft.reportOrder} onChange={(event) => setDraft({ ...draft, reportOrder: event.target.value })} />
-          <button onClick={() => {
-            updateCourse((current) => ({ ...current, groupTopics: [...current.groupTopics, { ...draft, id: crypto.randomUUID(), memberEmails: draft.memberEmails.split(",").map((item) => item.trim()).filter(Boolean) }] }));
-            setDraft({ name: "", topic: "", reportOrder: "", memberEmails: "" });
-          }}><Plus size={15} /> Add</button>
+          <button onClick={saveTopic}><Plus size={15} /> {editingId ? "Save" : "Add"}</button>
         </div>
       )}
       <div className="topic-grid">
         {course.groupTopics.map((topic) => (
           <article className="topic-card" key={topic.id}>
-            <strong>{topic.name}</strong>
+            <div className="card-row-head"><strong>{topic.name}</strong>{admin && <button onClick={() => { setEditingId(topic.id); setDraft({ ...topic, memberEmails: topic.memberEmails.join(", ") }); }}>Edit</button>}</div>
             <p>{topic.topic}</p>
             <small>STT báo cáo: {topic.reportOrder}</small>
-            <ul>{topic.memberEmails.map((email) => <li key={email}>{course.members.find((member) => member.email === email)?.name || email} · {email}</li>)}</ul>
+            <ul>{topic.memberEmails.map((email) => {
+              const member = course.members.find((item) => item.email === email);
+              return <li key={email}>{member?.name || email} - {member?.studentId || "Chưa có mã số"} - {email}</li>;
+            })}</ul>
           </article>
         ))}
       </div>
@@ -571,39 +683,42 @@ function GroupTopicCard({ admin, course, updateCourse }) {
   );
 }
 
+
 function MaterialsCard({ admin, course, updateCourse }) {
   const [title, setTitle] = useState("");
-  const [fileName, setFileName] = useState("");
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   return (
     <>
       <PanelTitle title="Tài liệu" />
       {admin && (
-        <div className="inline-form two">
-          <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Tiêu đề tài liệu" />
-          <input value={fileName} onChange={(event) => setFileName(event.target.value)} placeholder="Tên file hoặc URL" />
-          <input type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+        <div className="inline-form material-form">
+          <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Tên thẻ tài liệu, ví dụ Chương 1" />
+          <input type="file" multiple onChange={(event) => setFiles(Array.from(event.target.files || []))} />
           <button onClick={async () => {
             if (!title) return;
-            const uploaded = file ? await uploadClassFile(course.id, "materials", file) : { fileName: fileName || "uploaded-file.pdf", url: fileName };
-            updateCourse((current) => ({ ...current, materials: [...current.materials, { id: crypto.randomUUID(), title, ...uploaded }] }));
+            const uploaded = hasFirebaseConfig ? await uploadManyFiles(course.id, `materials/${title}`, files) : await Promise.all(files.map(readFileAsDataUrl));
+            updateCourse((current) => ({ ...current, materials: [...current.materials, { id: crypto.randomUUID(), title, files: uploaded }] }));
             setTitle("");
-            setFileName("");
-            setFile(null);
-          }}><Upload size={15} /> Upload</button>
+            setFiles([]);
+          }}><Upload size={15} /> Thêm thẻ tài liệu</button>
         </div>
       )}
       <div className="list-stack">
         {course.materials.map((item) => (
-          <article className="resource-row" key={item.id}>
-            <div><strong>{item.title}</strong><small>{item.fileName}</small></div>
-            <button onClick={() => item.url && window.open(item.url, "_blank", "noopener,noreferrer")}><Download size={15} /> Download</button>
+          <article className="material-card" key={item.id}>
+            <strong>{item.title}</strong>
+            <div className="file-list">
+              {materialFiles(item).map((file, index) => (
+                <button key={`${file.fileName}-${index}`} onClick={() => file.url && window.open(file.url, "_blank", "noopener,noreferrer")}><Download size={15} /> {file.fileName}</button>
+              ))}
+            </div>
           </article>
         ))}
       </div>
     </>
   );
 }
+
 
 function AssignmentsCard({ admin, user, course, updateCourse }) {
   const [draft, setDraft] = useState({ title: "", content: "" });
@@ -623,37 +738,66 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
       )}
       <div className="list-stack">
         {course.assignments.map((assignment) => (
-          <AssignmentItem key={assignment.id} courseId={course.id} assignment={assignment} user={user} updateCourse={updateCourse} />
+          <AssignmentItem key={assignment.id} admin={admin} course={course} assignment={assignment} user={user} updateCourse={updateCourse} />
         ))}
       </div>
     </>
   );
 }
 
-function AssignmentItem({ courseId, assignment, user, updateCourse }) {
+
+function AssignmentItem({ admin, course, assignment, user, updateCourse }) {
   const [open, setOpen] = useState(false);
   const [fileName, setFileName] = useState("");
   const [file, setFile] = useState(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const userSubmissions = assignment.submissions?.filter((item) => item.email === user.email) || [];
+
+  async function submitAssignment() {
+    if (!fileName && !file) return;
+    const uploaded = file ? await uploadClassFile(course.id, `submissions/${assignment.id}/${user.email}`, file) : { fileName, url: "" };
+    updateCourse((current) => ({
+      ...current,
+      assignments: current.assignments.map((item) => item.id === assignment.id ? { ...item, submissions: [...(item.submissions || []), { email: user.email, submittedAt: new Date().toLocaleString("vi-VN"), ...uploaded }] } : item)
+    }));
+    setFileName("");
+    setFile(null);
+    setSubmitted(true);
+  }
+
   return (
     <article className="expand-card">
-      <button onClick={() => setOpen(!open)}><strong>{assignment.title}</strong></button>
+      <div className="assignment-head">
+        <button onClick={() => setOpen(!open)}><strong>{assignment.title}</strong>{userSubmissions.length > 0 && <small>Đã nộp {userSubmissions.length} lần</small>}</button>
+        {admin && <button className="icon-danger" onClick={() => updateCourse((current) => ({ ...current, assignments: current.assignments.filter((item) => item.id !== assignment.id) }))}><Trash2 size={15} /></button>}
+      </div>
       {open && (
         <div>
           <p>{assignment.content}</p>
-          <div className="upload-row">
-            <input value={fileName} onChange={(event) => setFileName(event.target.value)} placeholder="Tên file bài tập" />
-            <input type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} />
-            <button onClick={async () => {
-              if (!fileName && !file) return;
-              const uploaded = file ? await uploadClassFile(courseId, `submissions/${assignment.id}/${user.email}`, file) : { fileName, url: "" };
-              updateCourse((current) => ({
-                ...current,
-                assignments: current.assignments.map((item) => item.id === assignment.id ? { ...item, submissions: [...item.submissions, { email: user.email, ...uploaded }] } : item)
-              }));
-              setFileName("");
-              setFile(null);
-            }}><Upload size={15} /> Upload</button>
-          </div>
+          {!admin && (
+            <>
+              <div className="upload-row">
+                <input value={fileName} onChange={(event) => setFileName(event.target.value)} placeholder="Tên file bài tập" />
+                <input type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} />
+                <button onClick={submitAssignment}><Upload size={15} /> Submit</button>
+              </div>
+              {(submitted || userSubmissions.length > 0) && <p className="success-text">Bạn đã nộp bài thành công.</p>}
+            </>
+          )}
+          {admin && <button className="join-action compact" onClick={() => setShowResults(!showResults)}>Xem kết quả nộp bài</button>}
+          {admin && showResults && (
+            <table className="data-table compact-table">
+              <thead><tr><th>Email</th><th>File</th><th>Thời gian</th></tr></thead>
+              <tbody>{(assignment.submissions || []).map((submission, index) => (
+                <tr key={`${submission.email}-${index}`}>
+                  <td>{submission.email}</td>
+                  <td><button className="link-button" onClick={() => submission.url && window.open(submission.url, "_blank", "noopener,noreferrer")}>{submission.fileName || "file"}</button></td>
+                  <td>{submission.submittedAt || ""}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          )}
         </div>
       )}
     </article>
@@ -724,19 +868,21 @@ function updateGrade(course, updateCourse, bookId, rowKey, score) {
   }));
 }
 
+
 function PersonalTopicCard({ course, updateCourse }) {
   const members = course.members.filter((member) => member.status === "accepted").sort((a, b) => Number(a.order) - Number(b.order));
   return (
     <>
       <PanelTitle title="Topic Cá nhân" />
       <table className="data-table">
-        <thead><tr><th>STT</th><th>Họ tên</th><th>Email</th><th>Topic</th></tr></thead>
+        <thead><tr><th className="stt-col">STT</th><th>Họ tên</th><th>Email</th><th>Mã số</th><th>Topic</th></tr></thead>
         <tbody>
           {members.map((member) => (
             <tr key={member.email}>
               <td>{member.order}</td>
               <td>{member.name}</td>
               <td>{member.email}</td>
+              <td>{member.studentId}</td>
               <td><input value={course.personalTopics.find((item) => item.email === member.email)?.topic || ""} onChange={(event) => updatePersonalTopic(course, updateCourse, member.email, event.target.value)} /></td>
             </tr>
           ))}
@@ -752,6 +898,7 @@ function updatePersonalTopic(course, updateCourse, email, topic) {
     return { ...current, personalTopics: exists ? current.personalTopics.map((item) => item.email === email ? { ...item, topic } : item) : [...current.personalTopics, { email, topic }] };
   });
 }
+
 
 function PeerReviewCard({ admin, user, course, updateCourse }) {
   const [title, setTitle] = useState("");
@@ -773,13 +920,17 @@ function PeerReviewCard({ admin, user, course, updateCourse }) {
   );
 }
 
+
 function PeerReviewItem({ admin, user, course, review, updateCourse }) {
   const [topic, setTopic] = useState(review.options[0] || "");
   const [score, setScore] = useState("");
   const [openTable, setOpenTable] = useState(false);
   return (
     <article className="expand-card peer">
-      <strong>{review.title}</strong>
+      <div className="card-row-head">
+        <strong>{review.title}</strong>
+        {admin && <button className="icon-danger" onClick={() => updateCourse((current) => ({ ...current, peerReviews: current.peerReviews.filter((item) => item.id !== review.id) }))}><Trash2 size={15} /></button>}
+      </div>
       <div className="review-form">
         <select value={topic} onChange={(event) => setTopic(event.target.value)}>
           {review.options.map((option) => <option key={option}>{option}</option>)}
@@ -853,7 +1004,7 @@ function JoinClassModal({ user, classes, cloudMode, onClose, onJoin }) {
 }
 
 function NewClassModal({ existing, onClose, onSave }) {
-  const [form, setForm] = useState(existing || { id: "", name: "", description: "", code: "", pinned: false, info: { title: "", size: 0, time: "", room: "", description: "" }, members: [], announcements: [], groupTopics: [], personalTopics: [], materials: [], assignments: [], gradebooks: [], peerReviews: [], extraCards: [] });
+  const [form, setForm] = useState(existing || { id: "", name: "", description: "", code: "", pinned: false, info: { title: "", size: 0, time: "", room: "", description: "", rules: "" }, members: [], announcements: [], groupTopics: [], personalTopics: [], materials: [], assignments: [], gradebooks: [], peerReviews: [], extraCards: [] });
   return (
     <Modal title={existing ? "Edit Class" : "Add New Class"} onClose={onClose}>
       <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value, id: existing?.id || event.target.value.toLowerCase().replaceAll(" ", "-"), info: { ...form.info, title: event.target.value } })} placeholder="Tên class" />

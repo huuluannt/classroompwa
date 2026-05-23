@@ -8,7 +8,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return signedIn() && request.auth.token.email in [
-        'huuluannt@gmail.com',
+        'hhluan@hcmus.edu.vn',
         'nthue@hcmus.edu.vn'
       ];
     }

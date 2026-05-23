@@ -5,7 +5,7 @@ PWA quan ly day hoc rieng tu cho sinh vien va hoc vien.
 ## Tinh nang chinh
 
 - Dang nhap Google OAuth qua Firebase Auth.
-- Admin co dinh: `huuluannt@gmail.com`, `nthue@hcmus.edu.vn`.
+- Admin co dinh: `hhluan@hcmus.edu.vn`, `nthue@hcmus.edu.vn`.
 - Nguoi chua dang nhap chi thay man hinh dang nhap.
 - Nguoi hoc phai nhap dung ma lop, sau do cho admin accept.
 - Noi dung lop hoc chi mo cho admin hoac nguoi hoc da duoc accept.

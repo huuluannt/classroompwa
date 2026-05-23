@@ -8,7 +8,7 @@ service firebase.storage {
 
     function isAdmin() {
       return signedIn() && request.auth.token.email in [
-        'huuluannt@gmail.com',
+        'hhluan@hcmus.edu.vn',
         'nthue@hcmus.edu.vn'
       ];
     }
@@ -22,6 +22,11 @@ service firebase.storage {
     match /classes/{classId}/materials/{fileName=**} {
       allow read: if isAdmin() || isAcceptedMember(classId);
       allow write: if isAdmin();
+    }
+
+    match /classes/{classId}/announcements/{fileName=**} {
+      allow read: if isAdmin() || isAcceptedMember(classId);
+      allow write: if isAdmin() || isAcceptedMember(classId);
     }
 
     match /classes/{classId}/submissions/{assignmentId}/{email}/{fileName=**} {
