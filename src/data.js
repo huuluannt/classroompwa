@@ -123,6 +123,7 @@ export const baseCards = [
   { id: "announcements", label: "Thông báo" },
   { id: "members", label: "Thành viên" },
   { id: "info", label: "Thông tin lớp học" },
+  { id: "schedule", label: "Lịch học (TKB)" },
   { id: "groupTopic", label: "Topic Nhóm" },
   { id: "materials", label: "Tài liệu" },
   { id: "assignments", label: "Bài tập" },

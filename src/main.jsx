@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   BookOpen,
+  Bell,
+  BellDot,
   Check,
   ChevronLeft,
   Copy,
@@ -88,6 +90,32 @@ const MOBILE_VIEWS = {
   cards: "cards",
   detail: "detail"
 };
+const ANNOUNCEMENT_SEEN_PREFIX = "classroompwa-announcement-seen:";
+
+function notificationSeenKey(email) {
+  return `${ANNOUNCEMENT_SEEN_PREFIX}${normalizeEmail(email)}`;
+}
+
+function loadAnnouncementSeenAt(email) {
+  if (!email) return null;
+  try {
+    const saved = localStorage.getItem(notificationSeenKey(email));
+    if (saved === null) return null;
+    const parsed = Number(saved);
+    return Number.isFinite(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveAnnouncementSeenAt(email, timestamp) {
+  if (!email) return;
+  try {
+    localStorage.setItem(notificationSeenKey(email), String(timestamp || 0));
+  } catch {
+    // Local notification state is best-effort.
+  }
+}
 
 function getAnnouncementPostPermission(course) {
   return ANNOUNCEMENT_POST_PERMISSION_OPTIONS.some((option) => option.value === course?.announcementPostPermission)
@@ -307,6 +335,7 @@ function App() {
   const [sidebarPinnedClassIds, setSidebarPinnedClassIds] = useState([]);
   const [saveToast, setSaveToast] = useState(null);
   const [mobileView, setMobileView] = useState(MOBILE_VIEWS.classes);
+  const [announcementSeenAt, setAnnouncementSeenAt] = useState(null);
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
 
   const supreme = isSupremeEmail(user?.email);
@@ -320,11 +349,18 @@ function App() {
       sidebarPinnedClassIds
     );
   }, [classes, primaryLecturer, sidebarPinnedClassIds, query, supreme, user]);
+  const notificationClasses = useMemo(() => {
+    if (!user) return [];
+    if (supreme || primaryLecturer) return classes;
+    return classes.filter((item) => canManageCourse(user, item) || item.members.some((member) => member.email === user.email));
+  }, [classes, primaryLecturer, supreme, user]);
   const selectedClass = visibleClasses.find((item) => item.id === selectedClassId) || visibleClasses[0];
   const membership = selectedClass?.members.find((member) => member.email === user.email);
   const selectedClassAdmin = canManageCourse(user, selectedClass);
   const selectedClassCanDelete = canDeleteCourse(user, selectedClass);
   const selectedClassCanManageLecturers = canManageCourseLecturers(user, selectedClass);
+  const latestAnnouncementTime = useMemo(() => latestAnnouncementTimestamp(notificationClasses), [notificationClasses]);
+  const hasUnreadAnnouncements = announcementSeenAt !== null && latestAnnouncementTime > announcementSeenAt;
 
   useEffect(() => {
     if (!hasFirebaseConfig) return undefined;
@@ -395,6 +431,21 @@ function App() {
     const timer = window.setTimeout(() => setSaveToast(null), 2400);
     return () => window.clearTimeout(timer);
   }, [saveToast]);
+
+  useEffect(() => {
+    if (!user?.email) {
+      setAnnouncementSeenAt(null);
+      return;
+    }
+    const saved = loadAnnouncementSeenAt(user.email);
+    if (saved !== null) {
+      setAnnouncementSeenAt(saved);
+      return;
+    }
+    const baseline = latestAnnouncementTime || Date.now();
+    saveAnnouncementSeenAt(user.email, baseline);
+    setAnnouncementSeenAt(baseline);
+  }, [user?.email]);
 
   useEffect(() => {
     if (!user || !pendingJoinCode) return;
@@ -506,6 +557,13 @@ function App() {
     }
   }
 
+  function handleNotificationClick() {
+    if (!user?.email) return;
+    const nextSeenAt = Math.max(Date.now(), latestAnnouncementTime || 0);
+    saveAnnouncementSeenAt(user.email, nextSeenAt);
+    setAnnouncementSeenAt(nextSeenAt);
+  }
+
   async function handleProfileSave(profile) {
     const nextProfile = {
       email: user.email,
@@ -566,6 +624,8 @@ function App() {
         }}
         accountOpen={accountOpen}
         setAccountOpen={setAccountOpen}
+        notificationUnread={hasUnreadAnnouncements}
+        onNotificationsClick={handleNotificationClick}
         user={user}
         onProfile={() => {
           setShowProfile(true);
@@ -719,6 +779,12 @@ function sortPinnedClasses(items, pinnedClassIds = []) {
   return [...items].sort((a, b) => Number(pinned.has(b.id)) - Number(pinned.has(a.id)));
 }
 
+function latestAnnouncementTimestamp(classes) {
+  return Math.max(0, ...classes.flatMap((course) => (
+    (course.announcements || []).map((announcement) => Number(announcement.createdAtMillis || 0))
+  )));
+}
+
 function profileFromClasses(user, classes) {
   const profile = classes.map((course) => course.profiles?.[user.email]).find(Boolean);
   const member = classes.flatMap((course) => course.members || []).find((item) => item.email === user.email);
@@ -834,6 +900,8 @@ function Sidebar(props) {
     onClassAction,
     accountOpen,
     setAccountOpen,
+    notificationUnread,
+    onNotificationsClick,
     user,
     onProfile,
     onManageLecturers,
@@ -893,13 +961,24 @@ function Sidebar(props) {
             ))}
           </nav>
           <div className="account-box" ref={accountRef}>
-            <button className="account-trigger" onClick={() => setAccountOpen(!accountOpen)}>
-              <ProfileAvatar user={user} label={user.displayName || user.email} />
-              <span>
-                <strong>{user.displayName || user.email}</strong>
-                <small>{user.email}</small>
-              </span>
-            </button>
+            <div className="account-row">
+              <button className="account-trigger" onClick={() => setAccountOpen(!accountOpen)}>
+                <ProfileAvatar user={user} label={user.displayName || user.email} />
+                <span>
+                  <strong>{user.displayName || user.email}</strong>
+                  <small>{user.email}</small>
+                </span>
+              </button>
+              <button
+                className={`notification-button ${notificationUnread ? "unread" : ""}`}
+                type="button"
+                title={notificationUnread ? "Có thông báo mới" : "Thông báo"}
+                aria-label={notificationUnread ? "Có thông báo mới" : "Thông báo"}
+                onClick={onNotificationsClick}
+              >
+                {notificationUnread ? <BellDot size={19} /> : <Bell size={19} />}
+              </button>
+            </div>
             {accountOpen && (
               <div className="account-menu">
                 <button onClick={onProfile}>
@@ -1345,6 +1424,7 @@ function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditM
   if (selectedCard === "members") return <MembersCard admin={admin} canManageCourseLecturers={canManageCourseLecturers} classLeader={classLeader} canEditMembers={canEditMembers} user={user} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "announcements") return <AnnouncementsCard admin={admin} classLeader={classLeader} user={user} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "info") return <InfoCard admin={admin} course={course} updateCourse={updateCourse} />;
+  if (selectedCard === "schedule") return <ScheduleCard admin={admin} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "groupTopic") return <GroupTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "intergroupTopic") return <IntergroupTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "materials") return <MaterialsCard admin={admin} course={course} updateCourse={updateCourse} />;
@@ -2087,6 +2167,216 @@ function InfoCard({ admin, course, updateCourse }) {
 }
 
 
+function ScheduleCard({ admin, course, updateCourse }) {
+  const [rows, setRows] = useState(() => normalizeScheduleRows(course.scheduleRows));
+  const activeEditorRef = useRef(null);
+  const scheduleSignature = JSON.stringify(course.scheduleRows || []);
+
+  useEffect(() => {
+    setRows(normalizeScheduleRows(course.scheduleRows));
+  }, [scheduleSignature]);
+
+  function updateRow(rowId, patch) {
+    setRows((current) => current.map((row) => row.id === rowId ? { ...row, ...patch } : row));
+  }
+
+  function addWeek() {
+    setRows((current) => [...current, createScheduleRow(current.length)]);
+  }
+
+  function removeWeek(rowId) {
+    setRows((current) => current.length <= 1 ? current : current.filter((row) => row.id !== rowId));
+  }
+
+  function saveSchedule() {
+    updateCourse((current) => ({ ...current, scheduleRows: rows.map(normalizeScheduleRowForSave) }), {
+      toast: true,
+      writeMembers: false,
+      writeSummary: false,
+      classFields: ["scheduleRows"]
+    });
+  }
+
+  function applyFormat(format) {
+    const editor = activeEditorRef.current;
+    if (!editor) return;
+    editor.focus();
+    if (format === "bold") document.execCommand("bold");
+    if (format === "red") document.execCommand("foreColor", false, "#dc2626");
+    if (format === "highlight") document.execCommand("backColor", false, "#fef08a");
+    const inputEvent = typeof InputEvent === "function"
+      ? new InputEvent("input", { bubbles: true, inputType: "formatText" })
+      : new Event("input", { bubbles: true });
+    editor.dispatchEvent(inputEvent);
+  }
+
+  return (
+    <>
+      <PanelTitle
+        title="Lịch học (TKB)"
+        action={admin && (
+          <div className="panel-actions">
+            <button className="secondary-action compact" type="button" onClick={() => applyFormat("bold")} title="In đậm"><strong>B</strong></button>
+            <button className="secondary-action compact text-red-tool" type="button" onClick={() => applyFormat("red")} title="Chữ đỏ">A</button>
+            <button className="secondary-action compact highlight-tool" type="button" onClick={() => applyFormat("highlight")} title="Highlight">A</button>
+            <button className="primary-action compact" type="button" onClick={addWeek}><Plus size={15} /> Thêm tuần</button>
+            <button className="primary-action compact" type="button" onClick={saveSchedule}>Save</button>
+          </div>
+        )}
+      />
+      <div className="schedule-table-wrap">
+        <table className="data-table schedule-table">
+          <colgroup>
+            <col className="schedule-week-col" />
+            <col className="schedule-date-col" />
+            <col className="schedule-content-col" />
+          </colgroup>
+          <thead>
+            <tr><th>Tuần</th><th>Ngày</th><th>Nội dung</th></tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.id}>
+                <td>
+                  {admin ? (
+                    <label className="schedule-week-input">
+                      <span>Tuần</span>
+                      <input
+                        inputMode="numeric"
+                        value={row.weekNumber}
+                        onChange={(event) => updateRow(row.id, { weekNumber: event.target.value.replace(/\D/g, "") })}
+                        aria-label="Số tuần"
+                      />
+                    </label>
+                  ) : (
+                    <span>{`Tuần ${row.weekNumber || ""}`}</span>
+                  )}
+                </td>
+                <td>
+                  {admin ? (
+                    <input value={row.date || ""} onChange={(event) => updateRow(row.id, { date: event.target.value })} placeholder="Ngày" />
+                  ) : (
+                    row.date || ""
+                  )}
+                </td>
+                <td>
+                  <div className="schedule-content-cell">
+                    <RichTextCell
+                      value={row.content || ""}
+                      readOnly={!admin}
+                      onFocus={(element) => { activeEditorRef.current = element; }}
+                      onChange={(value) => updateRow(row.id, { content: value })}
+                    />
+                    {admin && (
+                      <button className="icon-danger schedule-delete-button" type="button" onClick={() => removeWeek(row.id)} title="Xóa tuần" aria-label="Xóa tuần">
+                        <X size={15} />
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+function RichTextCell({ value, readOnly, onFocus, onChange }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!ref.current || document.activeElement === ref.current) return;
+    if (ref.current.innerHTML !== value) ref.current.innerHTML = value || "";
+  }, [value]);
+
+  return (
+    <div
+      ref={ref}
+      className={`rich-text-cell ${readOnly ? "readonly" : ""}`}
+      contentEditable={!readOnly}
+      suppressContentEditableWarning
+      tabIndex={readOnly ? -1 : 0}
+      onFocus={(event) => onFocus?.(event.currentTarget)}
+      onInput={(event) => onChange?.(sanitizeScheduleHtml(event.currentTarget.innerHTML))}
+      dangerouslySetInnerHTML={{ __html: sanitizeScheduleHtml(value || "") }}
+    />
+  );
+}
+
+function normalizeScheduleRows(rows) {
+  const source = Array.isArray(rows) && rows.length > 0 ? rows : defaultScheduleRows();
+  return source.map((row, index) => ({
+    id: row.id || `week-${index + 1}`,
+    weekNumber: cleanNumberText(row.weekNumber ?? row.week ?? ""),
+    date: row.date || "",
+    content: sanitizeScheduleHtml(row.content || "")
+  }));
+}
+
+function defaultScheduleRows() {
+  return Array.from({ length: 6 }, (_, index) => ({
+    id: `week-${index + 1}`,
+    weekNumber: "",
+    date: "",
+    content: ""
+  }));
+}
+
+function createScheduleRow(index) {
+  return {
+    id: `week-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+    weekNumber: "",
+    date: "",
+    content: ""
+  };
+}
+
+function normalizeScheduleRowForSave(row) {
+  return {
+    id: row.id,
+    weekNumber: cleanNumberText(row.weekNumber || ""),
+    date: row.date || "",
+    content: sanitizeScheduleHtml(row.content || "")
+  };
+}
+
+function sanitizeScheduleHtml(html = "") {
+  if (typeof document === "undefined") return String(html || "");
+  const container = document.createElement("div");
+  container.innerHTML = String(html || "");
+  const allowedTags = new Set(["B", "STRONG", "I", "EM", "U", "SPAN", "MARK", "BR"]);
+
+  function cleanNode(node) {
+    [...node.childNodes].forEach((child) => {
+      if (child.nodeType === Node.TEXT_NODE) return;
+      if (child.nodeType !== Node.ELEMENT_NODE) {
+        child.remove();
+        return;
+      }
+      if (!allowedTags.has(child.tagName)) {
+        const fragment = document.createDocumentFragment();
+        while (child.firstChild) fragment.appendChild(child.firstChild);
+        child.replaceWith(fragment);
+        cleanNode(node);
+        return;
+      }
+      const color = child.style.color;
+      const backgroundColor = child.style.backgroundColor;
+      [...child.attributes].forEach((attribute) => child.removeAttribute(attribute.name));
+      if (child.tagName === "SPAN" || child.tagName === "MARK") {
+        if (color) child.style.color = "#dc2626";
+        if (backgroundColor || child.tagName === "MARK") child.style.backgroundColor = "#fef08a";
+      }
+      cleanNode(child);
+    });
+  }
+
+  cleanNode(container);
+  return container.innerHTML;
+}
+
 function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
   const groupCards = useMemo(() => buildGroupTopicCards(course), [course.members, course.groupTopics]);
   const topicDraftSignature = groupCards.map((group) => `${group.key}:${group.topic?.topic || ""}:${group.topic?.reportOrder || ""}:${group.topic?.intergroup || ""}`).join("|");
@@ -2128,6 +2418,30 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
       })
     }), { toast: true });
     setPlaceholderDraft({ group: "", reportOrder: "", intergroup: "", topic: "" });
+  }
+
+  function deleteGroupPlaceholder(group) {
+    if (!group.placeholder || group.members.length > 0) return;
+    updateCourse((current) => {
+      const rawGroup = group.rawGroup;
+      const nextGroupTopics = (current.groupTopics || []).filter((topic) => groupTopicRawGroup(topic) !== rawGroup && topic.id !== groupTopicId(rawGroup));
+      const nextIntergroupTopics = (current.intergroupTopics || [])
+        .map((topic) => {
+          const groupKeys = parseGroupKeys(topic.groupKeys || topic.groups || []).filter((key) => key !== rawGroup);
+          return {
+            ...topic,
+            groupKeys,
+            groupNames: groupKeys.map(groupTopicLabel),
+            memberEmails: (topic.memberEmails || []).filter((email) => !group.members.some((member) => member.email === email))
+          };
+        })
+        .filter((topic) => parseGroupKeys(topic.groupKeys || []).length >= 2);
+      return { ...current, groupTopics: nextGroupTopics, intergroupTopics: nextIntergroupTopics };
+    }, {
+      toast: true,
+      writeMembers: admin,
+      classFields: admin ? null : ["groupTopics", "intergroupTopics"]
+    });
   }
 
   return (
@@ -2182,6 +2496,11 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
                       <strong>{group.topic?.intergroup || ""}</strong>
                     )}
                   </label>
+                  {canEdit && group.placeholder && group.members.length === 0 && (
+                    <button className="placeholder-delete-button" type="button" onClick={() => deleteGroupPlaceholder(group)} aria-label={`Xóa ${group.label}`}>
+                      <X size={15} />
+                    </button>
+                  )}
                 </div>
                 <div className="group-topic-topic-row">
                   <span>Topic:</span>
@@ -2383,8 +2702,36 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
           ))
           : [...existingTopics, nextIntergroupTopic]
       };
-    }, { toast: true });
+    }, {
+      toast: true,
+      writeMembers: admin,
+      classFields: admin ? null : ["groupTopics", "intergroupTopics"]
+    });
     setPlaceholderDraft({ intergroup: "", groups: "", topic: "" });
+  }
+
+  function deleteIntergroupPlaceholder(link) {
+    const hasMembers = link.groups.some((group) => group.members.length > 0);
+    if (hasMembers) return;
+    updateCourse((current) => {
+      const rawIntergroup = link.rawIntergroup;
+      const groupKeys = new Set(link.groupKeys);
+      return {
+        ...current,
+        groupTopics: (current.groupTopics || []).map((topic) => (
+          groupKeys.has(groupTopicRawGroup(topic)) && String(topic.intergroup || "").trim() === rawIntergroup
+            ? { ...topic, intergroup: "" }
+            : topic
+        )),
+        intergroupTopics: (current.intergroupTopics || []).filter((topic) => (
+          String(topic.intergroup ?? "").trim() !== rawIntergroup && topic.id !== intergroupTopicId(rawIntergroup)
+        ))
+      };
+    }, {
+      toast: true,
+      writeMembers: admin,
+      classFields: admin ? null : ["groupTopics", "intergroupTopics"]
+    });
   }
 
   return (
@@ -2423,6 +2770,11 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
                   <label className="group-topic-compact-field intergroup-groups-field">
                     <strong>{`(${link.groups.map((group) => group.label).join(", ")})`}</strong>
                   </label>
+                  {canEdit && link.groups.every((group) => group.members.length === 0) && (
+                    <button className="placeholder-delete-button" type="button" onClick={() => deleteIntergroupPlaceholder(link)} aria-label={`Xóa ${link.label}`}>
+                      <X size={15} />
+                    </button>
+                  )}
                 </div>
                 <div className="group-topic-topic-row">
                   <span>Topic:</span>
@@ -3705,7 +4057,7 @@ function prepareCourseForSave(course, user) {
 }
 
 function NewClassModal({ existing, user, onClose, onSave }) {
-  const [form, setForm] = useState(() => existing || { id: crypto.randomUUID(), name: "", description: "", code: "", pinned: false, announcementPostPermission: ANNOUNCEMENT_POST_PERMISSIONS.everyone, info: { title: "", size: 0, time: "", room: "", description: "", rules: "" }, members: [], announcements: [], groupTopics: [], intergroupTopics: [], personalTopics: [], materials: [], assignments: [], gradebooks: [], peerReviews: [], extraCards: [], hiddenCards: [], pinnedCards: [], cardOrder: [] });
+  const [form, setForm] = useState(() => existing || { id: crypto.randomUUID(), name: "", description: "", code: "", pinned: false, announcementPostPermission: ANNOUNCEMENT_POST_PERMISSIONS.everyone, info: { title: "", size: 0, time: "", room: "", description: "", rules: "" }, scheduleRows: defaultScheduleRows(), members: [], announcements: [], groupTopics: [], intergroupTopics: [], personalTopics: [], materials: [], assignments: [], gradebooks: [], peerReviews: [], extraCards: [], hiddenCards: [], pinnedCards: [], cardOrder: [] });
   return (
     <Modal title={existing ? "Edit Class" : "Add New Class"} onClose={onClose}>
       <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value, info: { ...form.info, title: event.target.value } })} placeholder="Tên class" />

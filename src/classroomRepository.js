@@ -859,6 +859,7 @@ function withCourseDefaults(course) {
     lecturerEmails: lecturers.map((lecturer) => lecturer.email),
     announcementPostPermission: "everyone",
     info: { title: course.name || "", size: 0, time: "", room: "", description: course.description || "", rules: "" },
+    scheduleRows: [],
     announcements: [],
     groupTopics: [],
     intergroupTopics: [],
