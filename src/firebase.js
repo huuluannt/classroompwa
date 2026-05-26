@@ -15,15 +15,6 @@ const app = hasFirebaseConfig ? initializeApp(firebaseConfig) : null;
 export const auth = app ? getAuth(app) : null;
 export const db = app ? getFirestore(app) : null;
 const provider = new GoogleAuthProvider();
-provider.addScope("https://www.googleapis.com/auth/drive.file");
-
-let googleAccessToken = "";
-
-function rememberGoogleAccessToken(result) {
-  const credential = GoogleAuthProvider.credentialFromResult(result);
-  googleAccessToken = credential?.accessToken || "";
-  return googleAccessToken;
-}
 
 export async function signInWithGoogle() {
   if (!auth) {
@@ -36,30 +27,24 @@ export async function signInWithGoogle() {
   }
 
   const result = await signInWithPopup(auth, provider);
-  rememberGoogleAccessToken(result);
   return result.user;
-}
-
-export async function getGoogleAccessToken() {
-  if (googleAccessToken) return googleAccessToken;
-  if (!auth) return "";
-  const result = await signInWithPopup(auth, provider);
-  return rememberGoogleAccessToken(result);
 }
 
 export function getGoogleDriveUserKey() {
   return auth?.currentUser?.email || "local";
 }
 
+export async function getCurrentIdToken(forceRefresh = false) {
+  return auth?.currentUser ? auth.currentUser.getIdToken(forceRefresh) : "";
+}
+
 export async function signOutGoogle() {
-  googleAccessToken = "";
   if (auth) await signOut(auth);
 }
 
 export function observeAuth(callback) {
   if (!auth) return () => {};
   return onAuthStateChanged(auth, (user) => {
-    if (!user) googleAccessToken = "";
     callback(user);
   });
 }

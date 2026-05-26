@@ -1,174 +1,109 @@
-import { getGoogleAccessToken, getGoogleDriveUserKey } from "./firebase";
+import { getCurrentIdToken } from "./firebase";
 
-const DRIVE_API = "https://www.googleapis.com/drive/v3";
-const DRIVE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
-const FOLDER_MIME = "application/vnd.google-apps.folder";
-const FOLDER_CACHE_KEY = "classroompwa-drive-folders";
-const SHARE_MODE = (import.meta.env.VITE_GOOGLE_DRIVE_SHARE_MODE || "class").toLowerCase();
-
-function readFolderCache() {
-  try {
-    return JSON.parse(localStorage.getItem(FOLDER_CACHE_KEY) || "{}");
-  } catch {
-    return {};
-  }
-}
-
-function writeFolderCache(cache) {
-  localStorage.setItem(FOLDER_CACHE_KEY, JSON.stringify(cache));
-}
-
-function safeSegment(value) {
-  return String(value || "files").replace(/[\\/:*?"<>|#{}%~&]/g, "-").trim() || "files";
-}
-
-async function driveJson(url, options = {}) {
-  const accessToken = options.accessToken || await getGoogleAccessToken();
-  if (!accessToken) throw new Error("Không có Google Drive access token. Vui lòng đăng nhập lại bằng Google.");
-
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...options.headers
-    }
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Google Drive API lỗi ${response.status}: ${text}`);
-  }
-
-  return response.status === 204 ? null : response.json();
-}
-
-async function createFolder(name, parentId, accessToken) {
-  const metadata = {
-    name,
-    mimeType: FOLDER_MIME,
-    appProperties: { classroompwa: "true" },
-    ...(parentId ? { parents: [parentId] } : {})
-  };
-
-  return driveJson(`${DRIVE_API}/files?fields=id,name,webViewLink`, {
-    method: "POST",
-    accessToken,
-    body: JSON.stringify(metadata)
-  });
-}
-
-async function ensureFolderPath(parts, accessToken) {
-  const userKey = getGoogleDriveUserKey();
-  const cache = readFolderCache();
-  let parentId = "";
-  let cachePath = userKey;
-
-  for (const rawPart of parts.map(safeSegment)) {
-    cachePath = `${cachePath}/${rawPart}`;
-    if (!cache[cachePath]) {
-      const folder = await createFolder(rawPart, parentId, accessToken);
-      cache[cachePath] = folder.id;
-      writeFolderCache(cache);
-    }
-    parentId = cache[cachePath];
-  }
-
-  return parentId;
-}
-
-async function createPermission(fileId, permission, accessToken) {
-  await driveJson(`${DRIVE_API}/files/${fileId}/permissions?sendNotificationEmail=false&supportsAllDrives=true`, {
-    method: "POST",
-    accessToken,
-    body: JSON.stringify(permission)
-  });
-}
-
-function uniqueEmails(emails = []) {
-  return [...new Set(emails.map((email) => String(email || "").trim().toLowerCase()).filter(Boolean))];
-}
-
-async function shareForClassDownload(fileId, accessToken, shareOptions = {}) {
-  if (SHARE_MODE === "private") return;
-
-  if (SHARE_MODE === "anyone") {
-    await createPermission(fileId, {
-      role: "reader",
-      type: "anyone",
-      allowFileDiscovery: false
-    }, accessToken);
-    return;
-  }
-
-  const ownerEmail = getGoogleDriveUserKey().toLowerCase();
-  const writerEmails = uniqueEmails(shareOptions.writerEmails).filter((email) => email !== ownerEmail);
-  const readerEmails = uniqueEmails(shareOptions.readerEmails).filter((email) => email !== ownerEmail && !writerEmails.includes(email));
-  const permissions = [
-    ...writerEmails.map((emailAddress) => ({ role: "writer", type: "user", emailAddress })),
-    ...readerEmails.map((emailAddress) => ({ role: "reader", type: "user", emailAddress }))
-  ];
-
-  await Promise.all(permissions.map((permission) => createPermission(fileId, permission, accessToken)));
-}
-
-async function uploadMultipartFile(file, parentId, metadata, accessToken) {
-  const boundary = `classroompwa_${crypto.randomUUID()}`;
-  const body = new Blob([
-    `--${boundary}\r\n`,
-    "Content-Type: application/json; charset=UTF-8\r\n\r\n",
-    JSON.stringify({
-      name: file.name,
-      parents: [parentId],
-      appProperties: metadata
-    }),
-    "\r\n",
-    `--${boundary}\r\n`,
-    `Content-Type: ${file.type || "application/octet-stream"}\r\n\r\n`,
-    file,
-    `\r\n--${boundary}--`
-  ], { type: `multipart/related; boundary=${boundary}` });
-
-  const response = await fetch(`${DRIVE_UPLOAD_API}/files?uploadType=multipart&fields=id,name,mimeType,webViewLink,webContentLink,thumbnailLink`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": `multipart/related; boundary=${boundary}`
-    },
-    body
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Không upload được lên Google Drive (${response.status}): ${text}`);
-  }
-
-  return response.json();
-}
+const DRIVE_UPLOAD_CHUNK_SIZE = 3 * 1024 * 1024;
 
 export async function uploadDriveFile(courseId, folderPath, file, shareOptions = {}) {
-  const accessToken = await getGoogleAccessToken();
-  const folderParts = ["ClassroomPWA", courseId, ...String(folderPath || "files").split("/").filter(Boolean)];
-  const parentId = await ensureFolderPath(folderParts, accessToken);
-  const driveFile = await uploadMultipartFile(file, parentId, {
-    courseId,
-    folderPath,
-    originalName: file.name
-  }, accessToken);
+  const idToken = await getCurrentIdToken();
+  if (!idToken) throw new Error("Missing Firebase session. Please sign in again.");
 
-  await shareForClassDownload(driveFile.id, accessToken, shareOptions);
+  const startResponse = await fetch("/api/upload-file", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      action: "start",
+      classId: courseId,
+      folderPath: folderPath || "files",
+      fileName: file.name,
+      mimeType: file.type || "application/octet-stream",
+      fileSize: file.size,
+      shareMode: shareOptions.anyoneWithLink ? "anyone" : ""
+    })
+  });
+  const startResult = await startResponse.json().catch(() => ({}));
+  if (!startResponse.ok || !startResult.uploadUrl) {
+    throw new Error(startResult.error || "Could not create class upload session.");
+  }
 
-  const downloadUrl = driveFile.webContentLink || `https://drive.google.com/uc?export=download&id=${driveFile.id}`;
-  const previewUrl = driveFile.thumbnailLink || (file.type?.startsWith("image/")
-    ? `https://drive.google.com/thumbnail?id=${driveFile.id}&sz=w1000`
-    : driveFile.webViewLink);
+  const uploadedDriveFile = await uploadFileChunks({
+    uploadUrl: startResult.uploadUrl,
+    file,
+    idToken
+  });
 
-  return {
-    fileName: driveFile.name || file.name,
-    url: downloadUrl,
-    previewUrl,
-    webViewLink: driveFile.webViewLink || downloadUrl,
-    driveFileId: driveFile.id,
-    type: file.type
-  };
+  const finishResponse = await fetch("/api/upload-file", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      action: "finish",
+      classId: courseId,
+      fileId: uploadedDriveFile.id,
+      shareMode: shareOptions.anyoneWithLink ? "anyone" : ""
+    })
+  });
+  const finishResult = await finishResponse.json().catch(() => ({}));
+  if (!finishResponse.ok || !finishResult.file) {
+    throw new Error(finishResult.error || "Could not finalize class file upload.");
+  }
+  return finishResult.file;
+}
+
+async function uploadFileChunks({ uploadUrl, file, idToken }) {
+  const total = file.size;
+  const mimeType = file.type || "application/octet-stream";
+  if (total === 0) {
+    const response = await uploadChunk({
+      uploadUrl,
+      idToken,
+      chunk: file,
+      mimeType,
+      start: 0,
+      end: 0,
+      total: 0
+    });
+    if (response.done && response.driveFile?.id) return response.driveFile;
+  }
+
+  let offset = 0;
+  let lastResponse = null;
+  while (offset < total) {
+    const endExclusive = Math.min(offset + DRIVE_UPLOAD_CHUNK_SIZE, total);
+    const chunk = file.slice(offset, endExclusive, mimeType);
+    lastResponse = await uploadChunk({
+      uploadUrl,
+      idToken,
+      chunk,
+      mimeType,
+      start: offset,
+      end: endExclusive - 1,
+      total
+    });
+    if (lastResponse.done && lastResponse.driveFile?.id) return lastResponse.driveFile;
+    offset = endExclusive;
+  }
+  throw new Error(lastResponse?.error || "Google Drive upload did not finish.");
+}
+
+async function uploadChunk({ uploadUrl, idToken, chunk, mimeType, start, end, total }) {
+  const response = await fetch("/api/upload-file", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      "Content-Type": mimeType,
+      "Content-Range": `bytes ${start}-${end}/${total}`,
+      "X-Classroom-Upload-Action": "chunk",
+      "X-Classroom-Upload-Url": uploadUrl
+    },
+    body: chunk
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.error || "Could not upload file chunk.");
+  }
+  return result;
 }

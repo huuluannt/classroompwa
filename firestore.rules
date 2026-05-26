@@ -6,11 +6,42 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.email != null;
     }
 
-    function isAdmin() {
-      return signedIn() && request.auth.token.email in [
-        'hhluan@hcmus.edu.vn',
-        'nthue@hcmus.edu.vn'
-      ];
+    function supremeEmail() {
+      return 'hhluan@hcmus.edu.vn';
+    }
+
+    function isSupreme() {
+      return signedIn() && request.auth.token.email == supremeEmail();
+    }
+
+    function lecturerDoc(email) {
+      return /databases/$(database)/documents/lecturers/$(email);
+    }
+
+    function isPrimaryLecturer() {
+      return isSupreme() || (signedIn() && exists(lecturerDoc(request.auth.token.email)));
+    }
+
+    function classDoc(classId) {
+      return /databases/$(database)/documents/classes/$(classId);
+    }
+
+    function isCourseLecturer(classId) {
+      return isSupreme()
+        || (
+          signedIn()
+          && exists(classDoc(classId))
+          && get(classDoc(classId)).data.lecturerEmails.hasAny([request.auth.token.email])
+        );
+    }
+
+    function isCourseOwner(classId) {
+      return isSupreme()
+        || (
+          signedIn()
+          && exists(classDoc(classId))
+          && get(classDoc(classId)).data.ownerEmail == request.auth.token.email
+        );
     }
 
     function memberDoc(classId, email) {
@@ -26,30 +57,160 @@ service cloud.firestore {
         && get(memberDoc(classId, request.auth.token.email)).data.status == 'accepted';
     }
 
+    function isClassLeader(classId) {
+      return isAcceptedMember(classId)
+        && (
+          get(memberDoc(classId, request.auth.token.email)).data.classLeader == true
+          || get(memberDoc(classId, request.auth.token.email)).data.role == 'classLeader'
+        );
+    }
+
+    function announcementPostPermission(classId) {
+      return get(classDoc(classId)).data.keys().hasAny(['announcementPostPermission'])
+        ? get(classDoc(classId)).data.announcementPostPermission
+        : 'everyone';
+    }
+
+    function canCreateAnnouncement(classId) {
+      return isCourseLecturer(classId)
+        || (announcementPostPermission(classId) == 'lecturers_leaders' && isClassLeader(classId))
+        || (announcementPostPermission(classId) == 'everyone' && isAcceptedMember(classId));
+    }
+
+    function classLeaderClassUpdate(classId) {
+      return isClassLeader(classId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'groupTopics',
+          'intergroupTopics',
+          'personalTopics',
+          'updatedAt'
+        ]);
+    }
+
+    function classLeaderMemberUpdate(classId) {
+      return isClassLeader(classId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'order',
+          'group',
+          'updatedAt'
+        ]);
+    }
+
     match /classCodes/{code} {
       allow get: if signedIn();
-      allow list: if isAdmin();
-      allow write: if isAdmin();
+      allow list: if isSupreme();
+      allow write: if isPrimaryLecturer();
     }
 
     match /classSummaries/{classId} {
-      allow get: if isAdmin() || hasMembership(classId);
-      allow list: if isAdmin();
-      allow write: if isAdmin();
+      allow get: if isSupreme() || hasMembership(classId);
+      allow list: if isSupreme();
+      allow write: if isPrimaryLecturer();
+    }
+
+    match /lecturers/{email} {
+      allow get: if isSupreme() || (signedIn() && request.auth.token.email == email);
+      allow list: if isSupreme();
+      allow create, update, delete: if isSupreme() && email != supremeEmail();
+    }
+
+    match /profiles/{email} {
+      allow read: if signedIn();
+      allow write: if signedIn()
+        && request.auth.token.email == email
+        && request.resource.data.email == request.auth.token.email;
+    }
+
+    match /{path=**}/members/{email} {
+      allow read: if isSupreme()
+        || (signedIn() && resource.data.email == request.auth.token.email);
+    }
+
+    match /{path=**}/submissions/{submissionId} {
+      allow read: if isSupreme();
+    }
+
+    match /{path=**}/peerReviewResponses/{responseId} {
+      allow read: if isSupreme()
+        || (signedIn() && resource.data.email == request.auth.token.email);
     }
 
     match /classes/{classId} {
-      allow get: if isAdmin() || isAcceptedMember(classId);
-      allow list: if isAdmin();
-      allow create, update, delete: if isAdmin();
+      allow get: if isCourseLecturer(classId) || isAcceptedMember(classId);
+      allow list: if isSupreme()
+        || (
+          signedIn()
+          && resource.data.lecturerEmails.hasAny([request.auth.token.email])
+        );
+      allow create: if isPrimaryLecturer()
+        && request.resource.data.ownerEmail == request.auth.token.email
+        && request.resource.data.lecturerEmails.hasAny([request.auth.token.email]);
+      allow delete: if isCourseOwner(classId);
+      allow update: if isCourseLecturer(classId) || classLeaderClassUpdate(classId);
+
+      match /announcements/{announcementId} {
+        allow read: if isCourseLecturer(classId) || isAcceptedMember(classId);
+
+        allow create: if canCreateAnnouncement(classId)
+          && request.resource.data.classId == classId
+          && request.resource.data.author == request.auth.token.email;
+
+        allow update: if isCourseLecturer(classId)
+          || (
+            isAcceptedMember(classId)
+            && resource.data.author == request.auth.token.email
+            && request.resource.data.classId == classId
+            && request.resource.data.author == resource.data.author
+          );
+
+        allow delete: if isCourseLecturer(classId)
+          || (
+            isAcceptedMember(classId)
+            && resource.data.author == request.auth.token.email
+          );
+      }
+
+      match /submissions/{submissionId} {
+        allow read: if isCourseLecturer(classId)
+          || (
+            isAcceptedMember(classId)
+            && resource.data.email == request.auth.token.email
+          );
+
+        allow create: if isCourseLecturer(classId)
+          || (
+            isAcceptedMember(classId)
+            && request.resource.data.email == request.auth.token.email
+            && request.resource.data.assignmentId is string
+          );
+
+        allow update, delete: if isCourseLecturer(classId);
+      }
+
+      match /peerReviewResponses/{responseId} {
+        allow read: if isCourseLecturer(classId)
+          || (
+            isAcceptedMember(classId)
+            && resource.data.email == request.auth.token.email
+          );
+
+        allow create: if isCourseLecturer(classId)
+          || (
+            isAcceptedMember(classId)
+            && request.resource.data.email == request.auth.token.email
+            && request.resource.data.reviewId is string
+          );
+
+        allow update, delete: if isCourseLecturer(classId);
+      }
 
       match /members/{email} {
-        allow read: if isAdmin()
+        allow read: if isCourseLecturer(classId)
           || isAcceptedMember(classId)
           || (signedIn() && request.auth.token.email == email)
           || (signedIn() && resource.data.email == request.auth.token.email);
 
-        allow create: if isAdmin()
+        allow create: if isCourseLecturer(classId)
           || (
             signedIn()
             && request.auth.token.email == email
@@ -57,7 +218,8 @@ service cloud.firestore {
             && request.resource.data.status == 'pending'
           );
 
-        allow update, delete: if isAdmin();
+        allow update: if isCourseLecturer(classId) || classLeaderMemberUpdate(classId);
+        allow delete: if isCourseLecturer(classId);
       }
     }
   }

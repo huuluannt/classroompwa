@@ -1,6 +1,6 @@
 {
-  "name": "ClassroomPWA",
-  "short_name": "Classroom",
+  "name": "HG Classroom",
+  "short_name": "HG Classroom",
   "description": "Private PWA for teaching, classes, assignments, topics, grading, and learner management.",
   "start_url": "/",
   "display": "standalone",

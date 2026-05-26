@@ -1,8 +1,12 @@
-export const ADMINS = ["nthue@hcmus.edu.vn", "hhluan@hcmus.edu.vn"];
+export const SUPREME_EMAIL = "hhluan@hcmus.edu.vn";
 
-export const ADMIN_PROFILES = [
-  { email: "nthue@hcmus.edu.vn", name: "Nguyễn Thị Huệ" },
-  { email: "hhluan@hcmus.edu.vn", name: "Huỳnh Hữu Luân" }
+export const SUPREME_PROFILE = {
+  email: SUPREME_EMAIL,
+  name: "PhD. Huỳnh Hữu Luân"
+};
+
+export const DEFAULT_LECTURERS = [
+  SUPREME_PROFILE
 ];
 
 export const seedClasses = [
@@ -116,8 +120,8 @@ export const seedClasses = [
 ];
 
 export const baseCards = [
-  { id: "members", label: "Thành viên" },
   { id: "announcements", label: "Thông báo" },
+  { id: "members", label: "Thành viên" },
   { id: "info", label: "Thông tin lớp học" },
   { id: "groupTopic", label: "Topic Nhóm" },
   { id: "materials", label: "Tài liệu" },
@@ -126,6 +130,7 @@ export const baseCards = [
 ];
 
 export const extraCardLabels = {
+  intergroupTopic: "Topic Liên nhóm",
   peerReview: "Người học chấm điểm",
   personalTopic: "Topic Cá nhân"
 };

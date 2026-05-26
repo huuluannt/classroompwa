@@ -1,5 +1,5 @@
-const CACHE_NAME = "classroompwa-v2";
-const ASSETS = ["/", "/index.html", "/manifest.webmanifest", "/pwa-icon.svg"];
+const CACHE_NAME = "classroompwa-v4";
+const ASSETS = ["/manifest.webmanifest", "/pwa-icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)));
@@ -19,7 +19,7 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request)
+      fetch(event.request, { cache: "no-store" })
         .then((response) => {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put("/", copy));
