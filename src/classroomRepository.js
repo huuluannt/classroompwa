@@ -512,17 +512,37 @@ export async function deleteMemberFromCloud(courseId, email) {
 
 export async function joinClassByCode(user, form) {
   if (!hasFirebaseConfig) return null;
+  const userEmail = normalizeEmail(user.email);
   const code = form.code.toUpperCase();
   const codeDoc = await getDoc(doc(db, "classCodes", code));
   if (!codeDoc.exists()) throw new Error("Mã lớp không đúng.");
   const summary = codeDoc.data();
-  const memberRef = doc(db, "classes", summary.classId, "members", user.email);
+  if (normalizeEmail(summary.ownerEmail) === userEmail) {
+    throw new Error("Email này đang là giảng viên của lớp này. Không thể tham gia với vai trò người học.");
+  }
+  try {
+    const classSnapshot = await getDoc(doc(db, "classes", summary.classId));
+    if (classSnapshot.exists()) {
+      const course = classSnapshot.data();
+      const lecturerEmails = [
+        course.ownerEmail,
+        ...(course.lecturerEmails || []),
+        ...(course.lecturers || []).map((lecturer) => lecturer.email)
+      ].map(normalizeEmail);
+      if (lecturerEmails.includes(userEmail)) {
+        throw new Error("Email này đang là giảng viên của lớp này. Không thể tham gia với vai trò người học.");
+      }
+    }
+  } catch (error) {
+    if (error?.code !== "permission-denied") throw error;
+  }
+  const memberRef = doc(db, "classes", summary.classId, "members", userEmail);
   const existing = await getDoc(memberRef);
   if (existing.exists()) throw new Error("Email này đã gửi yêu cầu hoặc đã tham gia lớp.");
   const member = {
     order: 9999,
     name: form.name,
-    email: user.email,
+    email: userEmail,
     photoURL: user.photoURL || "",
     studentId: form.studentId,
     status: "pending",

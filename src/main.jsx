@@ -639,7 +639,12 @@ function App() {
       />
       {(error || saveToast) && (
         <div className="toast-stack">
-          {error && <div className="toast toast-error">{error}</div>}
+          {error && (
+            <div className="toast toast-error">
+              <span>{error}</span>
+              <button type="button" onClick={() => setError("")} aria-label="Đóng thông báo lỗi"><X size={16} /></button>
+            </div>
+          )}
           {saveToast && <div className="toast toast-success">{saveToast.message}</div>}
         </div>
       )}
@@ -1493,16 +1498,36 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
     }), { toast: "Đã accept tất cả.", writeClassDoc: false, writeSummary: false, memberFields: ["status"] });
   }
 
-  function addCourseLecturer() {
+  async function addCourseLecturer() {
     const email = normalizeEmail(lecturerDraft.email);
     if (!email || email === normalizeEmail(course.ownerEmail || SUPREME_EMAIL)) return;
-    updateCourse((current) => {
-      const lecturers = buildCourseLecturers(current);
-      if (lecturers.some((lecturer) => normalizeEmail(lecturer.email) === email)) return current;
-      const nextLecturers = [...lecturers, { email, name: lecturerDraft.name.trim() || email, role: "assistant" }];
-      return { ...current, lecturers: nextLecturers, lecturerEmails: nextLecturers.map((lecturer) => normalizeEmail(lecturer.email)) };
-    }, { toast: "Đã thêm giảng viên.", writeMembers: false, writeSummary: false, classFields: ["lecturers", "lecturerEmails"] });
-    setLecturerDraft({ email: "", name: "" });
+    const existingMember = course.members.find((member) => normalizeEmail(member.email) === email);
+    try {
+      await updateCourse((current) => {
+        const lecturers = buildCourseLecturers(current);
+        if (lecturers.some((lecturer) => normalizeEmail(lecturer.email) === email)) return current;
+        const memberProfile = current.profiles?.[email] || current.profiles?.[existingMember?.email] || {};
+        const nextLecturers = [
+          ...lecturers,
+          {
+            email,
+            name: lecturerDraft.name.trim() || memberProfile.displayName || existingMember?.name || email,
+            photoURL: memberProfile.photoURL || existingMember?.photoURL || "",
+            role: "assistant"
+          }
+        ];
+        return {
+          ...current,
+          lecturers: nextLecturers,
+          lecturerEmails: nextLecturers.map((lecturer) => normalizeEmail(lecturer.email)),
+          members: current.members.filter((member) => normalizeEmail(member.email) !== email)
+        };
+      }, { toast: "Đã thêm giảng viên.", writeMembers: false, writeSummary: false, classFields: ["lecturers", "lecturerEmails"], throwOnError: true });
+      if (existingMember) await deleteMemberFromCloud(course.id, existingMember.email);
+      setLecturerDraft({ email: "", name: "" });
+    } catch (error) {
+      console.error(error);
+    }
   }
 
   function removeCourseLecturer(email) {
@@ -1511,6 +1536,33 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
       const nextLecturers = buildCourseLecturers(current).filter((lecturer) => normalizeEmail(lecturer.email) !== normalized || lecturer.role === "owner");
       return { ...current, lecturers: nextLecturers, lecturerEmails: nextLecturers.map((lecturer) => normalizeEmail(lecturer.email)) };
     }, { toast: "Đã xóa giảng viên.", writeMembers: false, writeSummary: false, classFields: ["lecturers", "lecturerEmails"] });
+  }
+
+  function demoteCourseLecturer(profile) {
+    const email = normalizeEmail(profile.email);
+    if (!email || email === normalizeEmail(course.ownerEmail || SUPREME_EMAIL)) return;
+    updateCourse((current) => {
+      const existingMember = (current.members || []).find((member) => normalizeEmail(member.email) === email);
+      const savedProfile = current.profiles?.[email] || current.profiles?.[profile.email] || {};
+      const nextLecturers = buildCourseLecturers(current).filter((lecturer) => normalizeEmail(lecturer.email) !== email || lecturer.role === "owner");
+      const nextMember = {
+        order: existingMember?.order || nextNumericText((current.members || []).map((member) => member.order)),
+        name: savedProfile.displayName || existingMember?.name || profile.name || email,
+        email,
+        photoURL: savedProfile.photoURL || existingMember?.photoURL || profile.photoURL || "",
+        studentId: savedProfile.studentId || existingMember?.studentId || "",
+        group: existingMember?.group || "",
+        status: "accepted"
+      };
+      return {
+        ...current,
+        lecturers: nextLecturers,
+        lecturerEmails: nextLecturers.map((lecturer) => normalizeEmail(lecturer.email)),
+        members: existingMember
+          ? current.members.map((member) => normalizeEmail(member.email) === email ? { ...member, ...nextMember } : member)
+          : [...current.members, nextMember]
+      };
+    }, { toast: "Đã chuyển giảng viên thành người học.", writeMembers: true, writeSummary: false, classFields: ["lecturers", "lecturerEmails"] });
   }
 
   async function promoteMemberToLecturer(member) {
@@ -1571,7 +1623,10 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
               <strong>{profile.role === "owner" ? "Giảng viên (owner)" : "Giảng viên"}</strong>
               <small>{teacherName} - {profile.email}</small>
               {canManageCourseLecturers && profile.role !== "owner" && (
-                <button className="icon-danger compact-icon" onClick={() => removeCourseLecturer(profile.email)}><X size={14} /></button>
+                <div className="lecturer-card-actions">
+                  <button className="icon-soft" type="button" title="Chuyển thành người học" aria-label="Chuyển thành người học" onClick={() => demoteCourseLecturer(profile)}><UserRound size={14} /></button>
+                  <button className="icon-danger" type="button" title="Xóa giảng viên" aria-label="Xóa giảng viên" onClick={() => removeCourseLecturer(profile.email)}><X size={14} /></button>
+                </div>
               )}
             </div>
             );
@@ -4034,8 +4089,10 @@ function JoinClassModal({ user, classes, cloudMode, initialCode = "", onClose, o
         const course = classes.find((item) => item.code.toUpperCase() === form.code.toUpperCase());
         if (cloudMode) return onJoin(null, form);
         if (!course) return setError("Mã lớp không đúng.");
-        if (course.members.some((member) => member.email === user.email)) return setError("Email này đã gửi yêu cầu hoặc đã tham gia lớp.");
-        onJoin(course.id, { order: course.members.length + 1, name: form.name, email: user.email, photoURL: user.photoURL || "", studentId: form.studentId, status: "pending", code: form.code });
+        const userEmail = normalizeEmail(user.email);
+        if (lecturerEmailSet(course).has(userEmail)) return setError("Email này đang là giảng viên của lớp này. Không thể tham gia với vai trò người học.");
+        if (course.members.some((member) => normalizeEmail(member.email) === userEmail)) return setError("Email này đã gửi yêu cầu hoặc đã tham gia lớp.");
+        onJoin(course.id, { order: course.members.length + 1, name: form.name, email: userEmail, photoURL: user.photoURL || "", studentId: form.studentId, status: "pending", code: form.code });
       }}>Gửi yêu cầu tham gia</button>
     </Modal>
   );
