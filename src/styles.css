@@ -19,7 +19,7 @@ body {
 }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
-body, button, input, textarea, select { font-size: 14px; }
+body, button, input, textarea, select { font-size: 13px; }
 
 .login-screen {
   min-height: 100vh;
@@ -1679,6 +1679,494 @@ button:disabled {
 }
 .pending-pane h2 { margin: 0 0 8px; }
 .pending-pane p { color: #42526b; margin-bottom: 18px; }
+
+/* Compact density pass: keep the app calm and readable while giving the detail pane more room. */
+.login-card {
+  width: min(400px, calc(100vw - 28px));
+  padding: 28px;
+}
+.logo-mark { width: 46px; height: 46px; }
+.google-button { height: 42px; }
+.demo-admin-button { height: 38px; }
+
+.sidebar {
+  width: 246px;
+  padding: 8px;
+  gap: 6px;
+}
+.sidebar.closed { width: 60px; }
+.brand-button {
+  width: 34px;
+  height: 34px;
+  padding: 6px;
+}
+.brand-text strong { font-size: 15px; }
+.brand-text span { font-size: 11px; }
+.icon-button {
+  padding: 6px;
+  border-radius: 7px;
+}
+.search-box {
+  height: 34px;
+  gap: 7px;
+  padding: 0 9px;
+  border-radius: 7px;
+}
+.primary-action,
+.join-action,
+.inline-form button,
+.resource-row button,
+.upload-row button,
+.review-form button,
+.export-button,
+.pending-row button {
+  min-height: 32px;
+  border-radius: 7px;
+  gap: 7px;
+  padding: 0 10px;
+}
+.secondary-action,
+.danger-action {
+  min-height: 30px;
+  border-radius: 7px;
+  padding: 0 10px;
+}
+.compact {
+  min-height: 30px;
+  padding: 0 9px;
+}
+.class-list { gap: 4px; }
+.class-sidebar-group {
+  gap: 3px;
+  padding-bottom: 5px;
+}
+.class-sidebar-heading {
+  padding: 3px 6px 1px;
+  font-size: 12px;
+}
+.class-row { border-radius: 7px; }
+.class-row > button:first-child {
+  padding: 6px;
+  gap: 8px;
+}
+.class-row strong { font-size: 13px; line-height: 1.15; }
+.class-row small { font-size: 12px; line-height: 1.15; }
+.class-glyph {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 7px;
+}
+.kebab-wrap { padding-right: 2px; }
+.mini-menu,
+.account-menu {
+  top: 32px;
+  width: 132px;
+  border-radius: 7px;
+  padding: 5px;
+}
+.account-menu {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+.mini-menu button,
+.account-menu button {
+  min-height: 28px;
+  padding: 7px;
+  border-radius: 5px;
+}
+.account-row {
+  grid-template-columns: minmax(0, 1fr) 36px;
+  gap: 5px;
+}
+.account-trigger {
+  padding: 5px;
+  gap: 7px;
+  border-radius: 7px;
+}
+.account-trigger .avatar {
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+}
+.notification-button { border-radius: 7px; }
+.notification-button.unread::after {
+  top: 7px;
+  right: 8px;
+  width: 7px;
+  height: 7px;
+}
+
+.rightpane {
+  padding: 6px;
+  gap: 6px;
+}
+.class-header {
+  padding: 8px 10px;
+  border-radius: 7px;
+}
+.class-header h2 {
+  font-size: 18px;
+  line-height: 1.12;
+}
+.class-header p { margin: 2px 0 0; }
+.class-code {
+  padding: 5px 8px;
+  border-radius: 7px;
+}
+.class-workspace {
+  grid-template-columns: 184px minmax(0, 1fr);
+  gap: 4px;
+}
+.leftpanel,
+.detail-panel {
+  border-radius: 7px;
+  padding: 6px;
+}
+.leftpanel { gap: 3px; }
+.leftpanel button {
+  min-height: 30px;
+  border-radius: 7px;
+  padding: 0 8px;
+}
+.left-card-button {
+  gap: 6px;
+}
+.left-card-menu-wrap { padding-right: 2px; }
+.left-card-menu { top: 30px; }
+.leftpanel .add-card {
+  min-height: 32px;
+}
+.detail-panel {
+  padding: 8px;
+}
+.panel-title {
+  margin-bottom: 8px;
+  gap: 8px;
+}
+.panel-title h3 {
+  font-size: 17px;
+  line-height: 1.15;
+}
+.panel-actions { gap: 6px; }
+.announcement-permission-select {
+  height: 32px;
+  padding: 4px 8px;
+  border-radius: 7px;
+}
+.member-view-toggle button {
+  padding: 4px 12px;
+}
+
+.search-box input,
+.modal input,
+.modal textarea,
+.inline-form input,
+.inline-form textarea,
+.info-grid input,
+.wide-input,
+select,
+.upload-row input,
+.data-table input {
+  border-radius: 7px;
+  padding: 6px 8px;
+}
+textarea {
+  min-height: 72px;
+}
+.inline-form {
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.inline-form textarea { min-height: 36px; }
+.placeholder-form,
+.drop-zone {
+  padding: 8px;
+  border-radius: 7px;
+}
+
+.teacher-strip {
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.teacher-strip > div,
+.topic-card,
+.feed-item,
+.resource-row,
+.expand-card,
+.material-card {
+  border-radius: 7px;
+  padding: 8px;
+}
+.teacher-strip > div {
+  column-gap: 8px;
+}
+.lecturer-add-form { margin-bottom: 8px; }
+.lecturer-row,
+.subsection,
+.compact-notice,
+.member-group-card,
+.group-topic-card,
+.intergroup-card,
+.intergroup-member-section,
+.schedule-table-wrap,
+.assignment-ratio-row,
+.selected-file-row,
+.modal,
+.empty-state,
+.pending-pane > div {
+  border-radius: 7px;
+}
+.subsection {
+  padding: 8px;
+  margin-bottom: 8px;
+}
+.subsection h4,
+.subsection-head { margin-bottom: 8px; }
+.pending-row { gap: 6px; }
+
+.data-table {
+  font-size: 13px;
+}
+.data-table th,
+.data-table td {
+  padding: 6px 7px;
+}
+.data-table th {
+  font-size: 11px;
+}
+.stt-col { width: 42px; }
+.members-table .stt-col,
+.members-table td:nth-child(1),
+.topic-members-table .stt-col,
+.topic-members-table td:nth-child(1),
+.personal-topic-table .stt-col,
+.personal-topic-table td:nth-child(1),
+.grade-personal-table .stt-col,
+.grade-personal-table td:nth-child(1) {
+  width: 48px;
+}
+.members-table .avatar-col,
+.members-table td:nth-child(2),
+.topic-members-table .avatar-col,
+.topic-members-table td:nth-child(2),
+.personal-topic-table .avatar-col,
+.personal-topic-table td:nth-child(2),
+.grade-personal-table .avatar-col,
+.grade-personal-table td:nth-child(2) {
+  width: 44px;
+}
+.order-input,
+.group-input {
+  width: 38px;
+  padding: 4px 6px;
+}
+.group-input { width: 48px; }
+.leader-badge,
+.permission-chip {
+  padding: 3px 7px;
+  font-size: 10px;
+}
+.permission-chip {
+  font-size: 11px;
+  padding: 5px 8px;
+}
+.member-actions,
+.post-actions,
+.row-actions {
+  gap: 4px;
+}
+.leader-toggle,
+.icon-danger,
+.icon-soft,
+.placeholder-delete-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+.avatar {
+  width: 32px;
+  height: 32px;
+  flex-basis: 32px;
+}
+.avatar.small {
+  width: 26px;
+  height: 26px;
+  flex-basis: 26px;
+  font-size: 11px;
+}
+
+.feed,
+.list-stack,
+.topic-grid,
+.group-topic-list,
+.intergroup-list,
+.intergroup-member-list,
+.grade-topic-list {
+  gap: 8px;
+}
+.composer {
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.composer-tools,
+.post-head,
+.card-row-head,
+.assignment-head {
+  gap: 6px;
+}
+.file-picker {
+  min-height: 30px;
+  border-radius: 7px;
+  padding: 0 8px;
+}
+.file-picker.icon-only,
+.pin-button.icon-only,
+.download-icon-button {
+  width: 32px;
+  height: 32px;
+}
+.selected-file-row {
+  min-height: 30px;
+  gap: 6px;
+  padding: 5px 7px;
+}
+.selected-file-row button {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+}
+.pin-button,
+.card-row-head button,
+.link-button,
+.link-list a,
+.attachment-grid a,
+.file-list button,
+.file-list span {
+  border-radius: 7px;
+  padding: 5px 8px;
+}
+.attachment-grid img {
+  width: 108px;
+  height: 72px;
+  border-radius: 7px;
+}
+
+.group-topic-header {
+  margin: 0 10px 7px;
+}
+.group-topic-bar {
+  gap: 10px;
+  margin: 0 -10px;
+  padding: 7px 14px;
+}
+.group-topic-badge {
+  font-size: 15px;
+}
+.group-topic-compact-field {
+  gap: 6px;
+  font-size: 14px;
+}
+.group-topic-compact-field input {
+  width: 52px;
+  min-height: 28px;
+}
+.group-topic-topic-row {
+  gap: 8px;
+  padding: 5px 0 7px;
+}
+.group-topic-topic-row > span {
+  margin-top: 3px;
+  font-size: 15px;
+}
+.group-topic-topic-row textarea {
+  min-height: 34px;
+}
+.group-topic-topic-row p {
+  min-height: 34px;
+  padding: 6px 8px;
+}
+.group-topic-table-wrap,
+.intergroup-topic-members,
+.grade-intergroup-list {
+  padding: 0 10px 8px;
+}
+.intergroup-member-section {
+  padding: 7px;
+}
+.intergroup-member-section h5 {
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  font-size: 14px;
+}
+.compact-empty {
+  padding: 14px;
+}
+
+.info-grid { gap: 8px; }
+.info-grid label { gap: 5px; }
+.info-grid .wide-field textarea { min-height: 88px; }
+.info-grid span,
+.profile-form span {
+  font-size: 12px;
+}
+.rich-text-cell {
+  min-height: 34px;
+  border-radius: 7px;
+  padding: 6px 8px;
+  line-height: 1.4;
+}
+.schedule-week-input input {
+  width: 52px;
+  padding: 5px 7px;
+}
+.schedule-delete-button { flex-basis: 28px; }
+
+.assignment-ratio-row {
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+}
+.ratio-input {
+  width: 64px;
+  min-height: 30px;
+}
+.review-form select { min-width: 190px; }
+.review-form input { width: 92px; }
+.add-card-menu {
+  bottom: 38px;
+  border-radius: 7px;
+  padding: 5px;
+}
+.add-card-menu button,
+.add-card-menu span {
+  min-height: 28px;
+  padding: 6px 7px;
+}
+.score-input,
+.bonus-input {
+  width: 58px;
+  min-height: 30px;
+}
+.bonus-input { width: 54px; }
+.score-box {
+  min-width: 56px;
+  min-height: 30px;
+  padding: 5px 7px;
+}
+.summary-grade-table th span {
+  min-width: 82px;
+}
+.summary-grade-table .score-cell,
+.summary-grade-table .final-score-cell {
+  min-width: 76px;
+}
+.modal {
+  padding: 14px;
+}
+.toast {
+  padding: 8px 12px;
+}
 
 @media (max-width: 760px) {
   .app-shell.mobile-flow {
