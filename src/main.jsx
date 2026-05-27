@@ -91,6 +91,11 @@ const MOBILE_VIEWS = {
   detail: "detail"
 };
 const ANNOUNCEMENT_SEEN_PREFIX = "classroompwa-announcement-seen:";
+const ConfirmContext = React.createContext((options, onConfirm) => onConfirm?.());
+
+function useConfirmAction() {
+  return React.useContext(ConfirmContext);
+}
 
 function notificationSeenKey(email) {
   return `${ANNOUNCEMENT_SEEN_PREFIX}${normalizeEmail(email)}`;
@@ -334,6 +339,7 @@ function App() {
   const [lecturers, setLecturers] = useState([]);
   const [sidebarPinnedClassIds, setSidebarPinnedClassIds] = useState([]);
   const [saveToast, setSaveToast] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState(null);
   const [mobileView, setMobileView] = useState(MOBILE_VIEWS.classes);
   const [announcementSeenAt, setAnnouncementSeenAt] = useState(null);
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
@@ -497,6 +503,28 @@ function App() {
     setSaveToast({ id: Date.now(), message });
   }
 
+  function requestConfirm(options, onConfirm) {
+    const config = typeof options === "string" ? { message: options } : (options || {});
+    setConfirmDialog({
+      title: config.title || "Xác nhận xóa",
+      message: config.message || "Bạn có chắc muốn xóa mục này không?",
+      confirmLabel: config.confirmLabel || "Xóa",
+      cancelLabel: config.cancelLabel || "Hủy",
+      onConfirm
+    });
+  }
+
+  async function runConfirmedAction() {
+    const action = confirmDialog?.onConfirm;
+    setConfirmDialog(null);
+    try {
+      await action?.();
+    } catch (nextError) {
+      console.error(nextError);
+      setError(nextError.message || "Không thể thực hiện thao tác xóa.");
+    }
+  }
+
   function updateClasses(nextClasses) {
     setClasses(nextClasses);
     if (!hasFirebaseConfig) saveLocalClasses(nextClasses);
@@ -589,7 +617,8 @@ function App() {
   if (!user) return <LoginScreen onLogin={handleLogin} loginError={loginError} />;
 
   return (
-    <main className={`app-shell ${isMobile ? `mobile-flow mobile-view-${mobileView}` : ""}`}>
+    <ConfirmContext.Provider value={requestConfirm}>
+      <main className={`app-shell ${isMobile ? `mobile-flow mobile-view-${mobileView}` : ""}`}>
       <Sidebar
         canCreateClass={primaryLecturer}
         canManageLecturers={supreme}
@@ -615,10 +644,16 @@ function App() {
         onClassAction={(action, classItem) => {
           if (action === "pin") togglePrivateClassPin(classItem.id);
           if (action === "delete" && canDeleteCourse(user, classItem)) {
-            const next = classes.filter((course) => course.id !== classItem.id);
-            updateClasses(next);
-            deleteCourseFromCloud(classItem);
-            setSelectedClassId(next[0]?.id);
+            requestConfirm({
+              title: "Xóa lớp học?",
+              message: `Bạn có chắc muốn xóa lớp "${classItem.name}" không? Toàn bộ dữ liệu trong lớp này sẽ bị xóa.`,
+              confirmLabel: "Xóa lớp"
+            }, async () => {
+              const next = classes.filter((course) => course.id !== classItem.id);
+              updateClasses(next);
+              await deleteCourseFromCloud(classItem);
+              setSelectedClassId(next[0]?.id);
+            });
           }
           if (action === "edit" && canManageCourse(user, classItem)) setShowNewClass(classItem);
         }}
@@ -775,7 +810,18 @@ function App() {
           onSave={handleProfileSave}
         />
       )}
-    </main>
+      </main>
+      {confirmDialog && (
+        <ConfirmModal
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmLabel={confirmDialog.confirmLabel}
+          cancelLabel={confirmDialog.cancelLabel}
+          onCancel={() => setConfirmDialog(null)}
+          onConfirm={runConfirmedAction}
+        />
+      )}
+    </ConfirmContext.Provider>
   );
 }
 
@@ -1093,6 +1139,7 @@ function ClassPane({
   onMobileOpenCard,
   updateCourse
 }) {
+  const requestConfirm = useConfirmAction();
   const [cardMenuOpen, setCardMenuOpen] = useState(false);
   const [draggingCardId, setDraggingCardId] = useState("");
   const [dragOverCardId, setDragOverCardId] = useState("");
@@ -1197,7 +1244,11 @@ function ClassPane({
               dragOver={dragOverCardId === card.id && draggingCardId !== card.id}
               onSelect={() => openCard(card.id)}
               onPin={() => togglePinCard(card.id)}
-              onDelete={() => hideCard(card.id)}
+              onDelete={() => requestConfirm({
+                title: "Xóa thẻ?",
+                message: `Bạn có chắc muốn xóa thẻ "${card.label}" khỏi lớp này không?`,
+                confirmLabel: "Xóa thẻ"
+              }, () => hideCard(card.id))}
               onDragStart={(event) => {
                 if (!admin) return;
                 setDraggingCardId(card.id);
@@ -1451,6 +1502,7 @@ function PanelTitle({ title, action }) {
 
 
 function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMembers, user, course, updateCourse }) {
+  const requestConfirm = useConfirmAction();
   const [viewMode, setViewMode] = useState("personal");
   const [lecturerDraft, setLecturerDraft] = useState({ email: "", name: "" });
   const accepted = course.members.filter((member) => member.status === "accepted");
@@ -1625,7 +1677,11 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
               {canManageCourseLecturers && profile.role !== "owner" && (
                 <div className="lecturer-card-actions">
                   <button className="icon-soft" type="button" title="Chuyển thành người học" aria-label="Chuyển thành người học" onClick={() => demoteCourseLecturer(profile)}><UserRound size={14} /></button>
-                  <button className="icon-danger" type="button" title="Xóa giảng viên" aria-label="Xóa giảng viên" onClick={() => removeCourseLecturer(profile.email)}><X size={14} /></button>
+                  <button className="icon-danger" type="button" title="Xóa giảng viên" aria-label="Xóa giảng viên" onClick={() => requestConfirm({
+                    title: "Xóa giảng viên?",
+                    message: `Bạn có chắc muốn xóa "${teacherName}" khỏi vai trò giảng viên của lớp này không?`,
+                    confirmLabel: "Xóa giảng viên"
+                  }, () => removeCourseLecturer(profile.email))}><X size={14} /></button>
                 </div>
               )}
             </div>
@@ -1650,7 +1706,11 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
                 <span>{member.name}</span>
                 <small>{member.email} - {member.studentId}</small>
                 <button onClick={() => updateMemberStatus(course, updateCourse, member.email, "accepted")}><Check size={15} /> Accept</button>
-                <button onClick={() => removeMember(course, updateCourse, member.email)}><X size={15} /> Reject</button>
+                <button onClick={() => requestConfirm({
+                  title: "Xóa yêu cầu tham gia?",
+                  message: `Bạn có chắc muốn từ chối và xóa yêu cầu tham gia của "${member.name || member.email}" không?`,
+                  confirmLabel: "Reject"
+                }, () => removeMember(course, updateCourse, member.email))}><X size={15} /> Reject</button>
               </div>
             ))}
           </section>
@@ -1673,6 +1733,7 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
 }
 
 function MembersTable({ admin, canManageCourseLecturers, canEditMembers, course, members, memberDrafts = {}, onDraftChange, onPromoteToLecturer, updateCourse }) {
+  const requestConfirm = useConfirmAction();
   return (
     <table className="data-table members-table">
       <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ tên</th><th>Email</th><th>Mã số</th><th>Nhóm</th>{admin && <th />}</tr></thead>
@@ -1699,7 +1760,11 @@ function MembersTable({ admin, canManageCourseLecturers, canEditMembers, course,
                     onToggleClassLeader={() => setClassLeader(course, updateCourse, member.email)}
                     onPromoteToLecturer={() => onPromoteToLecturer(member)}
                   />
-                  <button className="icon-danger" onClick={() => removeMember(course, updateCourse, member.email)}><X size={15} /></button>
+                  <button className="icon-danger" onClick={() => requestConfirm({
+                    title: "Xóa người học?",
+                    message: `Bạn có chắc muốn xóa "${member.name || member.email}" khỏi lớp này không?`,
+                    confirmLabel: "Xóa người học"
+                  }, () => removeMember(course, updateCourse, member.email))}><X size={15} /></button>
                 </div>
               </td>
             )}
@@ -1921,6 +1986,7 @@ function MemberNumberInput({ className, value, onCommit }) {
 
 
 function AnnouncementsCard({ admin, classLeader, user, course, updateCourse }) {
+  const requestConfirm = useConfirmAction();
   const [content, setContent] = useState("");
   const [files, setFiles] = useState([]);
   const [pinned, setPinned] = useState(false);
@@ -2113,7 +2179,11 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse }) {
               {files.map((file, index) => (
                 <div className="selected-file-row" key={`${file.name}-${file.size}-${file.lastModified}-${index}`}>
                   <span>{file.name}</span>
-                  <button type="button" title="Xóa file" aria-label={`Xóa ${file.name}`} disabled={posting} onClick={() => removeSelectedFile(index)}>
+                  <button type="button" title="Xóa file" aria-label={`Xóa ${file.name}`} disabled={posting} onClick={() => requestConfirm({
+                    title: "Xóa file đã chọn?",
+                    message: `Bạn có chắc muốn bỏ file "${file.name}" khỏi bài đăng đang soạn không?`,
+                    confirmLabel: "Xóa file"
+                  }, () => removeSelectedFile(index))}>
                     <X size={15} />
                   </button>
                 </div>
@@ -2136,7 +2206,11 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse }) {
               {(admin || item.author === user.email) && (
                 <div className="post-actions">
                   <button className="pin-button icon-only" title={item.pinned ? "Unpin" : "Pin"} aria-label={item.pinned ? "Unpin" : "Pin"} onClick={() => togglePostPin(item)}>{item.pinned ? <PinOff size={16} /> : <Pin size={16} />}</button>
-                  <button className="icon-danger" title="Xóa bài đăng" aria-label="Xóa bài đăng" onClick={() => deletePost(item)}><Trash2 size={15} /></button>
+                  <button className="icon-danger" title="Xóa bài đăng" aria-label="Xóa bài đăng" onClick={() => requestConfirm({
+                    title: "Xóa bài đăng?",
+                    message: "Bạn có chắc muốn xóa bài đăng này không?",
+                    confirmLabel: "Xóa bài đăng"
+                  }, () => deletePost(item))}><Trash2 size={15} /></button>
                 </div>
               )}
             </div>
@@ -2223,6 +2297,7 @@ function InfoCard({ admin, course, updateCourse }) {
 
 
 function ScheduleCard({ admin, course, updateCourse }) {
+  const requestConfirm = useConfirmAction();
   const [rows, setRows] = useState(() => normalizeScheduleRows(course.scheduleRows));
   const activeEditorRef = useRef(null);
   const scheduleSignature = JSON.stringify(course.scheduleRows || []);
@@ -2323,7 +2398,11 @@ function ScheduleCard({ admin, course, updateCourse }) {
                       onChange={(value) => updateRow(row.id, { content: value })}
                     />
                     {admin && (
-                      <button className="icon-danger schedule-delete-button" type="button" onClick={() => removeWeek(row.id)} title="Xóa tuần" aria-label="Xóa tuần">
+                      <button className="icon-danger schedule-delete-button" type="button" onClick={() => requestConfirm({
+                        title: "Xóa tuần?",
+                        message: `Bạn có chắc muốn xóa "${row.weekNumber ? `Tuần ${row.weekNumber}` : "tuần này"}" khỏi lịch học không?`,
+                        confirmLabel: "Xóa tuần"
+                      }, () => removeWeek(row.id))} title="Xóa tuần" aria-label="Xóa tuần">
                         <X size={15} />
                       </button>
                     )}
@@ -2433,6 +2512,7 @@ function sanitizeScheduleHtml(html = "") {
 }
 
 function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
+  const requestConfirm = useConfirmAction();
   const groupCards = useMemo(() => buildGroupTopicCards(course), [course.members, course.groupTopics]);
   const topicDraftSignature = groupCards.map((group) => `${group.key}:${group.topic?.topic || ""}:${group.topic?.reportOrder || ""}:${group.topic?.intergroup || ""}`).join("|");
   const [placeholderDraft, setPlaceholderDraft] = useState({ group: "", reportOrder: "", intergroup: "", topic: "" });
@@ -2552,7 +2632,11 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
                     )}
                   </label>
                   {canEdit && group.placeholder && group.members.length === 0 && (
-                    <button className="placeholder-delete-button" type="button" onClick={() => deleteGroupPlaceholder(group)} aria-label={`Xóa ${group.label}`}>
+                    <button className="placeholder-delete-button" type="button" onClick={() => requestConfirm({
+                      title: "Xác nhận xóa nhóm placeholder",
+                      message: `Bạn có chắc muốn xóa ${group.label} không?`,
+                      confirmLabel: "Xóa nhóm"
+                    }, () => deleteGroupPlaceholder(group))} aria-label={`Xóa ${group.label}`}>
                       <X size={15} />
                     </button>
                   )}
@@ -2697,6 +2781,7 @@ function TopicMembersTable({ members, course }) {
 
 
 function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
+  const requestConfirm = useConfirmAction();
   const groupOptions = useMemo(() => buildGroupTopicCards(course), [course.members, course.groupTopics]);
   const linkCards = useMemo(() => buildIntergroupTopicCards(course, groupOptions), [course.intergroupTopics, groupOptions]);
   const linkDraftSignature = linkCards.map((link) => `${link.key}:${link.topic?.topic || ""}:${link.groupKeys.join(",")}`).join("|");
@@ -2826,7 +2911,11 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
                     <strong>{`(${link.groups.map((group) => group.label).join(", ")})`}</strong>
                   </label>
                   {canEdit && link.groups.every((group) => group.members.length === 0) && (
-                    <button className="placeholder-delete-button" type="button" onClick={() => deleteIntergroupPlaceholder(link)} aria-label={`Xóa ${link.label}`}>
+                    <button className="placeholder-delete-button" type="button" onClick={() => requestConfirm({
+                      title: "Xác nhận xóa liên nhóm placeholder",
+                      message: `Bạn có chắc muốn xóa ${link.label} không?`,
+                      confirmLabel: "Xóa liên nhóm"
+                    }, () => deleteIntergroupPlaceholder(link))} aria-label={`Xóa ${link.label}`}>
                       <X size={15} />
                     </button>
                   )}
@@ -2957,6 +3046,7 @@ function uniqueValues(items) {
 
 
 function MaterialsCard({ admin, course, updateCourse }) {
+  const requestConfirm = useConfirmAction();
   const materials = course.materials || [];
   return (
     <>
@@ -2969,7 +3059,11 @@ function MaterialsCard({ admin, course, updateCourse }) {
           <article className="material-card" key={item.id}>
             <div className="card-row-head">
               <strong>{item.title}</strong>
-              {admin && <button className="icon-danger" onClick={() => updateCourse((current) => ({ ...current, materials: (current.materials || []).filter((material) => material.id !== item.id) }))}><Trash2 size={15} /></button>}
+              {admin && <button className="icon-danger" onClick={() => requestConfirm({
+                title: "Xác nhận xóa tài liệu",
+                message: `Bạn có chắc muốn xóa tài liệu "${item.title}" không?`,
+                confirmLabel: "Xóa tài liệu"
+              }, () => updateCourse((current) => ({ ...current, materials: (current.materials || []).filter((material) => material.id !== item.id) })))}><Trash2 size={15} /></button>}
             </div>
             <div className="file-list">
               {materialFiles(item).length === 0 && <span>Chưa có file đính kèm.</span>}
@@ -3029,6 +3123,7 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
 
 
 function AssignmentItem({ admin, course, assignment, assignmentIndex, assignmentCount, user, updateCourse }) {
+  const requestConfirm = useConfirmAction();
   const [open, setOpen] = useState(false);
   const [fileName, setFileName] = useState("");
   const [file, setFile] = useState(null);
@@ -3074,7 +3169,11 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
           <strong>{assignmentTitleWithRatio(assignment)}</strong>
           {userSubmissions.length > 0 && <small>Đã nộp {userSubmissions.length} lần</small>}
         </button>
-        {admin && <button className="icon-danger" onClick={() => updateCourse((current) => ({ ...current, assignments: normalizeAssignmentRatios((current.assignments || []).filter((item) => item.id !== assignment.id)) }))}><Trash2 size={15} /></button>}
+        {admin && <button className="icon-danger" onClick={() => requestConfirm({
+          title: "Xác nhận xóa bài tập",
+          message: `Bạn có chắc muốn xóa bài tập "${assignment.title}" không?`,
+          confirmLabel: "Xóa bài tập"
+        }, () => updateCourse((current) => ({ ...current, assignments: normalizeAssignmentRatios((current.assignments || []).filter((item) => item.id !== assignment.id)) })))}><Trash2 size={15} /></button>}
       </div>
       {open && (
         <div>
@@ -3354,6 +3453,7 @@ function SummaryGradebookItem({ admin, user, course }) {
 }
 
 function GradebookItem({ admin, user, book, course, updateCourse }) {
+  const requestConfirm = useConfirmAction();
   const [open, setOpen] = useState(false);
   const [draftRows, setDraftRows] = useState(book.rows || []);
   const [dirty, setDirty] = useState(false);
@@ -3428,7 +3528,11 @@ function GradebookItem({ admin, user, book, course, updateCourse }) {
             {published ? "Unpublish" : "Publish"}
           </button>
         )}
-        {admin && <button className="icon-danger" onClick={() => updateCourse((current) => ({ ...current, gradebooks: (current.gradebooks || []).filter((item) => item.id !== book.id) }))}><Trash2 size={15} /></button>}
+        {admin && <button className="icon-danger" onClick={() => requestConfirm({
+          title: "Xác nhận xóa bảng điểm",
+          message: `Bạn có chắc muốn xóa bảng điểm "${book.title}" không?`,
+          confirmLabel: "Xóa bảng điểm"
+        }, () => updateCourse((current) => ({ ...current, gradebooks: (current.gradebooks || []).filter((item) => item.id !== book.id) })))}><Trash2 size={15} /></button>}
       </div>
       {open && (
         bookType === "personal" ? (
@@ -3924,6 +4028,7 @@ function peerReviewOptions(course, sourceType) {
 
 
 function PeerReviewItem({ admin, user, course, review, updateCourse }) {
+  const requestConfirm = useConfirmAction();
   const [topic, setTopic] = useState(review.options[0] || "");
   const [score, setScore] = useState("");
   const [submitStatus, setSubmitStatus] = useState("");
@@ -3970,7 +4075,11 @@ function PeerReviewItem({ admin, user, course, review, updateCourse }) {
     <article className="expand-card peer">
       <div className="card-row-head">
         <strong>{review.title}</strong>
-        {admin && <button className="icon-danger" onClick={() => updateCourse((current) => ({ ...current, peerReviews: current.peerReviews.filter((item) => item.id !== review.id) }))}><Trash2 size={15} /></button>}
+        {admin && <button className="icon-danger" onClick={() => requestConfirm({
+          title: "Xác nhận xóa thẻ chấm điểm",
+          message: `Bạn có chắc muốn xóa thẻ "${review.title}" không?`,
+          confirmLabel: "Xóa thẻ"
+        }, () => updateCourse((current) => ({ ...current, peerReviews: (current.peerReviews || []).filter((item) => item.id !== review.id) })))}><Trash2 size={15} /></button>}
       </div>
       <div className="review-form">
         <select value={topic} onChange={(event) => setTopic(event.target.value)}>
@@ -4125,6 +4234,7 @@ function NewClassModal({ existing, user, onClose, onSave }) {
 }
 
 function ManageLecturersModal({ lecturers, onClose, onSave, onDelete }) {
+  const requestConfirm = useConfirmAction();
   const [draft, setDraft] = useState({ email: "", name: "" });
   const normalizedDraftEmail = normalizeEmail(draft.email);
   return (
@@ -4153,11 +4263,27 @@ function ManageLecturersModal({ lecturers, onClose, onSave, onDelete }) {
                 <small>{email}{isSupremeEmail(email) ? " · Đấng tối cao" : ""}</small>
               </div>
               {!isSupremeEmail(email) && (
-                <button className="icon-danger" onClick={() => onDelete(email)}><Trash2 size={15} /></button>
+                <button className="icon-danger" onClick={() => requestConfirm({
+                  title: "Xóa giảng viên?",
+                  message: `Bạn có chắc muốn xóa "${lecturer.name || email}" khỏi danh sách giảng viên bậc 1 không?`,
+                  confirmLabel: "Xóa giảng viên"
+                }, () => onDelete(email))}><Trash2 size={15} /></button>
               )}
             </div>
           );
         })}
+      </div>
+    </Modal>
+  );
+}
+
+function ConfirmModal({ title, message, confirmLabel, cancelLabel, onCancel, onConfirm }) {
+  return (
+    <Modal title={title} onClose={onCancel}>
+      <p className="confirm-message">{message}</p>
+      <div className="confirm-actions">
+        <button className="secondary-action" type="button" onClick={onCancel}>{cancelLabel}</button>
+        <button className="danger-action" type="button" onClick={onConfirm}>{confirmLabel}</button>
       </div>
     </Modal>
   );

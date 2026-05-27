@@ -235,6 +235,19 @@ textarea { min-height: 88px; resize: vertical; }
   color: #172033;
   font-weight: 800;
 }
+.danger-action {
+  min-height: 32px;
+  border: 1px solid #dc2626;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+  background: #dc2626;
+  color: #fff;
+  font-weight: 800;
+}
 .compact { min-height: 32px; padding: 0 10px; }
 
 .class-list {
@@ -1628,6 +1641,17 @@ button:disabled {
   padding: 18px;
   display: grid;
   gap: 12px;
+}
+.confirm-message {
+  margin: 0;
+  color: #334155;
+  line-height: 1.5;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
 }
 .error-text { margin: 0; color: #b91c1c; font-weight: 700; }
 .empty-state {
