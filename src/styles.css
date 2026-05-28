@@ -254,9 +254,36 @@ textarea { min-height: 88px; resize: vertical; }
   display: flex;
   flex-direction: column;
   gap: 6px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   flex: 1;
   min-height: 0;
+}
+.class-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 6px 0;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 800;
+}
+.class-list-header button {
+  border: 0;
+  background: transparent;
+  color: #2563eb;
+  cursor: pointer;
+  font: inherit;
+  padding: 3px 0;
+}
+.class-list-header button.active {
+  color: #92400e;
+}
+.class-list-empty {
+  padding: 10px 8px;
+  color: #64748b;
+  font-size: 13px;
 }
 .class-sidebar-group {
   display: grid;
@@ -1736,6 +1763,14 @@ button:disabled {
   padding: 0 9px;
 }
 .class-list { gap: 4px; }
+.class-list-header {
+  padding: 1px 5px 0;
+  font-size: 12px;
+}
+.class-list-empty {
+  padding: 8px 6px;
+  font-size: 12px;
+}
 .class-sidebar-group {
   gap: 3px;
   padding-bottom: 5px;
@@ -1761,7 +1796,7 @@ button:disabled {
 .mini-menu,
 .account-menu {
   top: 32px;
-  width: 132px;
+  width: 146px;
   border-radius: 7px;
   padding: 5px;
 }

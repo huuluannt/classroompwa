@@ -18,6 +18,7 @@ import { uploadDriveFile } from "./driveStorage";
 
 const LS_KEY = "classroompwa-state";
 const PIN_LS_PREFIX = "classroompwa-class-pins:";
+const ARCHIVE_LS_PREFIX = "classroompwa-class-archives:";
 const CLASS_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const CLASS_CODE_LENGTH = 5;
 
@@ -56,6 +57,22 @@ export function loadLocalClassPins(email) {
 export function saveLocalClassPins(email, classIds) {
   if (!email) return;
   localStorage.setItem(`${PIN_LS_PREFIX}${normalizeEmail(email)}`, JSON.stringify([...new Set(classIds.filter(Boolean))]));
+}
+
+export function loadLocalClassArchives(email) {
+  if (!email) return [];
+  try {
+    const saved = localStorage.getItem(`${ARCHIVE_LS_PREFIX}${normalizeEmail(email)}`);
+    const parsed = saved ? JSON.parse(saved) : [];
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalClassArchives(email, classIds) {
+  if (!email) return;
+  localStorage.setItem(`${ARCHIVE_LS_PREFIX}${normalizeEmail(email)}`, JSON.stringify([...new Set(classIds.filter(Boolean))]));
 }
 
 function randomClassCodeIndex(max) {
@@ -125,6 +142,36 @@ export async function savePrivateClassPins(user, classIds) {
   await setDoc(doc(db, "profiles", user.email), {
     email: user.email,
     pinnedClassIds,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+}
+
+export function subscribePrivateClassArchives(user, onArchives, onError) {
+  if (!user?.email) {
+    onArchives([]);
+    return () => {};
+  }
+  const fallback = loadLocalClassArchives(user.email);
+  onArchives(fallback);
+  if (!hasFirebaseConfig) return () => {};
+
+  return onSnapshot(doc(db, "profiles", user.email), (snapshot) => {
+    const archivedClassIds = snapshot.exists() && Array.isArray(snapshot.data().archivedClassIds)
+      ? snapshot.data().archivedClassIds.filter(Boolean)
+      : [];
+    saveLocalClassArchives(user.email, archivedClassIds);
+    onArchives(archivedClassIds);
+  }, onError);
+}
+
+export async function savePrivateClassArchives(user, classIds) {
+  if (!user?.email) return;
+  const archivedClassIds = [...new Set(classIds.filter(Boolean))];
+  saveLocalClassArchives(user.email, archivedClassIds);
+  if (!hasFirebaseConfig) return;
+  await setDoc(doc(db, "profiles", user.email), {
+    email: user.email,
+    archivedClassIds,
     updatedAt: serverTimestamp()
   }, { merge: true });
 }
@@ -565,7 +612,8 @@ export async function syncUserProfile(user, options = {}) {
       displayName: user.displayName || user.email,
       photoURL: user.photoURL || "",
       studentId: user.studentId || "",
-      pinnedClassIds: Array.isArray(user.pinnedClassIds) ? user.pinnedClassIds : loadLocalClassPins(user.email)
+      pinnedClassIds: Array.isArray(user.pinnedClassIds) ? user.pinnedClassIds : loadLocalClassPins(user.email),
+      archivedClassIds: Array.isArray(user.archivedClassIds) ? user.archivedClassIds : loadLocalClassArchives(user.email)
     };
   }
 
@@ -585,13 +633,19 @@ export async function syncUserProfile(user, options = {}) {
   } else if (Array.isArray(existingProfile.pinnedClassIds)) {
     profile.pinnedClassIds = existingProfile.pinnedClassIds;
   }
+  if (Array.isArray(user.archivedClassIds)) {
+    profile.archivedClassIds = user.archivedClassIds;
+  } else if (Array.isArray(existingProfile.archivedClassIds)) {
+    profile.archivedClassIds = existingProfile.archivedClassIds;
+  }
   await setDoc(profileRef, profile, { merge: true });
   return {
     email: profile.email,
     displayName: profile.displayName,
     photoURL: profile.photoURL,
     studentId: profile.studentId,
-    pinnedClassIds: profile.pinnedClassIds
+    pinnedClassIds: profile.pinnedClassIds,
+    archivedClassIds: profile.archivedClassIds
   };
 }
 

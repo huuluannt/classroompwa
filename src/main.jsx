@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  Archive,
+  ArchiveRestore,
   BookOpen,
   Bell,
   BellDot,
@@ -39,6 +41,7 @@ import {
   mergeSupremeLecturer,
   normalizeEmail,
   reserveUniqueClassCode,
+  savePrivateClassArchives,
   saveCourseToCloud,
   saveLecturerToCloud,
   savePrivateClassPins,
@@ -47,6 +50,7 @@ import {
   notifyAnnouncementEmail,
   subscribeLecturers,
   subscribeClasses,
+  subscribePrivateClassArchives,
   subscribePrivateClassPins,
   submitAssignmentToCloud,
   submitPeerReviewResponseToCloud,
@@ -338,6 +342,8 @@ function App() {
   const [showManageLecturers, setShowManageLecturers] = useState(false);
   const [lecturers, setLecturers] = useState([]);
   const [sidebarPinnedClassIds, setSidebarPinnedClassIds] = useState([]);
+  const [sidebarArchivedClassIds, setSidebarArchivedClassIds] = useState([]);
+  const [classListMode, setClassListMode] = useState("main");
   const [saveToast, setSaveToast] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [mobileView, setMobileView] = useState(MOBILE_VIEWS.classes);
@@ -346,15 +352,19 @@ function App() {
 
   const supreme = isSupremeEmail(user?.email);
   const primaryLecturer = canCreateClasses(user, lecturers);
-  const visibleClasses = useMemo(() => {
+  const accessibleClasses = useMemo(() => {
     if (!user) return [];
     const matches = classes.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()));
-    if (supreme || primaryLecturer) return sortPinnedClasses(matches, sidebarPinnedClassIds);
-    return sortPinnedClasses(
-      matches.filter((item) => canManageCourse(user, item) || item.members.some((member) => member.email === user.email)),
-      sidebarPinnedClassIds
-    );
-  }, [classes, primaryLecturer, sidebarPinnedClassIds, query, supreme, user]);
+    if (supreme || primaryLecturer) return matches;
+    return matches.filter((item) => canManageCourse(user, item) || item.members.some((member) => member.email === user.email));
+  }, [classes, primaryLecturer, query, supreme, user]);
+  const visibleClasses = useMemo(() => {
+    const archived = new Set(sidebarArchivedClassIds);
+    const modeClasses = accessibleClasses.filter((item) => (
+      classListMode === "archived" ? archived.has(item.id) : !archived.has(item.id)
+    ));
+    return sortPinnedClasses(modeClasses, sidebarPinnedClassIds);
+  }, [accessibleClasses, classListMode, sidebarArchivedClassIds, sidebarPinnedClassIds]);
   const notificationClasses = useMemo(() => {
     if (!user) return [];
     if (supreme || primaryLecturer) return classes;
@@ -389,6 +399,7 @@ function App() {
           .then((profile) => {
             if (!profile) return;
             if (Array.isArray(profile.pinnedClassIds)) setSidebarPinnedClassIds(profile.pinnedClassIds);
+            if (Array.isArray(profile.archivedClassIds)) setSidebarArchivedClassIds(profile.archivedClassIds);
             setUser((current) => (
               current?.email === profile.email
                 ? { ...current, displayName: profile.displayName || current.displayName, photoURL: profile.photoURL || current.photoURL, studentId: profile.studentId || "" }
@@ -405,6 +416,15 @@ function App() {
     if (!user) return undefined;
     return subscribePrivateClassPins(user, (nextPins) => {
       setSidebarPinnedClassIds(nextPins);
+    }, (nextError) => {
+      console.error(nextError);
+    });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    return subscribePrivateClassArchives(user, (nextArchives) => {
+      setSidebarArchivedClassIds(nextArchives);
     }, (nextError) => {
       console.error(nextError);
     });
@@ -570,6 +590,8 @@ function App() {
     await signOutGoogle();
     setUser(null);
     setSidebarPinnedClassIds([]);
+    setSidebarArchivedClassIds([]);
+    setClassListMode("main");
     setAccountOpen(false);
   }
 
@@ -582,6 +604,21 @@ function App() {
       await savePrivateClassPins(user, nextPins);
     } catch (nextError) {
       setError(nextError.message || "Không thể lưu pin class.");
+    }
+  }
+
+  async function togglePrivateClassArchive(classId) {
+    const isArchived = sidebarArchivedClassIds.includes(classId);
+    const nextArchives = isArchived
+      ? sidebarArchivedClassIds.filter((id) => id !== classId)
+      : [classId, ...sidebarArchivedClassIds];
+    setSidebarArchivedClassIds(nextArchives);
+    if (selectedClassId === classId) setSelectedClassId("");
+    try {
+      await savePrivateClassArchives(user, nextArchives);
+      showSaveToast(isArchived ? "Đã đưa lớp về Mainclass." : "Đã lưu lớp vào Archived.");
+    } catch (nextError) {
+      setError(nextError.message || "Không thể cập nhật Archived class.");
     }
   }
 
@@ -624,6 +661,9 @@ function App() {
         canManageLecturers={supreme}
         classes={visibleClasses}
         pinnedClassIds={sidebarPinnedClassIds}
+        archivedClassIds={sidebarArchivedClassIds}
+        classListMode={classListMode}
+        onClassListModeChange={setClassListMode}
         selectedClassId={selectedClass?.id}
         query={query}
         setQuery={setQuery}
@@ -643,6 +683,7 @@ function App() {
         onNewClass={() => setShowNewClass(true)}
         onClassAction={(action, classItem) => {
           if (action === "pin") togglePrivateClassPin(classItem.id);
+          if (action === "archive") togglePrivateClassArchive(classItem.id);
           if (action === "delete" && canDeleteCourse(user, classItem)) {
             requestConfirm({
               title: "Xóa lớp học?",
@@ -939,6 +980,9 @@ function Sidebar(props) {
     canManageLecturers,
     classes,
     pinnedClassIds = [],
+    archivedClassIds = [],
+    classListMode,
+    onClassListModeChange,
     selectedClassId,
     query,
     setQuery,
@@ -990,7 +1034,22 @@ function Sidebar(props) {
             <UserPlus size={16} />
             Tham gia lớp học
           </button>
+          <div className="class-list-header">
+            <span>{classListMode === "archived" ? "Archived" : "Danh sách lớp học"}</span>
+            <button
+              type="button"
+              className={classListMode === "archived" ? "active" : ""}
+              onClick={() => onClassListModeChange(classListMode === "archived" ? "main" : "archived")}
+            >
+              {classListMode === "archived" ? "Mainclass" : "Archived"}
+            </button>
+          </div>
           <nav className="class-list">
+            {classes.length === 0 && (
+              <div className="class-list-empty">
+                {classListMode === "archived" ? "Chưa có lớp Archived." : "Chưa có lớp trong Mainclass."}
+              </div>
+            )}
             {groupClassesForSidebar(classes, canManageLecturers).map((group) => (
               <div className="class-sidebar-group" key={group.key}>
                 {group.label && <div className="class-sidebar-heading">{group.label}</div>}
@@ -1000,8 +1059,11 @@ function Sidebar(props) {
                     course={course}
                     selected={course.id === selectedClassId}
                     pinned={pinnedClassIds.includes(course.id)}
+                    archived={archivedClassIds.includes(course.id)}
+                    archivedMode={classListMode === "archived"}
                     owned={ownsCourse(user, course)}
                     canPin
+                    canArchive
                     canEdit={canDeleteCourse(user, course)}
                     canDelete={canDeleteCourse(user, course)}
                     onSelect={() => selectClass(course.id)}
@@ -1093,11 +1155,11 @@ function buildCourseLecturers(course) {
   });
 }
 
-function ClassRow({ course, selected, pinned, owned, canPin, canEdit, canDelete, onSelect, onAction }) {
+function ClassRow({ course, selected, pinned, archived, archivedMode, owned, canPin, canArchive, canEdit, canDelete, onSelect, onAction }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
   useOutsideClick(menuRef, open, () => setOpen(false));
-  const hasMenu = canPin || canEdit || canDelete;
+  const hasMenu = canPin || canArchive || canEdit || canDelete;
   return (
     <div className={`class-row ${selected ? "selected" : ""} ${owned ? "owner-class" : ""}`}>
       <button onClick={onSelect}>
@@ -1115,6 +1177,12 @@ function ClassRow({ course, selected, pinned, owned, canPin, canEdit, canDelete,
           {open && (
             <div className="mini-menu">
               {canPin && <button onClick={() => { onAction("pin", course); setOpen(false); }}><Pin size={14} /> {pinned ? "Unpin" : "Pin"}</button>}
+              {canArchive && (
+                <button onClick={() => { onAction("archive", course); setOpen(false); }}>
+                  {archivedMode || archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+                  {archivedMode || archived ? "UnArchived" : "Archived"}
+                </button>
+              )}
               {canEdit && <button onClick={() => { onAction("edit", course); setOpen(false); }}>Edit</button>}
               {canDelete && <button onClick={() => { onAction("delete", course); setOpen(false); }}><Trash2 size={14} /> Delete</button>}
             </div>
