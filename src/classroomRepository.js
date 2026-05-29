@@ -662,15 +662,19 @@ export async function submitAssignmentToCloud(courseId, assignmentId, submission
   const savedSubmission = {
     assignmentId,
     email: submission.email,
+    name: submission.name || "",
     fileName: submission.fileName || "",
     url: submission.url || "",
     previewUrl: submission.previewUrl || "",
     type: submission.type || "",
     submittedAt: submission.submittedAt || new Date().toLocaleString("vi-VN"),
+    submittedAtMillis: submission.submittedAtMillis || Date.now(),
+    late: Boolean(submission.late),
     createdAt: serverTimestamp()
   };
   await setDoc(submissionRef, savedSubmission);
-  return { id: submissionRef.id, ...submission, assignmentId };
+  const { createdAt, ...clientSubmission } = savedSubmission;
+  return { id: submissionRef.id, ...clientSubmission };
 }
 
 export async function saveAnnouncementToCloud(courseId, announcement) {

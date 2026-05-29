@@ -3198,23 +3198,35 @@ function MaterialsCard({ admin, course, updateCourse }) {
 
 
 function AssignmentsCard({ admin, user, course, updateCourse }) {
-  const [draft, setDraft] = useState({ title: "", content: "" });
+  const [draft, setDraft] = useState({ title: "", content: "", dueAt: "" });
   const assignments = normalizeAssignmentRatios(course.assignments || []);
   return (
     <>
       <PanelTitle title="Bài tập" />
       {admin && (
-        <div className="inline-form two">
+        <div className="inline-form two assignment-create-form">
           <input placeholder="Tiêu đề bài tập" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
           <textarea placeholder="Nội dung giao bài" value={draft.content} onChange={(event) => setDraft({ ...draft, content: event.target.value })} />
+          <input
+            type="datetime-local"
+            aria-label="Hạn nộp bài"
+            value={draft.dueAt}
+            onChange={(event) => setDraft({ ...draft, dueAt: event.target.value })}
+          />
           <button onClick={() => {
             if (!draft.title) return;
             updateCourse((current) => {
               const existingAssignments = normalizeAssignmentRatios(current.assignments || []);
-              const nextAssignments = normalizeAssignmentRatios([...existingAssignments, { id: crypto.randomUUID(), ...draft, ratio: "0", submissions: [] }]);
+              const nextAssignments = normalizeAssignmentRatios([...existingAssignments, {
+                id: crypto.randomUUID(),
+                ...draft,
+                dueAtMillis: draft.dueAt ? new Date(draft.dueAt).getTime() : "",
+                ratio: "0",
+                submissions: []
+              }]);
               return { ...current, assignments: nextAssignments };
             });
-            setDraft({ title: "", content: "" });
+            setDraft({ title: "", content: "", dueAt: "" });
           }}><FilePlus2 size={15} /> Tạo thẻ</button>
         </div>
       )}
@@ -3255,10 +3267,18 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
     setSubmitting(true);
     setSubmitError("");
     try {
+      const submittedAtMillis = Date.now();
       const uploaded = file
         ? await uploadClassFile(course, `submissions/${assignment.id}/${user.email}`, file, { readerEmails: adminWriterEmails(), writerEmails: adminWriterEmails() })
         : { fileName, url: "" };
-      const submission = { email: user.email, submittedAt: new Date().toLocaleString("vi-VN"), ...uploaded };
+      const submission = {
+        email: user.email,
+        name: assignmentSubmissionName(course, { email: user.email }, user),
+        submittedAt: new Date(submittedAtMillis).toLocaleString("vi-VN"),
+        submittedAtMillis,
+        late: isAssignmentSubmissionLate(assignment, { submittedAtMillis }),
+        ...uploaded
+      };
       const savedSubmission = await submitAssignmentToCloud(course.id, assignment.id, submission);
       updateCourse((current) => ({
         ...current,
@@ -3293,6 +3313,18 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
       {open && (
         <div>
           <p>{assignment.content}</p>
+          <div className="assignment-deadline-row">
+            <span>Hạn nộp:</span>
+            {admin ? (
+              <input
+                type="datetime-local"
+                value={assignmentDateTimeLocalValue(assignment)}
+                onChange={(event) => updateAssignmentDeadline(updateCourse, assignment.id, event.target.value)}
+              />
+            ) : (
+              <strong>{assignmentDeadlineLabel(assignment) || "Không giới hạn"}</strong>
+            )}
+          </div>
           <div className="assignment-ratio-row">
             <span>Tỉ lệ:</span>
             {admin && !lastAssignment ? (
@@ -3322,17 +3354,18 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
             {admin ? "Xem kết quả nộp bài" : "Xem bài đã nộp"}
           </button>
           {showResults && (
-            <table className="data-table compact-table">
-              <thead><tr><th>Email</th><th>File</th><th>Thời gian</th></tr></thead>
+            <table className="data-table compact-table assignment-submissions-table">
+              <thead><tr><th>Họ tên</th><th>File</th><th>Thời gian</th><th>Email</th></tr></thead>
               <tbody>
                 {visibleSubmissions.length === 0 ? (
-                  <tr><td colSpan="3">Chưa có bài nộp.</td></tr>
+                  <tr><td colSpan="4">Chưa có bài nộp.</td></tr>
                 ) : visibleSubmissions.map((submission, index) => {
                   const previewUrl = filePreviewUrl(submission);
                   const downloadUrl = fileDownloadUrl(submission);
+                  const isLate = isAssignmentSubmissionLate(assignment, submission);
                   return (
                     <tr key={`${submission.email}-${submission.id || index}`}>
-                      <td>{submission.email}</td>
+                      <td>{assignmentSubmissionName(course, submission, user)}</td>
                       <td>
                         <div className="submission-file-actions">
                           <button className="link-button" onClick={() => previewUrl && window.open(previewUrl, "_blank", "noopener,noreferrer")}>{submission.fileName || "file"}</button>
@@ -3343,7 +3376,13 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                           )}
                         </div>
                       </td>
-                      <td>{submission.submittedAt || ""}</td>
+                      <td>
+                        <div className="submission-time-cell">
+                          <span>{submission.submittedAt || ""}</span>
+                          {isLate && <span className="late-badge">Trễ</span>}
+                        </div>
+                      </td>
+                      <td>{submission.email}</td>
                     </tr>
                   );
                 })}
@@ -3419,6 +3458,61 @@ function AssignmentRatioInput({ value, onCommit }) {
 
 function assignmentTitleWithRatio(assignment) {
   return `${assignment?.title || "Bài tập"} (Tỉ lệ ${assignment?.ratio || "0"}%)`;
+}
+
+function assignmentDateTimeLocalValue(assignment) {
+  if (assignment?.dueAt) return assignment.dueAt;
+  const dueAtMillis = Number(assignment?.dueAtMillis || 0);
+  if (!dueAtMillis) return "";
+  const date = new Date(dueAtMillis);
+  if (Number.isNaN(date.getTime())) return "";
+  const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return offsetDate.toISOString().slice(0, 16);
+}
+
+function assignmentDeadlineMillis(assignment) {
+  const dueAtMillis = Number(assignment?.dueAtMillis || 0);
+  if (dueAtMillis) return dueAtMillis;
+  const dueAt = assignment?.dueAt;
+  if (!dueAt) return 0;
+  const parsed = new Date(dueAt).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function assignmentDeadlineLabel(assignment) {
+  const dueAtMillis = assignmentDeadlineMillis(assignment);
+  return dueAtMillis ? new Date(dueAtMillis).toLocaleString("vi-VN") : "";
+}
+
+function isAssignmentSubmissionLate(assignment, submission) {
+  const dueAtMillis = assignmentDeadlineMillis(assignment);
+  if (!dueAtMillis) return false;
+  const submittedAtMillis = Number(submission?.submittedAtMillis || 0);
+  if (submittedAtMillis) return submittedAtMillis > dueAtMillis;
+  return Boolean(submission?.late);
+}
+
+function assignmentSubmissionName(course, submission, currentUser) {
+  const email = normalizeEmail(submission?.email || "");
+  const members = course?.members || [];
+  const member = members.find((item) => normalizeEmail(item.email) === email);
+  const profile = course?.profiles?.[submission?.email] || course?.profiles?.[email] || {};
+  if (submission?.name) return submission.name;
+  if (member?.name) return member.name;
+  if (profile?.displayName) return profile.displayName;
+  if (normalizeEmail(currentUser?.email || "") === email) return currentUser.displayName || currentUser.email;
+  return submission?.email || "";
+}
+
+function updateAssignmentDeadline(updateCourse, assignmentId, dueAt) {
+  updateCourse((current) => ({
+    ...current,
+    assignments: normalizeAssignmentRatios((current.assignments || []).map((item) => (
+      item.id === assignmentId
+        ? { ...item, dueAt, dueAtMillis: dueAt ? new Date(dueAt).getTime() : "" }
+        : item
+    )))
+  }));
 }
 
 function updateAssignmentRatio(updateCourse, assignmentId, ratio) {
@@ -4446,4 +4540,8 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js?v=20260525-upload-cache"));
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+const rootElement = document.getElementById("root");
+if (!window.__classroomPwaRoot) {
+  window.__classroomPwaRoot = createRoot(rootElement);
+}
+window.__classroomPwaRoot.render(<App />);
