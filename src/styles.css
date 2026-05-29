@@ -298,6 +298,34 @@ textarea { min-height: 88px; resize: vertical; }
   font-size: 13px;
   font-weight: 800;
 }
+.class-sidebar-heading-row,
+.class-list-empty-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.class-sidebar-heading-row .class-sidebar-heading {
+  min-width: 0;
+}
+.supreme-class-scope-button {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #dbe4f0;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+}
+.supreme-class-scope-button:hover,
+.supreme-class-scope-button.active {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #2563eb;
+}
 .class-row {
   position: relative;
   display: grid;
@@ -1778,6 +1806,15 @@ button:disabled {
 .class-sidebar-heading {
   padding: 3px 6px 1px;
   font-size: 12px;
+}
+.class-sidebar-heading-row,
+.class-list-empty-row {
+  gap: 6px;
+}
+.supreme-class-scope-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
 }
 .class-row { border-radius: 7px; }
 .class-row > button:first-child {

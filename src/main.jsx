@@ -11,6 +11,8 @@ import {
   Copy,
   Crown,
   Download,
+  Eye,
+  EyeOff,
   FilePlus2,
   GraduationCap,
   LogOut,
@@ -344,6 +346,7 @@ function App() {
   const [sidebarPinnedClassIds, setSidebarPinnedClassIds] = useState([]);
   const [sidebarArchivedClassIds, setSidebarArchivedClassIds] = useState([]);
   const [classListMode, setClassListMode] = useState("main");
+  const [supremeShowAllClasses, setSupremeShowAllClasses] = useState(false);
   const [saveToast, setSaveToast] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [mobileView, setMobileView] = useState(MOBILE_VIEWS.classes);
@@ -355,9 +358,14 @@ function App() {
   const accessibleClasses = useMemo(() => {
     if (!user) return [];
     const matches = classes.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()));
-    if (supreme || primaryLecturer) return matches;
+    if (supreme) {
+      return supremeShowAllClasses
+        ? matches
+        : matches.filter((item) => normalizeEmail(item.ownerEmail || SUPREME_EMAIL) === SUPREME_EMAIL);
+    }
+    if (primaryLecturer) return matches;
     return matches.filter((item) => canManageCourse(user, item) || item.members.some((member) => member.email === user.email));
-  }, [classes, primaryLecturer, query, supreme, user]);
+  }, [classes, primaryLecturer, query, supreme, supremeShowAllClasses, user]);
   const visibleClasses = useMemo(() => {
     const archived = new Set(sidebarArchivedClassIds);
     const modeClasses = accessibleClasses.filter((item) => (
@@ -592,6 +600,7 @@ function App() {
     setSidebarPinnedClassIds([]);
     setSidebarArchivedClassIds([]);
     setClassListMode("main");
+    setSupremeShowAllClasses(false);
     setAccountOpen(false);
   }
 
@@ -664,6 +673,9 @@ function App() {
         archivedClassIds={sidebarArchivedClassIds}
         classListMode={classListMode}
         onClassListModeChange={setClassListMode}
+        showSupremeClassScopeToggle={supreme}
+        supremeShowAllClasses={supremeShowAllClasses}
+        onToggleSupremeClassScope={() => setSupremeShowAllClasses((current) => !current)}
         selectedClassId={selectedClass?.id}
         query={query}
         setQuery={setQuery}
@@ -983,6 +995,9 @@ function Sidebar(props) {
     archivedClassIds = [],
     classListMode,
     onClassListModeChange,
+    showSupremeClassScopeToggle,
+    supremeShowAllClasses,
+    onToggleSupremeClassScope,
     selectedClassId,
     query,
     setQuery,
@@ -1046,13 +1061,31 @@ function Sidebar(props) {
           </div>
           <nav className="class-list">
             {classes.length === 0 && (
-              <div className="class-list-empty">
-                {classListMode === "archived" ? "Chưa có lớp Archived." : "Chưa có lớp trong Mainclass."}
+              <div className="class-list-empty-row">
+                <div className="class-list-empty">
+                  {classListMode === "archived" ? "Chưa có lớp Archived." : "Chưa có lớp trong Mainclass."}
+                </div>
+                {showSupremeClassScopeToggle && (
+                  <SupremeClassScopeButton
+                    expanded={supremeShowAllClasses}
+                    onToggle={onToggleSupremeClassScope}
+                  />
+                )}
               </div>
             )}
-            {groupClassesForSidebar(classes, canManageLecturers).map((group) => (
+            {groupClassesForSidebar(classes, canManageLecturers).map((group, groupIndex) => (
               <div className="class-sidebar-group" key={group.key}>
-                {group.label && <div className="class-sidebar-heading">{group.label}</div>}
+                {group.label && (
+                  <div className="class-sidebar-heading-row">
+                    <div className="class-sidebar-heading">{group.label}</div>
+                    {showSupremeClassScopeToggle && groupIndex === 0 && (
+                      <SupremeClassScopeButton
+                        expanded={supremeShowAllClasses}
+                        onToggle={onToggleSupremeClassScope}
+                      />
+                    )}
+                  </div>
+                )}
                 {group.classes.map((course) => (
                   <ClassRow
                     key={course.id}
@@ -1127,6 +1160,20 @@ function groupClassesForSidebar(classes, groupByOwner) {
     groups.get(ownerEmail).classes.push(course);
   });
   return [...groups.values()].sort((first, second) => first.label.localeCompare(second.label, "vi", { sensitivity: "base" }));
+}
+
+function SupremeClassScopeButton({ expanded, onToggle }) {
+  return (
+    <button
+      className={`supreme-class-scope-button ${expanded ? "active" : ""}`}
+      type="button"
+      title={expanded ? "Chỉ hiện lớp của Đấng tối cao" : "Hiện tất cả lớp"}
+      aria-label={expanded ? "Chỉ hiện lớp của Đấng tối cao" : "Hiện tất cả lớp"}
+      onClick={onToggle}
+    >
+      {expanded ? <Eye size={16} /> : <EyeOff size={16} />}
+    </button>
+  );
 }
 
 function buildCourseLecturers(course) {
