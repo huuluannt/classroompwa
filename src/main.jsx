@@ -3453,35 +3453,106 @@ function MaterialsCard({ admin, user, course, updateCourse }) {
 
 function AssignmentsCard({ admin, user, course, updateCourse }) {
   const [draft, setDraft] = useState({ title: "", content: "", dueAt: "" });
+  const [creatingAssignment, setCreatingAssignment] = useState(false);
+  const [assignmentCreateError, setAssignmentCreateError] = useState("");
+  const [assignmentCreateNotice, setAssignmentCreateNotice] = useState("");
   const assignments = normalizeAssignmentRatios(course.assignments || []);
+
+  async function createAssignmentCard() {
+    const title = draft.title.trim();
+    if (!title || creatingAssignment) return;
+    setCreatingAssignment(true);
+    setAssignmentCreateError("");
+    setAssignmentCreateNotice("");
+    try {
+      const dueAtMillis = draft.dueAt ? new Date(draft.dueAt).getTime() : 0;
+      const assignment = {
+        id: crypto.randomUUID(),
+        title,
+        content: draft.content.trim(),
+        dueAt: draft.dueAt,
+        dueAtMillis: dueAtMillis || "",
+        ratio: "0",
+        submissions: []
+      };
+      const createdAtMillis = Date.now();
+      const announcement = {
+        id: crypto.randomUUID(),
+        author: user.email,
+        authorName: user.displayName || user.email,
+        authorPhotoURL: user.photoURL || "",
+        role: "admin",
+        content: assignmentAnnouncementContent(assignment),
+        pinned: false,
+        attachments: [],
+        publishAsMaterial: false,
+        createdAt: formatDateTime24(createdAtMillis),
+        createdAtMillis,
+        publishAtMillis: createdAtMillis,
+        scheduledAt: "",
+        scheduledAtMillis: 0,
+        assignmentId: assignment.id
+      };
+      const savedAnnouncement = hasFirebaseConfig
+        ? await saveAnnouncementToCloud(course.id, announcement)
+        : announcement;
+
+      await updateCourse((current) => {
+        const existingAssignments = normalizeAssignmentRatios(current.assignments || []);
+        return {
+          ...current,
+          assignments: normalizeAssignmentRatios([...existingAssignments, assignment]),
+          announcements: [savedAnnouncement, ...(current.announcements || [])]
+        };
+      }, { sync: true });
+
+      setDraft({ title: "", content: "", dueAt: "" });
+      if (hasFirebaseConfig) {
+        try {
+          const emailResult = await notifyAnnouncementEmail(course.id, savedAnnouncement.id);
+          if (emailResult.skipped && emailResult.reason === "missing_email_config") {
+            setAssignmentCreateNotice("Đã tạo bài tập và thông báo. Chưa gửi email vì chưa cấu hình RESEND_API_KEY và EMAIL_FROM trên Vercel.");
+          } else if (emailResult.sentCount > 0) {
+            setAssignmentCreateNotice(`Đã tạo bài tập và gửi email thông báo đến ${emailResult.sentCount} thành viên.`);
+          } else {
+            setAssignmentCreateNotice("Đã tạo bài tập và thông báo. Không có thành viên khác để gửi email.");
+          }
+        } catch (error) {
+          console.error(error);
+          setAssignmentCreateNotice("Đã tạo bài tập và thông báo nhưng không gửi được email.");
+        }
+      } else {
+        setAssignmentCreateNotice("Đã tạo bài tập và thông báo.");
+      }
+    } catch (error) {
+      console.error(error);
+      setAssignmentCreateError("Không thể tạo bài tập hoặc thông báo. Vui lòng thử lại.");
+    } finally {
+      setCreatingAssignment(false);
+    }
+  }
+
   return (
     <>
       <PanelTitle title="Bài tập" />
       {admin && (
         <div className="inline-form two assignment-create-form">
-          <input placeholder="Tiêu đề bài tập" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
-          <textarea placeholder="Nội dung giao bài" value={draft.content} onChange={(event) => setDraft({ ...draft, content: event.target.value })} />
+          <input disabled={creatingAssignment} placeholder="Tiêu đề bài tập" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
+          <textarea disabled={creatingAssignment} placeholder="Nội dung giao bài" value={draft.content} onChange={(event) => setDraft({ ...draft, content: event.target.value })} />
           <input
             type="datetime-local"
             aria-label="Hạn nộp bài"
+            disabled={creatingAssignment}
             value={draft.dueAt}
             onChange={(event) => setDraft({ ...draft, dueAt: event.target.value })}
           />
-          <button onClick={() => {
-            if (!draft.title) return;
-            updateCourse((current) => {
-              const existingAssignments = normalizeAssignmentRatios(current.assignments || []);
-              const nextAssignments = normalizeAssignmentRatios([...existingAssignments, {
-                id: crypto.randomUUID(),
-                ...draft,
-                dueAtMillis: draft.dueAt ? new Date(draft.dueAt).getTime() : "",
-                ratio: "0",
-                submissions: []
-              }]);
-              return { ...current, assignments: nextAssignments };
-            });
-            setDraft({ title: "", content: "", dueAt: "" });
-          }}><FilePlus2 size={15} /> Tạo thẻ</button>
+          <button onClick={createAssignmentCard} disabled={creatingAssignment || !draft.title.trim()}>
+            {creatingAssignment ? <span className="button-spinner" /> : <FilePlus2 size={15} />}
+            {creatingAssignment ? "Đang tạo" : "Tạo thẻ"}
+          </button>
+          {creatingAssignment && <UploadStatus label="Đang tạo bài tập và thông báo..." />}
+          {assignmentCreateError && <p className="error-text">{assignmentCreateError}</p>}
+          {assignmentCreateNotice && <p className="success-text">{assignmentCreateNotice}</p>}
         </div>
       )}
       <div className="list-stack">
@@ -3712,6 +3783,15 @@ function AssignmentRatioInput({ value, onCommit }) {
 
 function assignmentTitleWithRatio(assignment) {
   return `${assignment?.title || "Bài tập"} (Tỉ lệ ${assignment?.ratio || "0"}%)`;
+}
+
+function assignmentAnnouncementContent(assignment) {
+  const lines = [`Bài tập mới: ${assignment?.title || "Bài tập"}`];
+  const content = String(assignment?.content || "").trim();
+  if (content) lines.push(`Nội dung giao bài: ${content}`);
+  const dueAtMillis = assignmentDeadlineMillis(assignment);
+  if (dueAtMillis) lines.push(`Deadline: ${formatDateTime24(dueAtMillis)}`);
+  return lines.join("\n");
 }
 
 function assignmentDateTimeLocalValue(assignment) {

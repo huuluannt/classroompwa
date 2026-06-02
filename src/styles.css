@@ -1256,6 +1256,11 @@ textarea { min-height: 88px; resize: vertical; }
 .assignment-create-form {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(180px, 0.65fr) auto;
 }
+.assignment-create-form .upload-status,
+.assignment-create-form .error-text,
+.assignment-create-form .success-text {
+  grid-column: 1 / -1;
+}
 .inline-form textarea { min-height: 42px; }
 .placeholder-form {
   padding: 10px;
