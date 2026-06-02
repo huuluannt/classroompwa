@@ -2447,7 +2447,6 @@ function ScheduleCard({ admin, course, updateCourse }) {
     if (!editor) return;
     editor.focus();
     if (format === "bold") document.execCommand("bold");
-    if (format === "red") document.execCommand("foreColor", false, "#dc2626");
     if (format === "highlight") document.execCommand("backColor", false, "#fef08a");
     const inputEvent = typeof InputEvent === "function"
       ? new InputEvent("input", { bubbles: true, inputType: "formatText" })
@@ -2462,7 +2461,6 @@ function ScheduleCard({ admin, course, updateCourse }) {
         action={admin && (
           <div className="panel-actions">
             <button className="secondary-action compact" type="button" onClick={() => applyFormat("bold")} title="In đậm"><strong>B</strong></button>
-            <button className="secondary-action compact text-red-tool" type="button" onClick={() => applyFormat("red")} title="Chữ đỏ">A</button>
             <button className="secondary-action compact highlight-tool" type="button" onClick={() => applyFormat("highlight")} title="Highlight">A</button>
             <button className="primary-action compact" type="button" onClick={addWeek}><Plus size={15} /> Thêm tuần</button>
             <button className="primary-action compact" type="button" onClick={saveSchedule}>Save</button>
@@ -2537,7 +2535,8 @@ function RichTextCell({ value, readOnly, onFocus, onChange }) {
 
   useEffect(() => {
     if (!ref.current || document.activeElement === ref.current) return;
-    if (ref.current.innerHTML !== value) ref.current.innerHTML = value || "";
+    const sanitizedValue = sanitizeScheduleHtml(value || "");
+    if (ref.current.innerHTML !== sanitizedValue) ref.current.innerHTML = sanitizedValue;
   }, [value]);
 
   return (
@@ -2549,7 +2548,16 @@ function RichTextCell({ value, readOnly, onFocus, onChange }) {
       tabIndex={readOnly ? -1 : 0}
       onFocus={(event) => onFocus?.(event.currentTarget)}
       onInput={(event) => onChange?.(sanitizeScheduleHtml(event.currentTarget.innerHTML))}
-      dangerouslySetInnerHTML={{ __html: sanitizeScheduleHtml(value || "") }}
+      onBlur={(event) => {
+        const sanitizedValue = sanitizeScheduleHtml(event.currentTarget.innerHTML);
+        if (event.currentTarget.innerHTML !== sanitizedValue) event.currentTarget.innerHTML = sanitizedValue;
+        onChange?.(sanitizedValue);
+      }}
+      onPaste={(event) => {
+        event.preventDefault();
+        const text = event.clipboardData?.getData("text/plain") || "";
+        document.execCommand("insertText", false, text);
+      }}
     />
   );
 }
@@ -2611,11 +2619,9 @@ function sanitizeScheduleHtml(html = "") {
         cleanNode(node);
         return;
       }
-      const color = child.style.color;
       const backgroundColor = child.style.backgroundColor;
       [...child.attributes].forEach((attribute) => child.removeAttribute(attribute.name));
       if (child.tagName === "SPAN" || child.tagName === "MARK") {
-        if (color) child.style.color = "#dc2626";
         if (backgroundColor || child.tagName === "MARK") child.style.backgroundColor = "#fef08a";
       }
       cleanNode(child);

@@ -1227,7 +1227,6 @@ textarea { min-height: 88px; resize: vertical; }
 .schedule-delete-button {
   flex: 0 0 32px;
 }
-.text-red-tool { color: #dc2626; }
 .highlight-tool { background: #fef08a; color: #854d0e; }
 
 .inline-form {
