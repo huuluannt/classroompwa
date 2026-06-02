@@ -884,8 +884,11 @@ function sortPinnedClasses(items, pinnedClassIds = []) {
 }
 
 function latestAnnouncementTimestamp(classes) {
+  const nowMillis = Date.now();
   return Math.max(0, ...classes.flatMap((course) => (
-    (course.announcements || []).map((announcement) => Number(announcement.createdAtMillis || 0))
+    (course.announcements || [])
+      .filter((announcement) => announcementPublishMillis(announcement) <= nowMillis)
+      .map((announcement) => announcementPublishMillis(announcement))
   )));
 }
 
@@ -2106,12 +2109,19 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse }) {
   const [files, setFiles] = useState([]);
   const [pinned, setPinned] = useState(false);
   const [publishAsMaterial, setPublishAsMaterial] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [nowMillis, setNowMillis] = useState(Date.now());
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState("");
   const [postNotice, setPostNotice] = useState("");
   const postPermission = getAnnouncementPostPermission(course);
   const explicitPostPermission = course.announcementPostPermission || "";
   const canPost = canPostAnnouncement(course, user, admin, classLeader);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMillis(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   function addFiles(fileList) {
     const nextFiles = Array.from(fileList || []);
@@ -2144,6 +2154,10 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse }) {
     setPostError("");
     setPostNotice("");
     try {
+      const createdAtMillis = Date.now();
+      const scheduledAtMillis = scheduledAt ? new Date(scheduledAt).getTime() : 0;
+      const hasValidFutureSchedule = Number.isFinite(scheduledAtMillis) && scheduledAtMillis > createdAtMillis;
+      const publishAtMillis = hasValidFutureSchedule ? scheduledAtMillis : createdAtMillis;
       const attachments = hasFirebaseConfig
         ? await uploadManyFiles(course, "announcements", files, { anyoneWithLink: true, writerEmails: adminWriterEmails() })
         : await Promise.all(files.map(readFileAsDataUrl));
@@ -2156,13 +2170,17 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse }) {
         content,
         pinned,
         attachments,
-        createdAt: new Date().toLocaleString("vi-VN"),
-        createdAtMillis: Date.now()
+        publishAsMaterial: admin && publishAsMaterial,
+        createdAt: new Date(publishAtMillis).toLocaleString("vi-VN"),
+        createdAtMillis: publishAtMillis,
+        publishAtMillis,
+        scheduledAt: hasValidFutureSchedule ? new Date(publishAtMillis).toLocaleString("vi-VN") : "",
+        scheduledAtMillis: hasValidFutureSchedule ? publishAtMillis : 0
       };
       const savedAnnouncement = hasFirebaseConfig
         ? await saveAnnouncementToCloud(course.id, announcement)
         : announcement;
-      const shouldCreateMaterial = admin && publishAsMaterial;
+      const shouldCreateMaterial = admin && publishAsMaterial && !hasValidFutureSchedule;
       await updateCourse((current) => ({
         ...current,
         announcements: [savedAnnouncement, ...(current.announcements || [])],
@@ -2174,8 +2192,11 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse }) {
       setFiles([]);
       setPinned(false);
       setPublishAsMaterial(false);
+      setScheduledAt("");
 
-      if (hasFirebaseConfig) {
+      if (hasValidFutureSchedule) {
+        setPostNotice(`Đã hẹn giờ đăng tin lúc ${savedAnnouncement.scheduledAt}.`);
+      } else if (hasFirebaseConfig) {
         try {
           const emailResult = await notifyAnnouncementEmail(course.id, savedAnnouncement.id);
           if (emailResult.skipped && emailResult.reason === "missing_email_config") {
@@ -2198,10 +2219,9 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse }) {
     }
   }
 
-  const posts = [...course.announcements].sort((a, b) => (
-    Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
-    || Number(b.createdAtMillis || 0) - Number(a.createdAtMillis || 0)
-  ));
+  const posts = [...course.announcements]
+    .filter((item) => canViewAnnouncement(item, user, admin, nowMillis))
+    .sort(compareAnnouncementsForFeed);
 
   async function togglePostPin(item) {
     const nextPost = { ...item, pinned: !item.pinned };
@@ -2281,6 +2301,16 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse }) {
             </button>
             {admin && <label className="check-row"><input type="checkbox" disabled={posting} checked={publishAsMaterial} onChange={(event) => setPublishAsMaterial(event.target.checked)} /> Tài liệu</label>}
             {files.length > 0 && <span>{`${files.length} file đã chọn`}</span>}
+            <label className="composer-schedule">
+              <span>Hẹn giờ</span>
+              <input
+                type="datetime-local"
+                disabled={posting}
+                value={scheduledAt}
+                onChange={(event) => setScheduledAt(event.target.value)}
+                aria-label="Hẹn giờ đăng"
+              />
+            </label>
             <div className="composer-submit">
               <ProfileAvatar user={user} label={user.displayName || user.email} small />
               <button className="primary-action compact" onClick={submitPost} disabled={posting}>
@@ -2318,6 +2348,9 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse }) {
           <article className={`feed-item ${item.role === "admin" ? "admin-post" : ""} ${item.pinned ? "pinned-post" : ""}`} key={item.id}>
             <div className="post-head">
               <PostAuthor post={item} currentUser={user} />
+              {isAnnouncementScheduledForFuture(item, nowMillis) && (
+                <span className="scheduled-post-badge">Hẹn đăng: {announcementScheduleLabel(item)}</span>
+              )}
               {(admin || item.author === user.email) && (
                 <div className="post-actions">
                   <button className="pin-button icon-only" title={item.pinned ? "Unpin" : "Pin"} aria-label={item.pinned ? "Unpin" : "Pin"} onClick={() => togglePostPin(item)}>{item.pinned ? <PinOff size={16} /> : <Pin size={16} />}</button>
@@ -2375,6 +2408,33 @@ function createMaterialFromAnnouncement(announcement, course) {
     createdAt: announcement.createdAt || new Date().toLocaleString("vi-VN"),
     createdAtMillis: announcement.createdAtMillis || Date.now()
   };
+}
+
+function announcementPublishMillis(announcement) {
+  return Number(announcement?.publishAtMillis || announcement?.scheduledAtMillis || announcement?.createdAtMillis || 0);
+}
+
+function isAnnouncementScheduledForFuture(announcement, nowMillis = Date.now()) {
+  const scheduledAtMillis = Number(announcement?.scheduledAtMillis || 0);
+  return scheduledAtMillis > nowMillis;
+}
+
+function canViewAnnouncement(announcement, user, admin, nowMillis = Date.now()) {
+  if (!isAnnouncementScheduledForFuture(announcement, nowMillis)) return true;
+  return admin || normalizeEmail(announcement?.author || "") === normalizeEmail(user?.email || "");
+}
+
+function compareAnnouncementsForFeed(a, b) {
+  return (
+    Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
+    || announcementPublishMillis(b) - announcementPublishMillis(a)
+  );
+}
+
+function announcementScheduleLabel(announcement) {
+  if (announcement?.scheduledAt) return announcement.scheduledAt;
+  const scheduledAtMillis = Number(announcement?.scheduledAtMillis || 0);
+  return scheduledAtMillis ? new Date(scheduledAtMillis).toLocaleString("vi-VN") : "";
 }
 
 function materialTitleFromAnnouncement(content, materials) {
@@ -2497,7 +2557,7 @@ function ScheduleCard({ admin, course, updateCourse }) {
                 </td>
                 <td>
                   {admin ? (
-                    <input value={row.date || ""} onChange={(event) => updateRow(row.id, { date: event.target.value })} placeholder="Ngày" />
+                    <input className="schedule-date-input" value={row.date || ""} onChange={(event) => updateRow(row.id, { date: event.target.value })} placeholder="Ngày" />
                   ) : (
                     row.date || ""
                   )}

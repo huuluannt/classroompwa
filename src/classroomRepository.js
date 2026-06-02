@@ -689,8 +689,12 @@ export async function saveAnnouncementToCloud(courseId, announcement) {
     content: announcement.content || "",
     attachments: announcement.attachments || [],
     pinned: Boolean(announcement.pinned),
+    publishAsMaterial: Boolean(announcement.publishAsMaterial),
     createdAt: announcement.createdAt || new Date().toLocaleString("vi-VN"),
-    createdAtMillis: announcement.createdAtMillis || Date.now()
+    createdAtMillis: announcement.createdAtMillis || announcement.publishAtMillis || Date.now(),
+    publishAtMillis: announcement.publishAtMillis || announcement.scheduledAtMillis || announcement.createdAtMillis || Date.now(),
+    scheduledAt: announcement.scheduledAt || "",
+    scheduledAtMillis: announcement.scheduledAtMillis || 0
   };
   await setDoc(announcementRef, {
     ...savedAnnouncement,
@@ -871,8 +875,12 @@ function mergeAnnouncements(primary, secondary) {
     .sort((first, second) => {
       const pinned = Number(Boolean(second.pinned)) - Number(Boolean(first.pinned));
       if (pinned) return pinned;
-      return Number(second.createdAtMillis || 0) - Number(first.createdAtMillis || 0);
+      return announcementPublishMillis(second) - announcementPublishMillis(first);
     });
+}
+
+function announcementPublishMillis(announcement) {
+  return Number(announcement?.publishAtMillis || announcement?.scheduledAtMillis || announcement?.createdAtMillis || 0);
 }
 
 function pendingCourseFromMember(classId, summary, member) {
