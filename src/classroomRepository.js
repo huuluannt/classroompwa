@@ -21,6 +21,21 @@ const PIN_LS_PREFIX = "classroompwa-class-pins:";
 const ARCHIVE_LS_PREFIX = "classroompwa-class-archives:";
 const CLASS_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const CLASS_CODE_LENGTH = 5;
+const DATE_TIME_24_OPTIONS = {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hourCycle: "h23"
+};
+
+function formatDateTime24(value = Date.now()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("vi-VN", DATE_TIME_24_OPTIONS);
+}
 
 export function isAdminEmail(email) {
   return isSupremeEmail(email);
@@ -667,7 +682,7 @@ export async function submitAssignmentToCloud(courseId, assignmentId, submission
     url: submission.url || "",
     previewUrl: submission.previewUrl || "",
     type: submission.type || "",
-    submittedAt: submission.submittedAt || new Date().toLocaleString("vi-VN"),
+    submittedAt: submission.submittedAt || formatDateTime24(),
     submittedAtMillis: submission.submittedAtMillis || Date.now(),
     late: Boolean(submission.late),
     createdAt: serverTimestamp()
@@ -690,7 +705,7 @@ export async function saveAnnouncementToCloud(courseId, announcement) {
     attachments: announcement.attachments || [],
     pinned: Boolean(announcement.pinned),
     publishAsMaterial: Boolean(announcement.publishAsMaterial),
-    createdAt: announcement.createdAt || new Date().toLocaleString("vi-VN"),
+    createdAt: announcement.createdAt || formatDateTime24(),
     createdAtMillis: announcement.createdAtMillis || announcement.publishAtMillis || Date.now(),
     publishAtMillis: announcement.publishAtMillis || announcement.scheduledAtMillis || announcement.createdAtMillis || Date.now(),
     scheduledAt: announcement.scheduledAt || "",

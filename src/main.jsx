@@ -208,6 +208,22 @@ function readFileAsDataUrl(file) {
   });
 }
 
+const DATE_TIME_24_OPTIONS = {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hourCycle: "h23"
+};
+
+function formatDateTime24(value = Date.now()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("vi-VN", DATE_TIME_24_OPTIONS);
+}
+
 function adminWriterEmails() {
   return [SUPREME_EMAIL];
 }
@@ -1601,7 +1617,7 @@ function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditM
   if (selectedCard === "schedule") return <ScheduleCard admin={admin} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "groupTopic") return <GroupTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "intergroupTopic") return <IntergroupTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
-  if (selectedCard === "materials") return <MaterialsCard admin={admin} course={course} updateCourse={updateCourse} />;
+  if (selectedCard === "materials") return <MaterialsCard admin={admin} user={user} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "assignments") return <AssignmentsCard admin={admin} user={user} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "grades") return <GradesCard admin={admin} user={user} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "personalTopic") return <PersonalTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
@@ -2117,6 +2133,7 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse }) {
   const postPermission = getAnnouncementPostPermission(course);
   const explicitPostPermission = course.announcementPostPermission || "";
   const canPost = canPostAnnouncement(course, user, admin, classLeader);
+  const canSchedulePost = admin || classLeader;
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMillis(Date.now()), 30000);
@@ -2155,7 +2172,7 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse }) {
     setPostNotice("");
     try {
       const createdAtMillis = Date.now();
-      const scheduledAtMillis = scheduledAt ? new Date(scheduledAt).getTime() : 0;
+      const scheduledAtMillis = canSchedulePost && scheduledAt ? new Date(scheduledAt).getTime() : 0;
       const hasValidFutureSchedule = Number.isFinite(scheduledAtMillis) && scheduledAtMillis > createdAtMillis;
       const publishAtMillis = hasValidFutureSchedule ? scheduledAtMillis : createdAtMillis;
       const attachments = hasFirebaseConfig
@@ -2171,10 +2188,10 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse }) {
         pinned,
         attachments,
         publishAsMaterial: admin && publishAsMaterial,
-        createdAt: new Date(publishAtMillis).toLocaleString("vi-VN"),
+        createdAt: formatDateTime24(publishAtMillis),
         createdAtMillis: publishAtMillis,
         publishAtMillis,
-        scheduledAt: hasValidFutureSchedule ? new Date(publishAtMillis).toLocaleString("vi-VN") : "",
+        scheduledAt: hasValidFutureSchedule ? formatDateTime24(publishAtMillis) : "",
         scheduledAtMillis: hasValidFutureSchedule ? publishAtMillis : 0
       };
       const savedAnnouncement = hasFirebaseConfig
@@ -2301,16 +2318,18 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse }) {
             </button>
             {admin && <label className="check-row"><input type="checkbox" disabled={posting} checked={publishAsMaterial} onChange={(event) => setPublishAsMaterial(event.target.checked)} /> Tài liệu</label>}
             {files.length > 0 && <span>{`${files.length} file đã chọn`}</span>}
-            <label className="composer-schedule">
-              <span>Hẹn giờ</span>
-              <input
-                type="datetime-local"
-                disabled={posting}
-                value={scheduledAt}
-                onChange={(event) => setScheduledAt(event.target.value)}
-                aria-label="Hẹn giờ đăng"
-              />
-            </label>
+            {canSchedulePost && (
+              <label className="composer-schedule">
+                <span>Hẹn giờ</span>
+                <input
+                  type="datetime-local"
+                  disabled={posting}
+                  value={scheduledAt}
+                  onChange={(event) => setScheduledAt(event.target.value)}
+                  aria-label="Hẹn giờ đăng"
+                />
+              </label>
+            )}
             <div className="composer-submit">
               <ProfileAvatar user={user} label={user.displayName || user.email} small />
               <button className="primary-action compact" onClick={submitPost} disabled={posting}>
@@ -2405,7 +2424,7 @@ function createMaterialFromAnnouncement(announcement, course) {
     title: materialTitleFromAnnouncement(announcement.content, course.materials || []),
     files: [...(announcement.attachments || []), ...urlFiles],
     announcementId: announcement.id,
-    createdAt: announcement.createdAt || new Date().toLocaleString("vi-VN"),
+    createdAt: announcement.createdAt || formatDateTime24(),
     createdAtMillis: announcement.createdAtMillis || Date.now()
   };
 }
@@ -2434,7 +2453,7 @@ function compareAnnouncementsForFeed(a, b) {
 function announcementScheduleLabel(announcement) {
   if (announcement?.scheduledAt) return announcement.scheduledAt;
   const scheduledAtMillis = Number(announcement?.scheduledAtMillis || 0);
-  return scheduledAtMillis ? new Date(scheduledAtMillis).toLocaleString("vi-VN") : "";
+  return scheduledAtMillis ? formatDateTime24(scheduledAtMillis) : "";
 }
 
 function materialTitleFromAnnouncement(content, materials) {
@@ -3226,15 +3245,174 @@ function uniqueValues(items) {
 }
 
 
-function MaterialsCard({ admin, course, updateCourse }) {
+function MaterialsCard({ admin, user, course, updateCourse }) {
   const requestConfirm = useConfirmAction();
+  const addPopoverRef = useRef(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [materialTitle, setMaterialTitle] = useState("");
+  const [materialFilesDraft, setMaterialFilesDraft] = useState([]);
+  const [uploadingMaterial, setUploadingMaterial] = useState(false);
+  const [materialError, setMaterialError] = useState("");
+  const [materialNotice, setMaterialNotice] = useState("");
   const materials = course.materials || [];
+
+  useOutsideClick(addPopoverRef, addOpen, () => {
+    if (!uploadingMaterial) setAddOpen(false);
+  });
+
+  function addMaterialFiles(fileList) {
+    const nextFiles = Array.from(fileList || []);
+    if (nextFiles.length) {
+      setMaterialFilesDraft((current) => [...current, ...nextFiles]);
+      setMaterialError("");
+      setMaterialNotice("");
+    }
+  }
+
+  function removeMaterialDraftFile(index) {
+    setMaterialFilesDraft((current) => current.filter((_, fileIndex) => fileIndex !== index));
+  }
+
+  function resetMaterialDraft() {
+    setMaterialTitle("");
+    setMaterialFilesDraft([]);
+  }
+
+  async function uploadMaterial() {
+    if (!admin || uploadingMaterial) return;
+    if (materialFilesDraft.length === 0) {
+      setMaterialError("Vui lòng chọn ít nhất 1 file.");
+      return;
+    }
+    setUploadingMaterial(true);
+    setMaterialError("");
+    setMaterialNotice("");
+    try {
+      const attachments = hasFirebaseConfig
+        ? await uploadManyFiles(course, "materials", materialFilesDraft, { anyoneWithLink: true, writerEmails: adminWriterEmails() })
+        : await Promise.all(materialFilesDraft.map(readFileAsDataUrl));
+      const createdAtMillis = Date.now();
+      const title = materialTitle.trim() || `Tài liệu ${materials.length + 1}`;
+      const announcement = {
+        id: crypto.randomUUID(),
+        author: user.email,
+        authorName: user.displayName || user.email,
+        authorPhotoURL: user.photoURL || "",
+        role: "admin",
+        content: title,
+        pinned: false,
+        attachments,
+        publishAsMaterial: true,
+        createdAt: formatDateTime24(createdAtMillis),
+        createdAtMillis,
+        publishAtMillis: createdAtMillis,
+        scheduledAt: "",
+        scheduledAtMillis: 0
+      };
+      const savedAnnouncement = hasFirebaseConfig
+        ? await saveAnnouncementToCloud(course.id, announcement)
+        : announcement;
+      await updateCourse((current) => ({
+        ...current,
+        announcements: [savedAnnouncement, ...(current.announcements || [])],
+        materials: [createMaterialFromAnnouncement(savedAnnouncement, current), ...(current.materials || [])]
+      }), { sync: true });
+      resetMaterialDraft();
+      setAddOpen(false);
+
+      if (hasFirebaseConfig) {
+        try {
+          const emailResult = await notifyAnnouncementEmail(course.id, savedAnnouncement.id);
+          if (emailResult.skipped && emailResult.reason === "missing_email_config") {
+            setMaterialNotice("Đã upload tài liệu. Chưa gửi email vì chưa cấu hình RESEND_API_KEY và EMAIL_FROM trên Vercel.");
+          } else if (emailResult.sentCount > 0) {
+            setMaterialNotice(`Đã upload tài liệu và gửi email đến ${emailResult.sentCount} thành viên.`);
+          } else {
+            setMaterialNotice("Đã upload tài liệu. Không có thành viên khác để gửi email.");
+          }
+        } catch (error) {
+          console.error(error);
+          setMaterialNotice("Đã upload tài liệu nhưng không gửi được email thông báo.");
+        }
+      } else {
+        setMaterialNotice("Đã upload tài liệu.");
+      }
+    } catch (error) {
+      console.error(error);
+      setMaterialError("Không thể upload tài liệu. Vui lòng thử lại hoặc kiểm tra quyền upload/file.");
+    } finally {
+      setUploadingMaterial(false);
+    }
+  }
+
   return (
     <>
-      <PanelTitle title="Tài liệu" />
+      <PanelTitle
+        title="Tài liệu"
+        action={admin && (
+          <div className="material-add-wrap" ref={addPopoverRef}>
+            <button className="material-add-button" type="button" onClick={() => setAddOpen((current) => !current)} disabled={uploadingMaterial}>
+              <Plus size={14} /> Add
+            </button>
+            {addOpen && (
+              <div className="material-add-popover">
+                <input
+                  value={materialTitle}
+                  onChange={(event) => setMaterialTitle(event.target.value)}
+                  placeholder="Title..."
+                  disabled={uploadingMaterial}
+                />
+                <div className="material-file-picker-row">
+                  <label className="material-file-picker">
+                    Add File
+                    <input
+                      type="file"
+                      multiple
+                      disabled={uploadingMaterial}
+                      onChange={(event) => {
+                        addMaterialFiles(event.target.files);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
+                  <span>{materialFilesDraft.length ? `${materialFilesDraft.length} files have been selected` : "No file selected"}</span>
+                </div>
+                {materialFilesDraft.length > 0 && (
+                  <div className="material-draft-file-list">
+                    {materialFilesDraft.map((file, index) => (
+                      <div className="material-draft-file-row" key={`${file.name}-${file.size}-${file.lastModified}-${index}`}>
+                        <span>{file.name}</span>
+                        <button
+                          type="button"
+                          title="Xóa file"
+                          aria-label={`Xóa ${file.name}`}
+                          disabled={uploadingMaterial}
+                          onClick={() => removeMaterialDraftFile(index)}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {uploadingMaterial && <UploadStatus label="Đang upload tài liệu..." />}
+                {materialError && <p className="error-text">{materialError}</p>}
+                <div className="material-upload-actions">
+                  <button className="primary-action compact dark-action" type="button" onClick={uploadMaterial} disabled={uploadingMaterial}>
+                    {uploadingMaterial ? <span className="button-spinner" /> : <Upload size={14} />}
+                    {uploadingMaterial ? "Uploading" : "Upload"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      />
+      {materialNotice && <p className="success-text">{materialNotice}</p>}
+      {materialError && !addOpen && <p className="error-text">{materialError}</p>}
       <div className="list-stack">
         {materials.length === 0 && (
-          <div className="empty-state compact-empty">Chưa có tài liệu. Giảng viên tick Tài liệu khi đăng tin trong Card Thông báo để tạo thẻ tại đây.</div>
+          <div className="empty-state compact-empty">Chưa có tài liệu. Giảng viên có thể đăng tài liệu từ Card Tài liệu hoặc tick Tài liệu khi đăng tin trong Card Thông báo.</div>
         )}
         {materials.map((item) => (
           <article className="material-card" key={item.id}>
@@ -3246,12 +3424,22 @@ function MaterialsCard({ admin, course, updateCourse }) {
                 confirmLabel: "Xóa tài liệu"
               }, () => updateCourse((current) => ({ ...current, materials: (current.materials || []).filter((material) => material.id !== item.id) })))}><Trash2 size={15} /></button>}
             </div>
-            <div className="file-list">
+            <div className="file-list material-file-list">
               {materialFiles(item).length === 0 && <span>Chưa có file đính kèm.</span>}
               {materialFiles(item).map((file, index) => {
-                const fileUrl = materialFileUrl(file);
+                const previewUrl = filePreviewUrl(file) || materialFileUrl(file);
+                const downloadUrl = fileDownloadUrl(file) || materialFileUrl(file);
                 return (
-                  <button key={`${file.fileName}-${index}`} onClick={() => fileUrl && window.open(fileUrl, "_blank", "noopener,noreferrer")}><Download size={15} /> {file.fileName || "file"}</button>
+                  <div className="material-file-item" key={`${file.fileName}-${index}`}>
+                    <button className="material-file-preview" type="button" onClick={() => previewUrl && window.open(previewUrl, "_blank", "noopener,noreferrer")}>
+                      {file.fileName || "file"}
+                    </button>
+                    {downloadUrl && (
+                      <a className="download-icon-button" href={downloadUrl} target="_blank" rel="noreferrer" download title="Tải file" aria-label={`Tải ${file.fileName || "file"}`}>
+                        <Download size={15} />
+                      </a>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -3340,7 +3528,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
       const submission = {
         email: user.email,
         name: assignmentSubmissionName(course, { email: user.email }, user),
-        submittedAt: new Date(submittedAtMillis).toLocaleString("vi-VN"),
+        submittedAt: formatDateTime24(submittedAtMillis),
         submittedAtMillis,
         late: isAssignmentSubmissionLate(assignment, { submittedAtMillis }),
         ...uploaded
@@ -3547,7 +3735,7 @@ function assignmentDeadlineMillis(assignment) {
 
 function assignmentDeadlineLabel(assignment) {
   const dueAtMillis = assignmentDeadlineMillis(assignment);
-  return dueAtMillis ? new Date(dueAtMillis).toLocaleString("vi-VN") : "";
+  return dueAtMillis ? formatDateTime24(dueAtMillis) : "";
 }
 
 function isAssignmentSubmissionLate(assignment, submission) {
