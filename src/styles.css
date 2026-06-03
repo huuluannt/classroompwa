@@ -1991,6 +1991,13 @@ textarea { min-height: 88px; resize: vertical; }
 .assignment-head > button:first-child small {
   text-align: left;
 }
+.summary-grade-head {
+  align-items: stretch;
+}
+.summary-grade-head .summary-export-button {
+  min-height: 28px;
+  white-space: nowrap;
+}
 .submission-file-actions {
   display: inline-flex;
   align-items: center;

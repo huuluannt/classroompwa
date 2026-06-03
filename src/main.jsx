@@ -4141,11 +4141,16 @@ function SummaryGradebookItem({ admin, user, course }) {
 
   return (
     <article className="expand-card summary-gradebook">
-      <div className="assignment-head">
+      <div className="assignment-head summary-grade-head">
         <button onClick={() => setOpen(!open)}>
           <strong>BẢNG ĐIỂM TỔNG KẾT</strong>
           <small>{assignments.length ? `${assignments.length} bài tập` : "Chưa có bài tập"}</small>
         </button>
+        {admin && assignments.length > 0 && (
+          <button className="export-button summary-export-button" type="button" onClick={() => exportSummaryGradebook(course, assignments, rows)}>
+            <Download size={15} /> Export Excel
+          </button>
+        )}
       </div>
       {open && (
         assignments.length === 0 ? (
@@ -4865,6 +4870,83 @@ function mergePeerReviewResponseRows(primary, secondary) {
     seen.add(key);
     return true;
   }).sort((first, second) => Number(second.submittedAtMillis || 0) - Number(first.submittedAtMillis || 0));
+}
+
+function exportSummaryGradebook(course, assignments, rows) {
+  const assignmentHeaders = assignments.map((assignment) => {
+    const book = findSummaryGradebook(course, assignment.id, true);
+    const typeLabel = gradebookTypeLabels[book?.type] || "";
+    const ratio = assignment.ratio || "0";
+    return `${assignment.title || "Bài tập"} (Tỉ lệ ${ratio}%)${typeLabel ? ` - ${typeLabel}` : ""}`;
+  });
+  const headers = ["STT", "Họ tên", "Mã số", ...assignmentHeaders, "Final Score"];
+  const dataRows = rows.map((row) => [
+    row.member.order ?? "",
+    row.member.name || row.member.email || "",
+    row.member.studentId ?? "",
+    ...row.components.map((component) => component.display ?? ""),
+    row.finalScore ?? ""
+  ]);
+  const title = `${course.name || "Lớp học"} - Bảng điểm tổng kết`;
+  const html = `
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+        <style>
+          table { border-collapse: collapse; font-family: Arial, sans-serif; }
+          th, td { border: 1px solid #d9e2ec; padding: 8px 10px; vertical-align: middle; }
+          th { background: #eaf1ff; font-weight: 700; }
+          .title { background: #ffffff; font-size: 18px; text-align: left; }
+          .text { mso-number-format: "\\@"; }
+          .score { text-align: center; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <thead>
+            <tr><th class="title" colspan="${headers.length}">${escapeHtml(excelTextValue(title))}</th></tr>
+            <tr>${headers.map((header) => `<th class="text">${escapeHtml(excelTextValue(header))}</th>`).join("")}</tr>
+          </thead>
+          <tbody>
+            ${dataRows.map((row) => `
+              <tr>
+                ${row.map((cell, index) => {
+                  const isScoreColumn = index >= 3;
+                  return `<td class="${isScoreColumn ? "score" : "text"}">${escapeHtml(excelTextValue(cell))}</td>`;
+                }).join("")}
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </body>
+    </html>`;
+  downloadExcelHtml(html, `${safeExportFileName(course.name || course.code || "class")}-bang-diem-tong-ket.xls`);
+}
+
+function excelTextValue(value) {
+  const text = String(value ?? "");
+  return /^[=+\-@]/.test(text) ? `'${text}` : text;
+}
+
+function safeExportFileName(value) {
+  const cleaned = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w\s.-]+/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .slice(0, 70);
+  return cleaned || "export";
+}
+
+function downloadExcelHtml(html, fileName) {
+  const blob = new Blob([`\ufeff${html}`], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function exportReview(review) {
