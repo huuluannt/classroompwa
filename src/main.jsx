@@ -2912,14 +2912,18 @@ function sanitizeScheduleHtml(html = "") {
 
 function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
   const requestConfirm = useConfirmAction();
+  const addPopoverRef = useRef(null);
+  const [addOpen, setAddOpen] = useState(false);
   const groupCards = useMemo(() => buildGroupTopicCards(course), [course.members, course.groupTopics]);
   const topicDraftSignature = groupCards.map((group) => `${group.key}:${group.topic?.topic || ""}:${group.topic?.reportOrder || ""}:${group.topic?.intergroup || ""}`).join("|");
-  const [placeholderDraft, setPlaceholderDraft] = useState({ group: "", reportOrder: "", intergroup: "", topic: "" });
+  const [placeholderDraft, setPlaceholderDraft] = useState({ group: "", topic: "" });
   const [draftTopics, setDraftTopics] = useState({});
   const [draftOrders, setDraftOrders] = useState({});
   const [draftIntergroups, setDraftIntergroups] = useState({});
   const sortedGroupCards = useMemo(() => [...groupCards].sort((first, second) => compareGroupTopicCards(first, second, draftOrders)), [groupCards, draftOrders]);
   const nextGroupNumber = nextNumericText(groupCards.map((group) => group.rawGroup));
+
+  useOutsideClick(addPopoverRef, addOpen, () => setAddOpen(false));
 
   useEffect(() => {
     setDraftTopics(Object.fromEntries(groupCards.map((group) => [group.key, group.topic?.topic || ""])));
@@ -2950,8 +2954,9 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
         reportOrder: "",
         intergroup: ""
       })
-    }), { toast: true });
-    setPlaceholderDraft({ group: "", reportOrder: "", intergroup: "", topic: "" });
+    }), { toast: true, writeMembers: admin, classFields: admin ? null : ["groupTopics"] });
+    setPlaceholderDraft({ group: "", topic: "" });
+    setAddOpen(false);
   }
 
   function deleteGroupPlaceholder(group) {
@@ -2980,23 +2985,43 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
 
   return (
     <>
-      <PanelTitle title="Topic Nhóm" action={canEdit && <button className="primary-action compact" onClick={saveTopics}>Save</button>} />
-      {admin && (
-        <div className="inline-form placeholder-form group-placeholder-form">
-          <input
-            inputMode="numeric"
-            value={placeholderDraft.group || nextGroupNumber}
-            onChange={(event) => setPlaceholderDraft((current) => ({ ...current, group: cleanNumberText(event.target.value) }))}
-            placeholder="Nhóm"
-          />
-          <input
-            value={placeholderDraft.topic}
-            onChange={(event) => setPlaceholderDraft((current) => ({ ...current, topic: event.target.value }))}
-            placeholder="Topic"
-          />
-          <button onClick={createGroupPlaceholder}><Plus size={15} /> Tạo placeholder</button>
-        </div>
-      )}
+      <PanelTitle
+        title="Topic Nhóm"
+        action={canEdit && (
+          <div className="panel-actions">
+            <div className="material-add-wrap" ref={addPopoverRef}>
+              <button className="topic-add-button" type="button" onClick={() => setAddOpen((current) => !current)}>
+                <Plus size={14} /> New Topic
+              </button>
+              {addOpen && (
+                <div className="material-add-popover topic-add-popover">
+                  <div className="topic-add-row">
+                    <label htmlFor="group-topic-title">Topic:</label>
+                    <input
+                      id="group-topic-title"
+                      value={placeholderDraft.topic}
+                      onChange={(event) => setPlaceholderDraft((current) => ({ ...current, topic: event.target.value }))}
+                      placeholder="Writing..."
+                    />
+                  </div>
+                  <div className="topic-add-row topic-add-create-row">
+                    <label htmlFor="group-topic-number">Group:</label>
+                    <input
+                      id="group-topic-number"
+                      className="topic-number-input"
+                      inputMode="numeric"
+                      value={placeholderDraft.group || nextGroupNumber}
+                      onChange={(event) => setPlaceholderDraft((current) => ({ ...current, group: cleanNumberText(event.target.value) }))}
+                    />
+                    <button className="primary-action compact dark-action" type="button" onClick={createGroupPlaceholder}>Create</button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <button className="primary-action compact" type="button" onClick={saveTopics}>Save</button>
+          </div>
+        )}
+      />
       {groupCards.length === 0 ? (
         <div className="empty-state compact-empty">Chưa có nhóm. Có thể tạo placeholder trước hoặc nhập số nhóm trong Card Thành viên.</div>
       ) : (
@@ -3181,12 +3206,16 @@ function TopicMembersTable({ members, course }) {
 
 function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
   const requestConfirm = useConfirmAction();
+  const addPopoverRef = useRef(null);
+  const [addOpen, setAddOpen] = useState(false);
   const groupOptions = useMemo(() => buildGroupTopicCards(course), [course.members, course.groupTopics]);
   const linkCards = useMemo(() => buildIntergroupTopicCards(course, groupOptions), [course.intergroupTopics, groupOptions]);
   const linkDraftSignature = linkCards.map((link) => `${link.key}:${link.topic?.topic || ""}:${link.groupKeys.join(",")}`).join("|");
-  const [placeholderDraft, setPlaceholderDraft] = useState({ intergroup: "", groups: "", topic: "" });
+  const [placeholderDraft, setPlaceholderDraft] = useState({ intergroup: "", topic: "" });
   const [draftTopics, setDraftTopics] = useState({});
   const nextIntergroupNumber = nextNumericText(linkCards.map((link) => link.rawIntergroup));
+
+  useOutsideClick(addPopoverRef, addOpen, () => setAddOpen(false));
 
   useEffect(() => {
     setDraftTopics(Object.fromEntries(linkCards.map((link) => [link.key, link.topic?.topic || ""])));
@@ -3205,25 +3234,21 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
           memberEmails: uniqueValues(link.groups.flatMap((group) => group.members.map((member) => member.email)))
         };
       })
-      .filter((item) => item.groupKeys.length >= 2);
+      .filter((item) => item.intergroup);
     updateCourse((current) => ({ ...current, intergroupTopics: nextTopics }), { toast: true, writeMembers: admin, classFields: admin ? null : ["intergroupTopics"] });
   }
 
   function createIntergroupPlaceholder() {
     const rawIntergroup = cleanNumberText(placeholderDraft.intergroup || nextIntergroupNumber);
-    const groupKeys = parseGroupKeys(placeholderDraft.groups);
-    if (!rawIntergroup || groupKeys.length < 2) return;
+    if (!rawIntergroup) return;
 
     updateCourse((current) => {
-      const nextGroupTopics = groupKeys.reduce((topics, rawGroup) => (
-        upsertGroupTopicPlaceholder(topics, rawGroup, { intergroup: rawIntergroup })
-      ), current.groupTopics || []);
       const nextIntergroupTopic = {
         id: intergroupTopicId(rawIntergroup),
         intergroup: rawIntergroup,
         name: `Liên nhóm ${rawIntergroup}`,
-        groupKeys,
-        groupNames: groupKeys.map(groupTopicLabel),
+        groupKeys: [],
+        groupNames: [],
         topic: placeholderDraft.topic || "",
         memberEmails: [],
         placeholder: true
@@ -3232,11 +3257,17 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
       const exists = existingTopics.some((topic) => String(topic.intergroup ?? "").trim() === rawIntergroup || topic.id === nextIntergroupTopic.id);
       return {
         ...current,
-        groupTopics: nextGroupTopics,
         intergroupTopics: exists
           ? existingTopics.map((topic) => (
             String(topic.intergroup ?? "").trim() === rawIntergroup || topic.id === nextIntergroupTopic.id
-              ? { ...topic, ...nextIntergroupTopic, topic: placeholderDraft.topic || topic.topic || "" }
+              ? {
+                ...topic,
+                ...nextIntergroupTopic,
+                groupKeys: topic.groupKeys || topic.groups || [],
+                groupNames: topic.groupNames || [],
+                memberEmails: topic.memberEmails || [],
+                topic: placeholderDraft.topic || topic.topic || ""
+              }
               : topic
           ))
           : [...existingTopics, nextIntergroupTopic]
@@ -3244,9 +3275,10 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
     }, {
       toast: true,
       writeMembers: admin,
-      classFields: admin ? null : ["groupTopics", "intergroupTopics"]
+      classFields: admin ? null : ["intergroupTopics"]
     });
-    setPlaceholderDraft({ intergroup: "", groups: "", topic: "" });
+    setPlaceholderDraft({ intergroup: "", topic: "" });
+    setAddOpen(false);
   }
 
   function deleteIntergroupPlaceholder(link) {
@@ -3275,28 +3307,43 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
 
   return (
     <>
-      <PanelTitle title="Topic Liên nhóm" action={canEdit && <button className="primary-action compact" onClick={saveIntergroupTopics}>Save</button>} />
-      {admin && (
-        <div className="inline-form placeholder-form intergroup-placeholder-form">
-          <input
-            inputMode="numeric"
-            value={placeholderDraft.intergroup || nextIntergroupNumber}
-            onChange={(event) => setPlaceholderDraft((current) => ({ ...current, intergroup: cleanNumberText(event.target.value) }))}
-            placeholder="Liên nhóm"
-          />
-          <input
-            value={placeholderDraft.groups}
-            onChange={(event) => setPlaceholderDraft((current) => ({ ...current, groups: event.target.value }))}
-            placeholder="Các nhóm, ví dụ 1,2"
-          />
-          <input
-            value={placeholderDraft.topic}
-            onChange={(event) => setPlaceholderDraft((current) => ({ ...current, topic: event.target.value }))}
-            placeholder="Topic liên nhóm"
-          />
-          <button onClick={createIntergroupPlaceholder}><Plus size={15} /> Tạo placeholder</button>
-        </div>
-      )}
+      <PanelTitle
+        title="Topic Liên nhóm"
+        action={canEdit && (
+          <div className="panel-actions">
+            <div className="material-add-wrap" ref={addPopoverRef}>
+              <button className="topic-add-button" type="button" onClick={() => setAddOpen((current) => !current)}>
+                <Plus size={14} /> New Topic
+              </button>
+              {addOpen && (
+                <div className="material-add-popover topic-add-popover">
+                  <div className="topic-add-row">
+                    <label htmlFor="intergroup-topic-title">Topic:</label>
+                    <input
+                      id="intergroup-topic-title"
+                      value={placeholderDraft.topic}
+                      onChange={(event) => setPlaceholderDraft((current) => ({ ...current, topic: event.target.value }))}
+                      placeholder="Writing..."
+                    />
+                  </div>
+                  <div className="topic-add-row topic-add-create-row">
+                    <label htmlFor="intergroup-topic-number">InterGroup:</label>
+                    <input
+                      id="intergroup-topic-number"
+                      className="topic-number-input"
+                      inputMode="numeric"
+                      value={placeholderDraft.intergroup || nextIntergroupNumber}
+                      onChange={(event) => setPlaceholderDraft((current) => ({ ...current, intergroup: cleanNumberText(event.target.value) }))}
+                    />
+                    <button className="primary-action compact dark-action" type="button" onClick={createIntergroupPlaceholder}>Create</button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <button className="primary-action compact" type="button" onClick={saveIntergroupTopics}>Save</button>
+          </div>
+        )}
+      />
       {linkCards.length === 0 ? (
         <div className="empty-state compact-empty">Chưa có liên nhóm. Có thể tạo placeholder trước hoặc nhập cùng một số ở ô Liên nhóm trong Card Topic Nhóm cho ít nhất 2 nhóm rồi bấm Save.</div>
       ) : (
@@ -3307,7 +3354,7 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
                 <div className="group-topic-bar intergroup-topic-bar">
                   <span className="group-topic-badge">{link.label}</span>
                   <label className="group-topic-compact-field intergroup-groups-field">
-                    <strong>{`(${link.groups.map((group) => group.label).join(", ")})`}</strong>
+                    <strong>{link.groups.length ? `(${link.groups.map((group) => group.label).join(", ")})` : "(Chưa có nhóm)"}</strong>
                   </label>
                   {canEdit && link.groups.every((group) => group.members.length === 0) && (
                     <button className="placeholder-delete-button" type="button" onClick={() => requestConfirm({
@@ -3351,11 +3398,27 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
 function buildIntergroupTopicCards(course, groupOptions) {
   const savedTopics = course.intergroupTopics || [];
   const groupMap = new Map(groupOptions.map((group) => [group.key, group]));
+  const groupsByIntergroup = new Map();
+
+  function ensureIntergroupLink(rawIntergroup) {
+    const key = `intergroup-${rawIntergroup}`;
+    if (!groupsByIntergroup.has(key)) {
+      groupsByIntergroup.set(key, {
+        key,
+        rawIntergroup,
+        label: `Liên nhóm ${rawIntergroup}`,
+        groups: [],
+        topic: null
+      });
+    }
+    return groupsByIntergroup.get(key);
+  }
 
   savedTopics.forEach((topic) => {
     const rawIntergroup = String(topic.intergroup ?? "").trim();
+    if (!rawIntergroup) return;
+    ensureIntergroupLink(rawIntergroup).topic = topic;
     const groupKeys = parseGroupKeys(topic.groupKeys || topic.groups || []);
-    if (!rawIntergroup || groupKeys.length < 2) return;
     groupKeys.forEach((rawGroup) => {
       const existingGroup = groupMap.get(rawGroup);
       if (existingGroup) {
@@ -3385,25 +3448,14 @@ function buildIntergroupTopicCards(course, groupOptions) {
     });
   });
 
-  const groupsByIntergroup = new Map();
-
   [...groupMap.values()].forEach((group) => {
     const rawIntergroup = String(group.topic?.intergroup || "").trim();
     if (!rawIntergroup) return;
-    const key = `intergroup-${rawIntergroup}`;
-    if (!groupsByIntergroup.has(key)) {
-      groupsByIntergroup.set(key, {
-        key,
-        rawIntergroup,
-        label: `Liên nhóm ${rawIntergroup}`,
-        groups: []
-      });
-    }
-    groupsByIntergroup.get(key).groups.push(group);
+    ensureIntergroupLink(rawIntergroup).groups.push(group);
   });
 
   return [...groupsByIntergroup.values()]
-    .filter((link) => link.groups.length >= 2)
+    .filter((link) => link.topic || link.groups.length >= 2)
     .sort((first, second) => compareNumericText(first.rawIntergroup, second.rawIntergroup)
       || first.label.localeCompare(second.label, "vi", { numeric: true, sensitivity: "base" }))
     .map((link) => {
@@ -3413,7 +3465,7 @@ function buildIntergroupTopicCards(course, groupOptions) {
         ...link,
         groups: sortedGroups,
         groupKeys,
-        topic: findSavedIntergroupTopic(savedTopics, link.rawIntergroup, groupKeys)
+        topic: link.topic || findSavedIntergroupTopic(savedTopics, link.rawIntergroup, groupKeys)
       };
     });
 }

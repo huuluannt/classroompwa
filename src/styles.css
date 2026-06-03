@@ -1772,6 +1772,20 @@ textarea { min-height: 88px; resize: vertical; }
   padding: 0 12px;
   font-weight: 800;
 }
+.topic-add-button {
+  min-height: 34px;
+  min-width: 124px;
+  border: 1px solid #020617;
+  border-radius: 8px;
+  background: #fff;
+  color: #020617;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 12px;
+  font-weight: 600;
+}
 .material-add-popover {
   position: absolute;
   top: calc(100% + 6px);
@@ -1820,6 +1834,30 @@ textarea { min-height: 88px; resize: vertical; }
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 10px;
+}
+.topic-add-popover {
+  width: min(520px, calc(100vw - 34px));
+}
+.topic-add-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+.topic-add-create-row {
+  grid-template-columns: auto 54px minmax(104px, 1fr);
+}
+.topic-add-row label {
+  color: #020617;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.topic-number-input {
+  text-align: center;
+}
+.topic-add-create-row .dark-action {
+  justify-self: end;
+  min-width: 104px;
 }
 .material-file-picker-row {
   display: flex;
@@ -2809,6 +2847,20 @@ textarea {
   .assignment-create-popover-row,
   .grade-add-row {
     grid-template-columns: 1fr;
+  }
+  .topic-add-popover {
+    left: auto;
+    right: 0;
+  }
+  .topic-add-row {
+    grid-template-columns: 1fr;
+  }
+  .topic-add-create-row {
+    grid-template-columns: auto 70px;
+  }
+  .topic-add-create-row .dark-action {
+    grid-column: 1 / -1;
+    justify-self: stretch;
   }
   .grade-topic-bar, .intergroup-grade-bar, .intergroup-topic-bar { grid-template-columns: 1fr; }
   .intergroup-toolbar { grid-template-columns: 1fr; }
