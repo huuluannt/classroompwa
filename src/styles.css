@@ -444,13 +444,46 @@ textarea { min-height: 88px; resize: vertical; }
   bottom: 10px;
   z-index: 9;
   width: min(340px, calc(100vw - 24px));
-  max-height: 360px;
+  max-height: 240px;
   overflow: auto;
   border: 1px solid #dbe4f0;
   border-radius: 8px;
   background: #fff;
   box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16);
   padding: 8px;
+}
+.collapsed-account-box {
+  width: 100%;
+  margin-top: auto;
+}
+.collapsed-account-row {
+  display: grid;
+  gap: 8px;
+}
+.account-icon-trigger {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #e1e7ef;
+  border-radius: 8px;
+  background: #f8fafc;
+  display: grid;
+  place-items: center;
+  padding: 5px;
+}
+.account-icon-trigger .avatar {
+  width: 30px;
+  height: 30px;
+  flex-basis: 30px;
+}
+.sidebar.closed .notification-panel {
+  left: 82px;
+}
+.sidebar.closed .account-menu {
+  position: fixed;
+  left: 82px;
+  right: auto;
+  bottom: 8px;
+  top: auto;
 }
 .notification-panel-head {
   display: flex;
@@ -2173,8 +2206,23 @@ button:disabled {
 .notification-panel {
   left: 254px;
   bottom: 8px;
+  max-height: 240px;
   border-radius: 7px;
   padding: 7px;
+}
+.collapsed-account-row { gap: 6px; }
+.account-icon-trigger {
+  min-height: 34px;
+  border-radius: 7px;
+}
+.account-icon-trigger .avatar {
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+}
+.sidebar.closed .notification-panel,
+.sidebar.closed .account-menu {
+  left: 68px;
 }
 .notification-item {
   border-radius: 6px;
@@ -2651,7 +2699,7 @@ textarea {
     right: 0;
     bottom: calc(100% + 6px);
     width: min(340px, calc(100vw - 24px));
-    max-height: min(360px, calc(100dvh - 132px));
+    max-height: min(240px, calc(100dvh - 132px));
   }
   .mobile-view-cards .detail-panel,
   .mobile-view-detail .leftpanel,

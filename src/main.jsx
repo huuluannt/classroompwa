@@ -1204,7 +1204,10 @@ function Sidebar(props) {
           </nav>
           <div className="account-box" ref={accountRef}>
             <div className="account-row">
-              <button className="account-trigger" onClick={() => setAccountOpen(!accountOpen)}>
+              <button className="account-trigger" onClick={() => {
+                setNotificationOpen(false);
+                setAccountOpen(!accountOpen);
+              }}>
                 <ProfileAvatar user={user} label={user.displayName || user.email} />
                 <span>
                   <strong>{user.displayName || user.email}</strong>
@@ -1278,6 +1281,88 @@ function Sidebar(props) {
             )}
           </div>
         </>
+      )}
+      {!sidebarOpen && (
+        <div className="account-box collapsed-account-box" ref={accountRef}>
+          <div className="collapsed-account-row">
+            <div className="notification-wrap collapsed-notification-wrap" ref={notificationRef}>
+              <button
+                className={`notification-button ${notificationUnread ? "unread" : ""}`}
+                type="button"
+                title={notificationUnread ? "Có thông báo mới" : "Thông báo"}
+                aria-label={notificationUnread ? "Có thông báo mới" : "Thông báo"}
+                onClick={() => {
+                  const nextOpen = !notificationOpen;
+                  setNotificationOpen(nextOpen);
+                  setAccountOpen(false);
+                  if (nextOpen) onNotificationsSeen?.();
+                }}
+              >
+                {notificationUnread ? <BellDot size={18} /> : <Bell size={18} />}
+              </button>
+              {notificationOpen && (
+                <div className="notification-panel">
+                  <div className="notification-panel-head">
+                    <strong>Thông báo mới</strong>
+                    <small>{notificationItems.length ? `${notificationItems.length} bài đăng gần nhất` : "Chưa có bài đăng"}</small>
+                  </div>
+                  <div className="notification-list">
+                    {notificationItems.length === 0 && (
+                      <div className="notification-empty">Chưa có thông báo mới.</div>
+                    )}
+                    {notificationItems.map((item) => (
+                      <button
+                        className={`notification-item ${item.unread ? "unread" : ""}`}
+                        type="button"
+                        key={item.id}
+                        onClick={() => {
+                          onNotificationSelect?.(item);
+                          setNotificationOpen(false);
+                        }}
+                      >
+                        <span className="notification-class">{item.courseName}</span>
+                        {item.courseCode && <span className="notification-code">{item.courseCode}</span>}
+                        <span className="notification-preview">{item.content}</span>
+                        <time>{item.createdAt}</time>
+                        {item.unread && <span className="notification-badge">Mới</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <button
+              className="account-icon-trigger"
+              type="button"
+              title={user.displayName || user.email}
+              aria-label="Mở menu account"
+              onClick={() => {
+                setNotificationOpen(false);
+                setAccountOpen(!accountOpen);
+              }}
+            >
+              <ProfileAvatar user={user} label={user.displayName || user.email} />
+            </button>
+          </div>
+          {accountOpen && (
+            <div className="account-menu">
+              <button onClick={onProfile}>
+                <UserRound size={15} />
+                Profile
+              </button>
+              {canManageLecturers && (
+                <button onClick={onManageLecturers}>
+                  <UserPlus size={15} />
+                  Manage Lecturers
+                </button>
+              )}
+              <button onClick={onLogout}>
+                <LogOut size={15} />
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </aside>
   );
