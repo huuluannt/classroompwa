@@ -367,6 +367,7 @@ textarea { min-height: 88px; resize: vertical; }
 .account-menu {
   top: auto;
   bottom: calc(100% + 8px);
+  width: 190px;
 }
 .mini-menu button, .account-menu button {
   width: 100%;
@@ -378,6 +379,7 @@ textarea { min-height: 88px; resize: vertical; }
   align-items: center;
   gap: 8px;
   color: #172033;
+  white-space: nowrap;
 }
 .account-box { position: relative; margin-top: auto; }
 .account-row {
@@ -2174,12 +2176,14 @@ button:disabled {
 .account-menu {
   top: auto;
   bottom: calc(100% + 6px);
+  width: 190px;
 }
 .mini-menu button,
 .account-menu button {
   min-height: 28px;
   padding: 7px;
   border-radius: 5px;
+  white-space: nowrap;
 }
 .account-row {
   grid-template-columns: minmax(0, 1fr) 36px;
