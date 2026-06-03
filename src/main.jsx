@@ -374,12 +374,14 @@ function App() {
   const accessibleClasses = useMemo(() => {
     if (!user) return [];
     const matches = classes.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()));
+    const userEmail = normalizeEmail(user.email);
     if (supreme) {
       return supremeShowAllClasses
         ? matches
         : matches.filter((item) => (
           normalizeEmail(item.ownerEmail || SUPREME_EMAIL) === SUPREME_EMAIL
-          || (item.members || []).some((member) => normalizeEmail(member.email) === normalizeEmail(user.email))
+          || lecturerEmailSet(item).has(userEmail)
+          || (item.members || []).some((member) => normalizeEmail(member.email) === userEmail)
         ));
     }
     if (primaryLecturer) return matches;
