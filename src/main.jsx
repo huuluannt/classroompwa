@@ -186,6 +186,28 @@ function canManageCourseLecturers(user, course) {
   return canDeleteCourse(user, course);
 }
 
+function isSupremeScopedCourse(course, user) {
+  if (!course || !user?.email) return false;
+  const userEmail = normalizeEmail(user.email);
+  return (
+    normalizeEmail(course.ownerEmail || SUPREME_EMAIL) === SUPREME_EMAIL
+    || lecturerEmailSet(course).has(userEmail)
+    || (course.members || []).some((member) => normalizeEmail(member.email) === userEmail)
+  );
+}
+
+function courseMatchesQuery(course, query) {
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+  if (!normalizedQuery) return true;
+  return [
+    course?.name,
+    course?.description,
+    course?.code,
+    course?.info?.title,
+    course?.info?.description
+  ].some((value) => String(value || "").toLowerCase().includes(normalizedQuery));
+}
+
 function initials(value = "") {
   return value
     .split(/\s|@/)
@@ -373,16 +395,11 @@ function App() {
   const primaryLecturer = canCreateClasses(user, lecturers);
   const accessibleClasses = useMemo(() => {
     if (!user) return [];
-    const matches = classes.filter((item) => item.name.toLowerCase().includes(query.toLowerCase()));
-    const userEmail = normalizeEmail(user.email);
+    const matches = classes.filter((item) => courseMatchesQuery(item, query));
     if (supreme) {
       return supremeShowAllClasses
         ? matches
-        : matches.filter((item) => (
-          normalizeEmail(item.ownerEmail || SUPREME_EMAIL) === SUPREME_EMAIL
-          || lecturerEmailSet(item).has(userEmail)
-          || (item.members || []).some((member) => normalizeEmail(member.email) === userEmail)
-        ));
+        : matches.filter((item) => isSupremeScopedCourse(item, user));
     }
     if (primaryLecturer) return matches;
     return matches.filter((item) => canManageCourse(user, item) || item.members.some((member) => member.email === user.email));
@@ -405,6 +422,7 @@ function App() {
   const selectedClassCanDelete = canDeleteCourse(user, selectedClass);
   const selectedClassCanManageLecturers = canManageCourseLecturers(user, selectedClass);
   const latestAnnouncementTime = useMemo(() => latestAnnouncementTimestamp(notificationClasses), [notificationClasses]);
+  const notificationItems = useMemo(() => notificationItemsFromClasses(notificationClasses, announcementSeenAt), [notificationClasses, announcementSeenAt]);
   const hasUnreadAnnouncements = announcementSeenAt !== null && latestAnnouncementTime > announcementSeenAt;
 
   useEffect(() => {
@@ -652,11 +670,25 @@ function App() {
     }
   }
 
-  function handleNotificationClick() {
+  function markNotificationsSeen() {
     if (!user?.email) return;
     const nextSeenAt = Math.max(Date.now(), latestAnnouncementTime || 0);
     saveAnnouncementSeenAt(user.email, nextSeenAt);
     setAnnouncementSeenAt(nextSeenAt);
+  }
+
+  function handleNotificationSelect(item) {
+    if (!item?.courseId) return;
+    const targetCourse = classes.find((course) => course.id === item.courseId);
+    setQuery("");
+    setClassListMode(sidebarArchivedClassIds.includes(item.courseId) ? "archived" : "main");
+    if (supreme && targetCourse && !supremeShowAllClasses && !isSupremeScopedCourse(targetCourse, user)) {
+      setSupremeShowAllClasses(true);
+    }
+    setSelectedClassId(item.courseId);
+    setSelectedCard("announcements");
+    markNotificationsSeen();
+    navigateMobileView(MOBILE_VIEWS.detail);
   }
 
   async function handleProfileSave(profile) {
@@ -734,7 +766,9 @@ function App() {
         accountOpen={accountOpen}
         setAccountOpen={setAccountOpen}
         notificationUnread={hasUnreadAnnouncements}
-        onNotificationsClick={handleNotificationClick}
+        notificationItems={notificationItems}
+        onNotificationsSeen={markNotificationsSeen}
+        onNotificationSelect={handleNotificationSelect}
         user={user}
         onProfile={() => {
           setShowProfile(true);
@@ -913,6 +947,39 @@ function latestAnnouncementTimestamp(classes) {
   )));
 }
 
+function announcementPreviewText(content = "") {
+  return String(content || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join(" · ")
+    .slice(0, 140);
+}
+
+function notificationItemsFromClasses(classes, seenAt) {
+  const nowMillis = Date.now();
+  return classes.flatMap((course) => (
+    (course.announcements || [])
+      .filter((announcement) => announcementPublishMillis(announcement) <= nowMillis)
+      .map((announcement) => {
+        const publishMillis = announcementPublishMillis(announcement);
+        return {
+          id: `${course.id}-${announcement.id || publishMillis}`,
+          courseId: course.id,
+          courseName: course.name || "Lớp học",
+          courseCode: course.code || "",
+          content: announcementPreviewText(announcement.content) || "Bài đăng mới",
+          authorName: announcement.authorName || announcement.author || "",
+          createdAt: announcement.createdAt || formatDateTime24(publishMillis),
+          publishMillis,
+          unread: seenAt !== null && publishMillis > seenAt
+        };
+      })
+  ))
+    .sort((first, second) => second.publishMillis - first.publishMillis)
+    .slice(0, 12);
+}
+
 function profileFromClasses(user, classes) {
   const profile = classes.map((course) => course.profiles?.[user.email]).find(Boolean);
   const member = classes.flatMap((course) => course.members || []).find((item) => item.email === user.email);
@@ -1035,14 +1102,19 @@ function Sidebar(props) {
     accountOpen,
     setAccountOpen,
     notificationUnread,
-    onNotificationsClick,
+    notificationItems = [],
+    onNotificationsSeen,
+    onNotificationSelect,
     user,
     onProfile,
     onManageLecturers,
     onLogout
   } = props;
+  const [notificationOpen, setNotificationOpen] = useState(false);
   const accountRef = useRef(null);
+  const notificationRef = useRef(null);
   useOutsideClick(accountRef, accountOpen, () => setAccountOpen(false));
+  useOutsideClick(notificationRef, notificationOpen, () => setNotificationOpen(false));
 
   return (
     <aside className={`sidebar ${sidebarOpen ? "" : "closed"}`}>
@@ -1066,7 +1138,7 @@ function Sidebar(props) {
           {canCreateClass && (
             <button className="primary-action" onClick={onNewClass}>
               <Plus size={16} />
-              Add New Class
+              Thêm lớp học mới
             </button>
           )}
           <button className="join-action" onClick={onJoin}>
@@ -1139,15 +1211,52 @@ function Sidebar(props) {
                   <small>{user.email}</small>
                 </span>
               </button>
-              <button
-                className={`notification-button ${notificationUnread ? "unread" : ""}`}
-                type="button"
+              <div className="notification-wrap" ref={notificationRef}>
+                <button
+                  className={`notification-button ${notificationUnread ? "unread" : ""}`}
+                  type="button"
                 title={notificationUnread ? "Có thông báo mới" : "Thông báo"}
                 aria-label={notificationUnread ? "Có thông báo mới" : "Thông báo"}
-                onClick={onNotificationsClick}
+                  onClick={() => {
+                    const nextOpen = !notificationOpen;
+                    setNotificationOpen(nextOpen);
+                    setAccountOpen(false);
+                    if (nextOpen) onNotificationsSeen?.();
+                  }}
               >
-                {notificationUnread ? <BellDot size={19} /> : <Bell size={19} />}
-              </button>
+                  {notificationUnread ? <BellDot size={19} /> : <Bell size={19} />}
+                </button>
+                {notificationOpen && (
+                  <div className="notification-panel">
+                    <div className="notification-panel-head">
+                      <strong>Thông báo mới</strong>
+                      <small>{notificationItems.length ? `${notificationItems.length} bài đăng gần nhất` : "Chưa có bài đăng"}</small>
+                    </div>
+                    <div className="notification-list">
+                      {notificationItems.length === 0 && (
+                        <div className="notification-empty">Chưa có thông báo mới.</div>
+                      )}
+                      {notificationItems.map((item) => (
+                        <button
+                          className={`notification-item ${item.unread ? "unread" : ""}`}
+                          type="button"
+                          key={item.id}
+                          onClick={() => {
+                            onNotificationSelect?.(item);
+                            setNotificationOpen(false);
+                          }}
+                        >
+                          <span className="notification-class">{item.courseName}</span>
+                          {item.courseCode && <span className="notification-code">{item.courseCode}</span>}
+                          <span className="notification-preview">{item.content}</span>
+                          <time>{item.createdAt}</time>
+                          {item.unread && <span className="notification-badge">Mới</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
             {accountOpen && (
               <div className="account-menu">
@@ -4773,10 +4882,10 @@ function prepareCourseForSave(course, user) {
 function NewClassModal({ existing, user, onClose, onSave }) {
   const [form, setForm] = useState(() => existing || { id: crypto.randomUUID(), name: "", description: "", code: "", pinned: false, announcementPostPermission: ANNOUNCEMENT_POST_PERMISSIONS.everyone, info: { title: "", size: 0, time: "", room: "", description: "", rules: "" }, scheduleRows: defaultScheduleRows(), members: [], announcements: [], groupTopics: [], intergroupTopics: [], personalTopics: [], materials: [], assignments: [], gradebooks: [], peerReviews: [], extraCards: [], hiddenCards: [], pinnedCards: [], cardOrder: [] });
   return (
-    <Modal title={existing ? "Edit Class" : "Add New Class"} onClose={onClose}>
-      <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value, info: { ...form.info, title: event.target.value } })} placeholder="Tên class" />
+    <Modal title={existing ? "Chỉnh sửa lớp học" : "Thêm lớp học mới"} onClose={onClose}>
+      <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value, info: { ...form.info, title: event.target.value } })} placeholder="Tên lớp mới" />
       <input value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value, info: { ...form.info, description: event.target.value } })} placeholder="Mô tả" />
-      <button className="primary-action" onClick={() => onSave(form)}>Save</button>
+      <button className="primary-action" onClick={() => onSave(form)}>{existing ? "Lưu lớp học" : "Tạo lớp mới"}</button>
     </Modal>
   );
 }
@@ -4853,7 +4962,7 @@ function EmptyState({ admin, onJoin, onNewClass }) {
     <section className="empty-state">
       <h2>Chưa có lớp học hiển thị</h2>
       <p>Người học cần nhập mã lớp và chờ admin accept trước khi xem nội dung.</p>
-      <button className="primary-action" onClick={admin ? onNewClass : onJoin}>{admin ? "Add New Class" : "Tham gia lớp học"}</button>
+      <button className="primary-action" onClick={admin ? onNewClass : onJoin}>{admin ? "Thêm lớp học mới" : "Tham gia lớp học"}</button>
     </section>
   );
 }
