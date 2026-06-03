@@ -438,9 +438,10 @@ textarea { min-height: 88px; resize: vertical; }
   min-height: 38px;
 }
 .notification-panel {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 8px);
+  position: fixed;
+  left: 258px;
+  right: auto;
+  bottom: 10px;
   z-index: 9;
   width: min(340px, calc(100vw - 24px));
   max-height: 360px;
@@ -2170,7 +2171,8 @@ button:disabled {
 }
 .notification-wrap .notification-button { min-height: 34px; }
 .notification-panel {
-  bottom: calc(100% + 6px);
+  left: 254px;
+  bottom: 8px;
   border-radius: 7px;
   padding: 7px;
 }
@@ -2642,6 +2644,14 @@ textarea {
     min-height: 0;
     display: block;
     overflow: hidden;
+  }
+  .mobile-flow .notification-panel {
+    position: absolute;
+    left: auto;
+    right: 0;
+    bottom: calc(100% + 6px);
+    width: min(340px, calc(100vw - 24px));
+    max-height: min(360px, calc(100dvh - 132px));
   }
   .mobile-view-cards .detail-panel,
   .mobile-view-detail .leftpanel,
