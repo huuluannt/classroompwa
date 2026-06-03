@@ -1140,7 +1140,10 @@ textarea { min-height: 88px; resize: vertical; }
   border-color: #fde68a;
 }
 .feed-item strong, .feed-item small { display: block; }
-.feed-item p { margin-bottom: 0; }
+.feed-item p {
+  margin-bottom: 0;
+  white-space: pre-line;
+}
 .post-author {
   display: flex;
   align-items: center;

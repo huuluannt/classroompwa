@@ -377,7 +377,10 @@ function App() {
     if (supreme) {
       return supremeShowAllClasses
         ? matches
-        : matches.filter((item) => normalizeEmail(item.ownerEmail || SUPREME_EMAIL) === SUPREME_EMAIL);
+        : matches.filter((item) => (
+          normalizeEmail(item.ownerEmail || SUPREME_EMAIL) === SUPREME_EMAIL
+          || (item.members || []).some((member) => normalizeEmail(member.email) === normalizeEmail(user.email))
+        ));
     }
     if (primaryLecturer) return matches;
     return matches.filter((item) => canManageCourse(user, item) || item.members.some((member) => member.email === user.email));
@@ -3786,7 +3789,7 @@ function assignmentTitleWithRatio(assignment) {
 }
 
 function assignmentAnnouncementContent(assignment) {
-  const lines = [`Bài tập mới: ${assignment?.title || "Bài tập"}`];
+  const lines = [`Tiêu đề bài tập: ${assignment?.title || "Bài tập"}`];
   const content = String(assignment?.content || "").trim();
   if (content) lines.push(`Nội dung giao bài: ${content}`);
   const dueAtMillis = assignmentDeadlineMillis(assignment);
