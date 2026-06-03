@@ -3651,11 +3651,17 @@ function MaterialsCard({ admin, user, course, updateCourse }) {
 
 
 function AssignmentsCard({ admin, user, course, updateCourse }) {
+  const addPopoverRef = useRef(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [draft, setDraft] = useState({ title: "", content: "", dueAt: "" });
   const [creatingAssignment, setCreatingAssignment] = useState(false);
   const [assignmentCreateError, setAssignmentCreateError] = useState("");
   const [assignmentCreateNotice, setAssignmentCreateNotice] = useState("");
   const assignments = normalizeAssignmentRatios(course.assignments || []);
+
+  useOutsideClick(addPopoverRef, addOpen, () => {
+    if (!creatingAssignment) setAddOpen(false);
+  });
 
   async function createAssignmentCard() {
     const title = draft.title.trim();
@@ -3706,6 +3712,7 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
       }, { sync: true });
 
       setDraft({ title: "", content: "", dueAt: "" });
+      setAddOpen(false);
       if (hasFirebaseConfig) {
         try {
           const emailResult = await notifyAnnouncementEmail(course.id, savedAnnouncement.id);
@@ -3733,27 +3740,51 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
 
   return (
     <>
-      <PanelTitle title="Bài tập" />
-      {admin && (
-        <div className="inline-form two assignment-create-form">
-          <input disabled={creatingAssignment} placeholder="Tiêu đề bài tập" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
-          <textarea disabled={creatingAssignment} placeholder="Nội dung giao bài" value={draft.content} onChange={(event) => setDraft({ ...draft, content: event.target.value })} />
-          <input
-            type="datetime-local"
-            aria-label="Hạn nộp bài"
-            disabled={creatingAssignment}
-            value={draft.dueAt}
-            onChange={(event) => setDraft({ ...draft, dueAt: event.target.value })}
-          />
-          <button onClick={createAssignmentCard} disabled={creatingAssignment || !draft.title.trim()}>
-            {creatingAssignment ? <span className="button-spinner" /> : <FilePlus2 size={15} />}
-            {creatingAssignment ? "Đang tạo" : "Tạo thẻ"}
-          </button>
-          {creatingAssignment && <UploadStatus label="Đang tạo bài tập và thông báo..." />}
-          {assignmentCreateError && <p className="error-text">{assignmentCreateError}</p>}
-          {assignmentCreateNotice && <p className="success-text">{assignmentCreateNotice}</p>}
-        </div>
-      )}
+      <PanelTitle
+        title="Bài tập"
+        action={admin && (
+          <div className="material-add-wrap" ref={addPopoverRef}>
+            <button className="material-add-button" type="button" onClick={() => setAddOpen((current) => !current)} disabled={creatingAssignment}>
+              <Plus size={14} /> Add
+            </button>
+            {addOpen && (
+              <div className="material-add-popover assignment-add-popover">
+                <input
+                  disabled={creatingAssignment}
+                  placeholder="Title..."
+                  value={draft.title}
+                  onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+                />
+                <textarea
+                  disabled={creatingAssignment}
+                  placeholder="Assignment..."
+                  value={draft.content}
+                  onChange={(event) => setDraft({ ...draft, content: event.target.value })}
+                />
+                <div className="assignment-create-popover-row">
+                  <label htmlFor="assignment-due-at">Deadline:</label>
+                  <input
+                    id="assignment-due-at"
+                    type="datetime-local"
+                    aria-label="Hạn nộp bài"
+                    disabled={creatingAssignment}
+                    value={draft.dueAt}
+                    onChange={(event) => setDraft({ ...draft, dueAt: event.target.value })}
+                  />
+                  <button className="primary-action compact dark-action" type="button" onClick={createAssignmentCard} disabled={creatingAssignment || !draft.title.trim()}>
+                    {creatingAssignment ? <span className="button-spinner" /> : <FilePlus2 size={14} />}
+                    {creatingAssignment ? "Creating" : "Create"}
+                  </button>
+                </div>
+                {creatingAssignment && <UploadStatus label="Đang tạo bài tập và thông báo..." />}
+                {assignmentCreateError && <p className="error-text">{assignmentCreateError}</p>}
+              </div>
+            )}
+          </div>
+        )}
+      />
+      {assignmentCreateNotice && <p className="success-text">{assignmentCreateNotice}</p>}
+      {assignmentCreateError && !addOpen && <p className="error-text">{assignmentCreateError}</p>}
       <div className="list-stack">
         {assignments.map((assignment, index) => (
           <AssignmentItem
@@ -3920,26 +3951,63 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
 }
 
 function GradesCard({ admin, user, course, updateCourse }) {
+  const addPopoverRef = useRef(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [assignmentId, setAssignmentId] = useState(course.assignments[0]?.id || "");
   const [type, setType] = useState("group");
+  const assignmentOptionsSignature = course.assignments.map((item) => item.id).join("|");
   const canCreateGradebook = Boolean(assignmentId) && gradebookSourceCount(course, type) > 0;
   const visibleGradebooks = admin ? (course.gradebooks || []) : (course.gradebooks || []).filter(isGradebookPublished);
+
+  useOutsideClick(addPopoverRef, addOpen, () => setAddOpen(false));
+
+  useEffect(() => {
+    if (!course.assignments.some((item) => item.id === assignmentId)) {
+      setAssignmentId(course.assignments[0]?.id || "");
+    }
+  }, [assignmentId, assignmentOptionsSignature]);
+
+  function handleCreateGradebook() {
+    if (!canCreateGradebook) return;
+    createGradebook(course, updateCourse, assignmentId, type);
+    setAddOpen(false);
+  }
+
   return (
     <>
-      <PanelTitle title="Bảng điểm" />
-      {admin && (
-        <div className="inline-form two grade-create-form">
-          <select value={assignmentId} onChange={(event) => setAssignmentId(event.target.value)}>
-            {course.assignments.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
-          </select>
-          <select value={type} onChange={(event) => setType(event.target.value)}>
-            <option value="personal">Cá nhân</option>
-            <option value="group">Nhóm</option>
-            <option value="intergroup">Liên nhóm</option>
-          </select>
-          <button onClick={() => createGradebook(course, updateCourse, assignmentId, type)} disabled={!canCreateGradebook}><Plus size={15} /> Tạo bảng điểm</button>
-        </div>
-      )}
+      <PanelTitle
+        title="Bảng điểm"
+        action={admin && (
+          <div className="material-add-wrap" ref={addPopoverRef}>
+            <button className="material-add-button" type="button" onClick={() => setAddOpen((current) => !current)}>
+              <Plus size={14} /> Add
+            </button>
+            {addOpen && (
+              <div className="material-add-popover grade-add-popover">
+                <div className="grade-add-row">
+                  <label htmlFor="gradebook-assignment">Assignment:</label>
+                  <select id="gradebook-assignment" value={assignmentId} onChange={(event) => setAssignmentId(event.target.value)}>
+                    {course.assignments.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
+                  </select>
+                </div>
+                <div className="grade-add-row">
+                  <label htmlFor="gradebook-type">Type:</label>
+                  <select id="gradebook-type" value={type} onChange={(event) => setType(event.target.value)}>
+                    <option value="personal">Cá nhân</option>
+                    <option value="group">Nhóm</option>
+                    <option value="intergroup">Liên nhóm</option>
+                  </select>
+                </div>
+                <div className="material-upload-actions">
+                  <button className="primary-action compact dark-action" type="button" onClick={handleCreateGradebook} disabled={!canCreateGradebook}>
+                    <Plus size={14} /> Create
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      />
       <div className="list-stack">
         <SummaryGradebookItem admin={admin} user={user} course={course} />
         {!admin && visibleGradebooks.length === 0 && (
