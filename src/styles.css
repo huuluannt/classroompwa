@@ -1571,10 +1571,39 @@ textarea { min-height: 88px; resize: vertical; }
   color: #172033;
   opacity: 1;
 }
-.peer { display: grid; gap: 12px; }
-.review-form { align-items: stretch; flex-wrap: wrap; }
-.review-form select { min-width: 220px; }
-.review-form input { width: 110px; }
+.peer { display: grid; gap: 10px; }
+.peer-add-popover {
+  width: min(360px, calc(100vw - 34px));
+}
+.review-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 68px auto;
+  align-items: center;
+  gap: 8px;
+}
+.review-form select { min-width: 0; }
+.review-form input {
+  width: 68px;
+  min-height: 34px;
+  border: 1px solid #dce3ee;
+  border-radius: 8px;
+  background: #fff;
+  padding-inline: 8px;
+  text-align: center;
+}
+.review-form button { min-width: 82px; }
+.review-results-toggle {
+  width: fit-content;
+  border: 0;
+  background: transparent;
+  color: #1d4ed8;
+  font-weight: 800;
+  padding: 0;
+  text-align: left;
+}
+.review-results-toggle:hover {
+  text-decoration: underline;
+}
 .review-results-head {
   display: flex;
   align-items: center;
@@ -1810,7 +1839,6 @@ textarea { min-height: 88px; resize: vertical; }
   border-radius: 8px;
   display: block;
 }
-.peer-create-form { grid-template-columns: minmax(0, 1fr) 160px; margin-bottom: 10px; }
 .personal-topic-table {
   table-layout: auto;
 }
@@ -2768,8 +2796,8 @@ textarea {
   width: 64px;
   min-height: 30px;
 }
-.review-form select { min-width: 190px; }
-.review-form input { width: 92px; }
+.review-form input { width: 62px; }
+.review-form button { min-width: 76px; }
 .add-card-menu {
   bottom: 38px;
   border-radius: 7px;

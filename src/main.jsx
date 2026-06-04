@@ -4897,9 +4897,13 @@ function updatePersonalTopic(course, updateCourse, email, topic) {
 
 
 function PeerReviewCard({ admin, user, course, updateCourse }) {
+  const addPopoverRef = useRef(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [sourceType, setSourceType] = useState("group");
   const options = peerReviewOptions(course, sourceType);
+
+  useOutsideClick(addPopoverRef, addOpen, () => setAddOpen(false));
 
   function createReview() {
     if (!title || options.length === 0) return;
@@ -4917,24 +4921,36 @@ function PeerReviewCard({ admin, user, course, updateCourse }) {
       ]
     }));
     setTitle("");
+    setAddOpen(false);
   }
 
   return (
     <>
       <PanelTitle
         title="Người học chấm điểm"
-        action={admin && <button className="primary-action compact" onClick={createReview} disabled={!title || options.length === 0}><Plus size={15} /> Thêm thẻ</button>}
+        action={admin && (
+          <div className="material-add-wrap" ref={addPopoverRef}>
+            <button className="material-add-button" type="button" onClick={() => setAddOpen((current) => !current)}>
+              <Plus size={14} /> Add
+            </button>
+            {addOpen && (
+              <div className="material-add-popover peer-add-popover">
+                <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Title..." />
+                <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
+                  <option value="personal">Cá nhân</option>
+                  <option value="group">Nhóm</option>
+                  <option value="intergroup">Liên nhóm</option>
+                </select>
+                <div className="material-upload-actions">
+                  <button className="primary-action compact dark-action" type="button" onClick={createReview} disabled={!title || options.length === 0}>
+                    <Plus size={14} /> Create
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       />
-      {admin && (
-        <div className="inline-form peer-create-form">
-          <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Tên thẻ chấm điểm mới" />
-          <select value={sourceType} onChange={(event) => setSourceType(event.target.value)}>
-            <option value="group">Nhóm</option>
-            <option value="intergroup">Liên nhóm</option>
-            <option value="personal">Cá nhân</option>
-          </select>
-        </div>
-      )}
       <div className="list-stack">
         {course.peerReviews.map((review) => <PeerReviewItem key={review.id} admin={admin} user={user} course={course} review={review} updateCourse={updateCourse} />)}
       </div>
@@ -4971,6 +4987,7 @@ function PeerReviewItem({ admin, user, course, review, updateCourse }) {
   const [submitStatus, setSubmitStatus] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [resultsOpen, setResultsOpen] = useState(false);
   const visibleResponses = admin ? (review.responses || []) : (review.responses || []).filter((row) => row.email === user.email);
 
   async function submitReviewScore() {
@@ -5027,28 +5044,35 @@ function PeerReviewItem({ admin, user, course, review, updateCourse }) {
       </div>
       {submitStatus && <p className="success-text">{submitStatus}</p>}
       {submitError && <p className="error-text">{submitError}</p>}
-      <div className="review-results-head">
-        <strong>{admin ? "Tất cả điểm đã chấm" : "Điểm bạn đã chấm"}</strong>
-        {admin && <button className="export-button" onClick={() => exportReview({ ...review, responses: visibleResponses })}>Export Excel</button>}
-      </div>
-      <table className="data-table compact-table review-results-table">
-        <thead><tr><th>STT</th><th>Họ và tên</th><th>Topic</th><th>Điểm chấm</th><th>Thời gian</th><th>Mã số</th><th>Email</th></tr></thead>
-        <tbody>
-          {visibleResponses.length === 0 ? (
-            <tr><td colSpan="7">{admin ? "Chưa có người học chấm điểm." : "Bạn chưa chấm điểm trong thẻ này."}</td></tr>
-          ) : visibleResponses.map((row, index) => (
-            <tr key={row.id || `${row.email}-${index}`}>
-              <td>{index + 1}</td>
-              <td>{row.name}</td>
-              <td>{row.topic}</td>
-              <td>{row.score}</td>
-              <td>{row.submittedAt || ""}</td>
-              <td>{row.studentId}</td>
-              <td>{row.email}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <button className="review-results-toggle" type="button" onClick={() => setResultsOpen((current) => !current)}>
+        {resultsOpen ? "Ẩn điểm người học chấm" : "Xem điểm người học chấm"}
+      </button>
+      {resultsOpen && (
+        <>
+          <div className="review-results-head">
+            <strong>{admin ? "Tất cả điểm đã chấm" : "Điểm bạn đã chấm"}</strong>
+            {admin && <button className="export-button" onClick={() => exportReview({ ...review, responses: visibleResponses })}>Export Excel</button>}
+          </div>
+          <table className="data-table compact-table review-results-table">
+            <thead><tr><th>STT</th><th>Họ và tên</th><th>Topic</th><th>Điểm chấm</th><th>Thời gian</th><th>Mã số</th><th>Email</th></tr></thead>
+            <tbody>
+              {visibleResponses.length === 0 ? (
+                <tr><td colSpan="7">{admin ? "Chưa có người học chấm điểm." : "Bạn chưa chấm điểm trong thẻ này."}</td></tr>
+              ) : visibleResponses.map((row, index) => (
+                <tr key={row.id || `${row.email}-${index}`}>
+                  <td>{index + 1}</td>
+                  <td>{row.name}</td>
+                  <td>{row.topic}</td>
+                  <td>{row.score}</td>
+                  <td>{row.submittedAt || ""}</td>
+                  <td>{row.studentId}</td>
+                  <td>{row.email}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
     </article>
   );
 }
