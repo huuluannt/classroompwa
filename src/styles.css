@@ -936,6 +936,18 @@ textarea { min-height: 88px; resize: vertical; }
   grid-template-columns: minmax(180px, 1fr) minmax(160px, 0.8fr) auto;
   margin-bottom: 12px;
 }
+.lecturer-invite-wrap {
+  flex: 0 0 auto;
+}
+.lecturer-add-button {
+  min-width: 86px;
+}
+.lecturer-invite-popover {
+  width: min(360px, calc(100vw - 34px));
+}
+.lecturer-invite-popover .material-upload-actions {
+  justify-content: flex-end;
+}
 .lecturer-list {
   display: grid;
   gap: 8px;
@@ -977,6 +989,40 @@ textarea { min-height: 88px; resize: vertical; }
   display: grid;
   grid-template-columns: 1.2fr 1.8fr auto auto;
   gap: 8px;
+}
+.student-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 1px solid #e1e7ef;
+  border-radius: 8px;
+  background: #fff;
+}
+.student-list-title {
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  color: #172033;
+  font-size: 15px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.student-list-count {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+}
+.student-list-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
 }
 
 .data-table {
@@ -2425,6 +2471,18 @@ textarea {
   column-gap: 8px;
 }
 .lecturer-add-form { margin-bottom: 8px; }
+.lecturer-add-button { min-width: 76px; }
+.student-list-toolbar {
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  border-radius: 7px;
+}
+.student-list-title {
+  font-size: 14px;
+}
+.student-list-actions {
+  gap: 6px;
+}
 .lecturer-row,
 .subsection,
 .compact-notice,
@@ -2844,6 +2902,20 @@ textarea {
   }
   .teacher-strip, .info-grid { grid-template-columns: 1fr; }
   .pending-row { grid-template-columns: 1fr; align-items: stretch; }
+  .student-list-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .student-list-title {
+    white-space: normal;
+  }
+  .student-list-actions {
+    justify-content: flex-end;
+  }
+  .lecturer-invite-wrap {
+    width: 100%;
+    justify-content: flex-end;
+  }
   .inline-form, .inline-form.two { grid-template-columns: 1fr; }
   .group-placeholder-form, .intergroup-placeholder-form { grid-template-columns: 1fr; }
   .composer-left-tools,

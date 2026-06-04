@@ -1832,6 +1832,8 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
   const requestConfirm = useConfirmAction();
   const [viewMode, setViewMode] = useState("personal");
   const [lecturerDraft, setLecturerDraft] = useState({ email: "", name: "" });
+  const [lecturerAddOpen, setLecturerAddOpen] = useState(false);
+  const lecturerAddRef = useRef(null);
   const accepted = course.members.filter((member) => member.status === "accepted");
   const pending = course.members.filter((member) => member.status === "pending");
   const courseLecturers = buildCourseLecturers(course);
@@ -1839,6 +1841,8 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
   const [memberDrafts, setMemberDrafts] = useState({});
   const orderedMembers = [...accepted].sort(compareMemberOrder);
   const groupedMembers = groupMembersByGroup(accepted);
+
+  useOutsideClick(lecturerAddRef, lecturerAddOpen, () => setLecturerAddOpen(false));
 
   useEffect(() => {
     setMemberDrafts(Object.fromEntries(accepted.map((member) => [member.email, {
@@ -1904,6 +1908,7 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
       }, { toast: "Đã thêm giảng viên.", writeMembers: false, writeSummary: false, classFields: ["lecturers", "lecturerEmails"], throwOnError: true });
       if (existingMember) await deleteMemberFromCloud(course.id, existingMember.email);
       setLecturerDraft({ email: "", name: "" });
+      setLecturerAddOpen(false);
     } catch (error) {
       console.error(error);
     }
@@ -1981,14 +1986,30 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
       <PanelTitle
         title="Thành viên"
         action={
-          <div className="panel-actions">
-            <div className="member-view-toggle" aria-label="Chế độ xem thành viên">
-              <button type="button" className={viewMode === "personal" ? "active" : ""} onClick={() => setViewMode("personal")}>Cá nhân</button>
-              <button type="button" className={viewMode === "group" ? "active" : ""} onClick={() => setViewMode("group")}>Nhóm</button>
+          canManageCourseLecturers && (
+            <div className="material-add-wrap lecturer-invite-wrap" ref={lecturerAddRef}>
+              <button className="material-add-button lecturer-add-button" type="button" onClick={() => setLecturerAddOpen((current) => !current)}>
+                <Plus size={14} /> Add
+              </button>
+              {lecturerAddOpen && (
+                <div className="material-add-popover lecturer-invite-popover">
+                  <input
+                    value={lecturerDraft.email}
+                    onChange={(event) => setLecturerDraft((current) => ({ ...current, email: event.target.value }))}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") addCourseLecturer();
+                    }}
+                    placeholder="Nhập email giảng viên"
+                  />
+                  <div className="material-upload-actions">
+                    <button className="primary-action compact dark-action" type="button" onClick={addCourseLecturer}>
+                      <UserPlus size={14} /> Invite
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-            {classLeader && !admin && <span className="permission-chip"><Crown size={14} /> Lớp trưởng</span>}
-            {canEditMembers && <button className="primary-action compact" onClick={saveMembers}>Save</button>}
-          </div>
+          )
         }
       />
       <div data-enter-scope="members">
@@ -2015,13 +2036,6 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
             );
           })}
         </div>
-        {canManageCourseLecturers && (
-          <div className="inline-form lecturer-add-form">
-            <input value={lecturerDraft.email} onChange={(event) => setLecturerDraft((current) => ({ ...current, email: event.target.value }))} placeholder="Email giảng viên" />
-            <input value={lecturerDraft.name} onChange={(event) => setLecturerDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Tên hiển thị" />
-            <button onClick={addCourseLecturer}><UserPlus size={15} /> Thêm giảng viên</button>
-          </div>
-        )}
         {admin && pending.length > 0 && (
           <section className="subsection">
             <div className="subsection-head">
@@ -2042,6 +2056,18 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
             ))}
           </section>
         )}
+        <div className="student-list-toolbar">
+          <strong className="student-list-title">
+            Danh sách người học <span className="student-list-count">({accepted.length})</span>
+          </strong>
+          <div className="student-list-actions">
+            <div className="member-view-toggle" aria-label="Chế độ xem thành viên">
+              <button type="button" className={viewMode === "personal" ? "active" : ""} onClick={() => setViewMode("personal")}>Cá nhân</button>
+              <button type="button" className={viewMode === "group" ? "active" : ""} onClick={() => setViewMode("group")}>Nhóm</button>
+            </div>
+            {canEditMembers && <button className="primary-action compact" onClick={saveMembers}>Save</button>}
+          </div>
+        </div>
         {viewMode === "personal" ? (
           <MembersTable admin={admin} canManageCourseLecturers={canManageCourseLecturers} canEditMembers={canEditMembers} course={course} members={orderedMembers} memberDrafts={memberDrafts} onDraftChange={updateMemberDraft} onPromoteToLecturer={promoteMemberToLecturer} updateCourse={updateCourse} />
         ) : (
