@@ -1051,10 +1051,10 @@ textarea { min-height: 88px; resize: vertical; }
 .members-table .stt-col, .members-table td:nth-child(1) { width: 56px; }
 .members-table .avatar-col, .members-table td:nth-child(2) { width: 52px; text-align: center; }
 .members-table th:nth-child(3), .members-table td:nth-child(3) { min-width: max-content; }
-.members-table th:nth-child(4), .members-table td:nth-child(4) { min-width: max-content; }
+.members-table th:nth-child(4), .members-table td:nth-child(4) { width: 72px; }
 .members-table th:nth-child(5), .members-table td:nth-child(5) { width: 82px; }
-.members-table th:nth-child(6), .members-table td:nth-child(6) { width: 72px; }
-.members-table th:last-child, .members-table td:last-child { width: 96px; text-align: center; }
+.members-table th:nth-child(6), .members-table td:nth-child(6) { min-width: max-content; }
+.members-table th:last-child, .members-table td:last-child { width: 54px; text-align: center; }
 .order-input, .group-input { width: 42px; padding: 5px 6px; text-align: center; }
 .group-input { width: 54px; }
 .order-input::-webkit-outer-spin-button,
@@ -1582,8 +1582,10 @@ textarea { min-height: 88px; resize: vertical; }
   gap: 8px;
   flex-wrap: wrap;
 }
-.review-results-table th:nth-child(1), .review-results-table td:nth-child(1) { min-width: 190px; }
-.review-results-table th:nth-child(4), .review-results-table td:nth-child(4) { min-width: 220px; }
+.review-results-table th:nth-child(1), .review-results-table td:nth-child(1) { width: 48px; }
+.review-results-table th:nth-child(2), .review-results-table td:nth-child(2) { min-width: max-content; }
+.review-results-table th:nth-child(3), .review-results-table td:nth-child(3) { min-width: 220px; }
+.review-results-table th:nth-child(7), .review-results-table td:nth-child(7) { min-width: 190px; }
 .export-button { width: fit-content; }
 .wide-input { margin-bottom: 12px; }
 .add-card-wrap { position: relative; margin-top: auto; }
@@ -1815,9 +1817,9 @@ textarea { min-height: 88px; resize: vertical; }
 .personal-topic-table .stt-col, .personal-topic-table td:nth-child(1) { width: 56px; }
 .personal-topic-table .avatar-col, .personal-topic-table td:nth-child(2) { width: 52px; text-align: center; }
 .personal-topic-table th:nth-child(3), .personal-topic-table td:nth-child(3) { min-width: max-content; }
-.personal-topic-table th:nth-child(4), .personal-topic-table td:nth-child(4) { min-width: max-content; }
+.personal-topic-table th:nth-child(4), .personal-topic-table td:nth-child(4) { min-width: 260px; }
 .personal-topic-table th:nth-child(5), .personal-topic-table td:nth-child(5) { width: 90px; }
-.personal-topic-table th:nth-child(6), .personal-topic-table td:nth-child(6) { min-width: 260px; }
+.personal-topic-table th:nth-child(6), .personal-topic-table td:nth-child(6) { min-width: max-content; }
 .material-card {
   border: 1px solid #e1e7ef;
   border-radius: 8px;
@@ -2106,7 +2108,8 @@ textarea { min-height: 88px; resize: vertical; }
 .grade-personal-table .avatar-col, .grade-personal-table td:nth-child(2) { width: 52px; text-align: center; }
 .grade-personal-table th:nth-child(3), .grade-personal-table td:nth-child(3) { min-width: max-content; }
 .grade-personal-table th:nth-child(4), .grade-personal-table td:nth-child(4) { width: 100px; }
-.grade-personal-table th:nth-child(5), .grade-personal-table td:nth-child(5) { width: 90px; text-align: center; }
+.grade-personal-table th:nth-child(5), .grade-personal-table td:nth-child(5) { min-width: max-content; }
+.grade-personal-table th:nth-child(6), .grade-personal-table td:nth-child(6) { width: 90px; text-align: center; }
 .grade-members-table {
   table-layout: auto;
 }

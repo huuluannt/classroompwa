@@ -2090,7 +2090,7 @@ function MembersTable({ admin, canManageCourseLecturers, canEditMembers, course,
   const requestConfirm = useConfirmAction();
   return (
     <table className="data-table members-table">
-      <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ tên</th><th>Email</th><th>Mã số</th><th>Nhóm</th>{admin && <th />}</tr></thead>
+      <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ và tên</th><th>Nhóm</th><th>Mã số</th><th>Email</th>{admin && <th />}</tr></thead>
       <tbody>
         {members.map((member) => (
           <tr key={member.email}>
@@ -2102,9 +2102,9 @@ function MembersTable({ admin, canManageCourseLecturers, canEditMembers, course,
                 {isClassLeaderMember(member) && <span className="leader-badge"><Crown size={12} /> Lớp trưởng</span>}
               </span>
             </td>
-            <td>{member.email}</td>
-            <td>{member.studentId}</td>
             <td>{canEditMembers ? <input className="group-input" data-enter-group="member-group" inputMode="numeric" value={memberDrafts[member.email]?.group ?? String(member.group || "")} onKeyDown={(event) => focusNextInputOnEnter(event, "member-group")} onChange={(event) => onDraftChange(member.email, "group", event.target.value)} /> : member.group || ""}</td>
+            <td>{member.studentId}</td>
+            <td>{member.email}</td>
             {admin && (
               <td>
                 <div className="member-actions">
@@ -4489,14 +4489,15 @@ function PersonalGradeTable({ admin, user, course, draftRows, onScoreChange }) {
 
   return (
     <table className="data-table grade-personal-table">
-      <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Email</th><th>Mã số</th><th>Điểm</th></tr></thead>
+      <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ và tên</th><th>Mã số</th><th>Email</th><th>Điểm</th></tr></thead>
       <tbody>
         {rows.map((row) => (
           <tr key={row.key}>
             <td>{row.member.order}</td>
             <td><ProfileAvatar user={{ ...row.member, photoURL: row.member.photoURL || course.profiles?.[row.member.email]?.photoURL || "" }} label={row.member.name || row.member.email} small /></td>
-            <td>{row.member.email}</td>
+            <td>{row.member.name || row.member.email}</td>
             <td>{row.member.studentId}</td>
+            <td>{row.member.email}</td>
             <td>
               {admin ? (
                 <input className="score-input" data-enter-group="personal-grade-score" inputMode="decimal" value={row.score} onKeyDown={(event) => focusNextInputOnEnter(event, "personal-grade-score")} onChange={(event) => onScoreChange(row.key, event.target.value)} />
@@ -4863,15 +4864,13 @@ function PersonalTopicCard({ admin, canEdit, course, updateCourse }) {
     <>
       <PanelTitle title="Topic Cá nhân" action={canEdit && <button className="primary-action compact" onClick={savePersonalTopics}>Save</button>} />
       <table className="data-table personal-topic-table">
-        <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ tên</th><th>Email</th><th>Mã số</th><th>Topic</th></tr></thead>
+        <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ và tên</th><th>Topic</th><th>Mã số</th><th>Email</th></tr></thead>
         <tbody>
           {members.map((member) => (
             <tr key={member.email}>
               <td>{member.order}</td>
               <td><ProfileAvatar user={{ ...member, photoURL: member.photoURL || course.profiles?.[member.email]?.photoURL || "" }} label={member.name || member.email} small /></td>
               <td>{member.name}</td>
-              <td>{member.email}</td>
-              <td>{member.studentId}</td>
               <td>
                 {canEdit ? (
                   <input value={draftTopics[member.email] || ""} onChange={(event) => setDraftTopics((current) => ({ ...current, [member.email]: event.target.value }))} />
@@ -4879,6 +4878,8 @@ function PersonalTopicCard({ admin, canEdit, course, updateCourse }) {
                   draftTopics[member.email] || "Chưa có topic."
                 )}
               </td>
+              <td>{member.studentId}</td>
+              <td>{member.email}</td>
             </tr>
           ))}
         </tbody>
@@ -5031,18 +5032,19 @@ function PeerReviewItem({ admin, user, course, review, updateCourse }) {
         {admin && <button className="export-button" onClick={() => exportReview({ ...review, responses: visibleResponses })}>Export Excel</button>}
       </div>
       <table className="data-table compact-table review-results-table">
-        <thead><tr><th>Email</th><th>Họ và tên</th><th>Mã số</th><th>Topic</th><th>Điểm chấm</th><th>Thời gian</th></tr></thead>
+        <thead><tr><th>STT</th><th>Họ và tên</th><th>Topic</th><th>Điểm chấm</th><th>Thời gian</th><th>Mã số</th><th>Email</th></tr></thead>
         <tbody>
           {visibleResponses.length === 0 ? (
-            <tr><td colSpan="6">{admin ? "Chưa có người học chấm điểm." : "Bạn chưa chấm điểm trong thẻ này."}</td></tr>
+            <tr><td colSpan="7">{admin ? "Chưa có người học chấm điểm." : "Bạn chưa chấm điểm trong thẻ này."}</td></tr>
           ) : visibleResponses.map((row, index) => (
             <tr key={row.id || `${row.email}-${index}`}>
-              <td>{row.email}</td>
+              <td>{index + 1}</td>
               <td>{row.name}</td>
-              <td>{row.studentId}</td>
               <td>{row.topic}</td>
               <td>{row.score}</td>
               <td>{row.submittedAt || ""}</td>
+              <td>{row.studentId}</td>
+              <td>{row.email}</td>
             </tr>
           ))}
         </tbody>
@@ -5139,8 +5141,8 @@ function downloadExcelHtml(html, fileName) {
 }
 
 function exportReview(review) {
-  const headers = ["Email", "Họ và tên", "Mã số", "Topic", "Điểm chấm", "Thời gian"];
-  const rows = review.responses.map((row) => [row.email, row.name, row.studentId, row.topic, row.score, row.submittedAt || ""]);
+  const headers = ["STT", "Họ và tên", "Topic", "Điểm chấm", "Thời gian", "Mã số", "Email"];
+  const rows = review.responses.map((row, index) => [index + 1, row.name, row.topic, row.score, row.submittedAt || "", row.studentId, row.email]);
   const html = `
     <html><head><meta charset="UTF-8" /></head><body>
       <table>
