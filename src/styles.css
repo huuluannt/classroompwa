@@ -1608,8 +1608,21 @@ textarea { min-height: 88px; resize: vertical; }
   gap: 8px;
   flex-wrap: wrap;
 }
-.composer-submit {
+.composer-left-tools,
+.composer-right-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.composer-left-tools {
+  min-width: 0;
+}
+.composer-right-tools {
   margin-left: auto;
+  justify-content: flex-end;
+}
+.composer-submit {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -2833,6 +2846,14 @@ textarea {
   .pending-row { grid-template-columns: 1fr; align-items: stretch; }
   .inline-form, .inline-form.two { grid-template-columns: 1fr; }
   .group-placeholder-form, .intergroup-placeholder-form { grid-template-columns: 1fr; }
+  .composer-left-tools,
+  .composer-right-tools {
+    width: 100%;
+  }
+  .composer-right-tools {
+    margin-left: 0;
+    justify-content: flex-end;
+  }
 }
 
 @media (max-width: 640px) {

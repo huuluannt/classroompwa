@@ -2495,40 +2495,44 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse }) {
         >
           <textarea disabled={posting} value={content} onChange={(event) => setContent(event.target.value)} placeholder="Nhập nội dung đăng tin..." />
           <div className="composer-tools">
-            <label className="file-picker icon-only" title="Đính kèm file" aria-label="Đính kèm file">
-              <Paperclip size={18} />
-              <input disabled={posting} type="file" multiple accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip" onChange={(event) => addFiles(event.target.files)} />
-            </label>
-            <button
-              className={`pin-button icon-only composer-pin-button ${pinned ? "active" : ""}`}
-              type="button"
-              title={pinned ? "Unpin" : "Pin"}
-              aria-label={pinned ? "Unpin" : "Pin"}
-              disabled={posting}
-              onClick={() => setPinned((current) => !current)}
-            >
-              {pinned ? <PinOff size={17} /> : <Pin size={17} />}
-            </button>
-            {admin && <label className="check-row"><input type="checkbox" disabled={posting} checked={publishAsMaterial} onChange={(event) => setPublishAsMaterial(event.target.checked)} /> Tài liệu</label>}
-            {files.length > 0 && <span>{`${files.length} file đã chọn`}</span>}
-            {canSchedulePost && (
-              <label className="composer-schedule">
-                <span>Hẹn giờ</span>
-                <input
-                  type="datetime-local"
-                  disabled={posting}
-                  value={scheduledAt}
-                  onChange={(event) => setScheduledAt(event.target.value)}
-                  aria-label="Hẹn giờ đăng"
-                />
+            <div className="composer-left-tools">
+              <label className="file-picker icon-only" title="Đính kèm file" aria-label="Đính kèm file">
+                <Paperclip size={18} />
+                <input disabled={posting} type="file" multiple accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip" onChange={(event) => addFiles(event.target.files)} />
               </label>
-            )}
-            <div className="composer-submit">
-              <ProfileAvatar user={user} label={user.displayName || user.email} small />
-              <button className="primary-action compact" onClick={submitPost} disabled={posting}>
-                {posting ? <span className="button-spinner" /> : <Send size={15} />}
-                {posting ? "Đang đăng" : "Đăng tin"}
+              <button
+                className={`pin-button icon-only composer-pin-button ${pinned ? "active" : ""}`}
+                type="button"
+                title={pinned ? "Unpin" : "Pin"}
+                aria-label={pinned ? "Unpin" : "Pin"}
+                disabled={posting}
+                onClick={() => setPinned((current) => !current)}
+              >
+                {pinned ? <PinOff size={17} /> : <Pin size={17} />}
               </button>
+              {admin && <label className="check-row"><input type="checkbox" disabled={posting} checked={publishAsMaterial} onChange={(event) => setPublishAsMaterial(event.target.checked)} /> Tài liệu</label>}
+              {files.length > 0 && <span>{`${files.length} file đã chọn`}</span>}
+            </div>
+            <div className="composer-right-tools">
+              {canSchedulePost && (
+                <label className="composer-schedule">
+                  <span>Hẹn giờ</span>
+                  <input
+                    type="datetime-local"
+                    disabled={posting}
+                    value={scheduledAt}
+                    onChange={(event) => setScheduledAt(event.target.value)}
+                    aria-label="Hẹn giờ đăng"
+                  />
+                </label>
+              )}
+              <div className="composer-submit">
+                <ProfileAvatar user={user} label={user.displayName || user.email} small />
+                <button className="primary-action compact" onClick={submitPost} disabled={posting}>
+                  {posting ? <span className="button-spinner" /> : <Send size={15} />}
+                  {posting ? "Đang đăng" : "Đăng tin"}
+                </button>
+              </div>
             </div>
           </div>
           {files.length > 0 && (
