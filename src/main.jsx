@@ -2023,14 +2023,15 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
               <strong>{profile.role === "owner" ? "Giảng viên (owner)" : "Giảng viên"}</strong>
               <small>{teacherName} - {profile.email}</small>
               {canManageCourseLecturers && profile.role !== "owner" && (
-                <div className="lecturer-card-actions">
-                  <button className="icon-soft" type="button" title="Chuyển thành người học" aria-label="Chuyển thành người học" onClick={() => demoteCourseLecturer(profile)}><UserRound size={14} /></button>
-                  <button className="icon-danger" type="button" title="Xóa giảng viên" aria-label="Xóa giảng viên" onClick={() => requestConfirm({
+                <LecturerActionsMenu
+                  teacherName={teacherName}
+                  onDemote={() => demoteCourseLecturer(profile)}
+                  onDelete={() => requestConfirm({
                     title: "Xóa giảng viên?",
                     message: `Bạn có chắc muốn xóa "${teacherName}" khỏi vai trò giảng viên của lớp này không?`,
                     confirmLabel: "Xóa giảng viên"
-                  }, () => removeCourseLecturer(profile.email))}><X size={14} /></button>
-                </div>
+                  }, () => removeCourseLecturer(profile.email))}
+                />
               )}
             </div>
             );
@@ -2112,12 +2113,12 @@ function MembersTable({ admin, canManageCourseLecturers, canEditMembers, course,
                     canPromoteToLecturer={canManageCourseLecturers}
                     onToggleClassLeader={() => setClassLeader(course, updateCourse, member.email)}
                     onPromoteToLecturer={() => onPromoteToLecturer(member)}
+                    onDelete={() => requestConfirm({
+                      title: "Xóa người học?",
+                      message: `Bạn có chắc muốn xóa "${member.name || member.email}" khỏi lớp này không?`,
+                      confirmLabel: "Xóa người học"
+                    }, () => removeMember(course, updateCourse, member.email))}
                   />
-                  <button className="icon-danger" onClick={() => requestConfirm({
-                    title: "Xóa người học?",
-                    message: `Bạn có chắc muốn xóa "${member.name || member.email}" khỏi lớp này không?`,
-                    confirmLabel: "Xóa người học"
-                  }, () => removeMember(course, updateCourse, member.email))}><X size={15} /></button>
                 </div>
               </td>
             )}
@@ -2128,7 +2129,44 @@ function MembersTable({ admin, canManageCourseLecturers, canEditMembers, course,
   );
 }
 
-function MemberRoleMenu({ member, canPromoteToLecturer, onToggleClassLeader, onPromoteToLecturer }) {
+function LecturerActionsMenu({ teacherName, onDemote, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useOutsideClick(ref, open, () => setOpen(false));
+
+  return (
+    <div className="lecturer-card-actions member-role-wrap" ref={ref}>
+      <button
+        className="row-menu-trigger"
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        title={`Hành động với ${teacherName}`}
+        aria-label={`Hành động với ${teacherName}`}
+        aria-expanded={open}
+      >
+        <MoreVertical size={16} />
+      </button>
+      {open && (
+        <div className="mini-menu member-role-menu lecturer-action-menu">
+          <button type="button" onClick={() => {
+            onDemote();
+            setOpen(false);
+          }}>
+            <UserRound size={14} /> Chuyển thành người học
+          </button>
+          <button className="danger-menu-item" type="button" onClick={() => {
+            onDelete();
+            setOpen(false);
+          }}>
+            <Trash2 size={14} /> Xóa giảng viên
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MemberRoleMenu({ member, canPromoteToLecturer, onToggleClassLeader, onPromoteToLecturer, onDelete }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const classLeader = isClassLeaderMember(member);
@@ -2137,30 +2175,37 @@ function MemberRoleMenu({ member, canPromoteToLecturer, onToggleClassLeader, onP
   return (
     <div className="member-role-wrap" ref={ref}>
       <button
-        className={`leader-toggle ${classLeader ? "active" : ""}`}
+        className={`row-menu-trigger ${classLeader ? "active" : ""}`}
+        type="button"
         onClick={() => setOpen((current) => !current)}
-        title="Phân quyền"
-        aria-label="Phân quyền"
+        title="Hành động"
+        aria-label={`Hành động với ${member.name || member.email}`}
         aria-expanded={open}
       >
-        <Crown size={15} />
+        <MoreVertical size={16} />
       </button>
       {open && (
         <div className="mini-menu member-role-menu">
-          <button onClick={() => {
+          <button type="button" onClick={() => {
             onToggleClassLeader();
             setOpen(false);
           }}>
             <Crown size={14} /> {classLeader ? "Bỏ lớp trưởng" : "Lớp trưởng"}
           </button>
           {canPromoteToLecturer && (
-            <button onClick={() => {
+            <button type="button" onClick={() => {
               onPromoteToLecturer();
               setOpen(false);
             }}>
               <UserPlus size={14} /> Giảng viên
             </button>
           )}
+          <button className="danger-menu-item" type="button" onClick={() => {
+            onDelete();
+            setOpen(false);
+          }}>
+            <Trash2 size={14} /> Xóa người học
+          </button>
         </div>
       )}
     </div>

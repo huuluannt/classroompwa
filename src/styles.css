@@ -1101,8 +1101,10 @@ textarea { min-height: 88px; resize: vertical; }
 .member-role-menu {
   top: 38px;
   width: 178px;
+  right: 0;
   text-align: left;
 }
+.row-menu-trigger,
 .leader-toggle {
   border: 0;
   border-radius: 8px;
@@ -1110,13 +1112,25 @@ textarea { min-height: 88px; resize: vertical; }
   height: 32px;
   display: grid;
   place-items: center;
-  background: #eef4ff;
-  color: #2563eb;
+  background: #f1f5f9;
+  color: #334155;
   cursor: pointer;
 }
+.row-menu-trigger.active,
 .leader-toggle.active {
   background: #fef3c7;
   color: #b45309;
+}
+.row-menu-trigger:hover,
+.leader-toggle:hover {
+  background: #eaf1ff;
+  color: #1d4ed8;
+}
+.lecturer-action-menu {
+  width: 210px;
+}
+.danger-menu-item {
+  color: #b91c1c !important;
 }
 .member-group-list {
   display: grid;
@@ -2318,6 +2332,12 @@ button:disabled {
   border-radius: 5px;
   white-space: nowrap;
 }
+.member-role-menu {
+  width: 186px;
+}
+.lecturer-action-menu {
+  width: 210px;
+}
 .account-row {
   grid-template-columns: minmax(0, 1fr) 36px;
   gap: 5px;
@@ -2557,6 +2577,7 @@ textarea {
 .row-actions {
   gap: 4px;
 }
+.row-menu-trigger,
 .leader-toggle,
 .icon-danger,
 .icon-soft,
