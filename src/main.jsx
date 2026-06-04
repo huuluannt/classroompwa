@@ -963,13 +963,17 @@ function notificationItemsFromClasses(classes, seenAt) {
       .filter((announcement) => announcementPublishMillis(announcement) <= nowMillis)
       .map((announcement) => {
         const publishMillis = announcementPublishMillis(announcement);
+        const authorEmail = announcement.authorEmail || announcement.email || announcement.author || "";
+        const authorProfile = authorEmail ? course.profiles?.[authorEmail] : null;
+        const authorMember = authorEmail ? (course.members || []).find((member) => member.email === authorEmail) : null;
+        const authorName = announcement.authorName || authorProfile?.displayName || authorMember?.name || announcement.author || authorEmail || "Người đăng";
         return {
           id: `${course.id}-${announcement.id || publishMillis}`,
           courseId: course.id,
           courseName: course.name || "Lớp học",
           courseCode: course.code || "",
           content: announcementPreviewText(announcement.content) || "Bài đăng mới",
-          authorName: announcement.authorName || announcement.author || "",
+          authorName,
           createdAt: announcement.createdAt || formatDateTime24(publishMillis),
           publishMillis,
           unread: seenAt !== null && publishMillis > seenAt
@@ -1074,6 +1078,38 @@ function LoginScreen({ onLogin, loginError }) {
         )}
       </div>
     </section>
+  );
+}
+
+function NotificationPanel({ items, onSelect }) {
+  return (
+    <div className="notification-panel">
+      <div className="notification-panel-head">
+        <strong>Thông báo mới</strong>
+        <small>{items.length ? `${items.length} bài đăng gần nhất` : "Chưa có bài đăng"}</small>
+      </div>
+      <div className="notification-list">
+        {items.length === 0 && (
+          <div className="notification-empty">Chưa có thông báo mới.</div>
+        )}
+        {items.map((item) => (
+          <button
+            className={`notification-item ${item.unread ? "unread" : ""}`}
+            type="button"
+            key={item.id}
+            onClick={() => onSelect?.(item)}
+          >
+            <span className="notification-class">
+              {item.courseName}{item.authorName ? ` > ${item.authorName}` : ""}
+            </span>
+            {item.courseCode && <span className="notification-code">{item.courseCode}</span>}
+            <span className="notification-preview">{item.content}</span>
+            <time>{item.createdAt}</time>
+            {item.unread && <span className="notification-badge">Mới</span>}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1230,34 +1266,13 @@ function Sidebar(props) {
                   {notificationUnread ? <BellDot size={19} /> : <Bell size={19} />}
                 </button>
                 {notificationOpen && (
-                  <div className="notification-panel">
-                    <div className="notification-panel-head">
-                      <strong>Thông báo mới</strong>
-                      <small>{notificationItems.length ? `${notificationItems.length} bài đăng gần nhất` : "Chưa có bài đăng"}</small>
-                    </div>
-                    <div className="notification-list">
-                      {notificationItems.length === 0 && (
-                        <div className="notification-empty">Chưa có thông báo mới.</div>
-                      )}
-                      {notificationItems.map((item) => (
-                        <button
-                          className={`notification-item ${item.unread ? "unread" : ""}`}
-                          type="button"
-                          key={item.id}
-                          onClick={() => {
-                            onNotificationSelect?.(item);
-                            setNotificationOpen(false);
-                          }}
-                        >
-                          <span className="notification-class">{item.courseName}</span>
-                          {item.courseCode && <span className="notification-code">{item.courseCode}</span>}
-                          <span className="notification-preview">{item.content}</span>
-                          <time>{item.createdAt}</time>
-                          {item.unread && <span className="notification-badge">Mới</span>}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  <NotificationPanel
+                    items={notificationItems}
+                    onSelect={(item) => {
+                      onNotificationSelect?.(item);
+                      setNotificationOpen(false);
+                    }}
+                  />
                 )}
               </div>
             </div>
@@ -1301,34 +1316,13 @@ function Sidebar(props) {
                 {notificationUnread ? <BellDot size={18} /> : <Bell size={18} />}
               </button>
               {notificationOpen && (
-                <div className="notification-panel">
-                  <div className="notification-panel-head">
-                    <strong>Thông báo mới</strong>
-                    <small>{notificationItems.length ? `${notificationItems.length} bài đăng gần nhất` : "Chưa có bài đăng"}</small>
-                  </div>
-                  <div className="notification-list">
-                    {notificationItems.length === 0 && (
-                      <div className="notification-empty">Chưa có thông báo mới.</div>
-                    )}
-                    {notificationItems.map((item) => (
-                      <button
-                        className={`notification-item ${item.unread ? "unread" : ""}`}
-                        type="button"
-                        key={item.id}
-                        onClick={() => {
-                          onNotificationSelect?.(item);
-                          setNotificationOpen(false);
-                        }}
-                      >
-                        <span className="notification-class">{item.courseName}</span>
-                        {item.courseCode && <span className="notification-code">{item.courseCode}</span>}
-                        <span className="notification-preview">{item.content}</span>
-                        <time>{item.createdAt}</time>
-                        {item.unread && <span className="notification-badge">Mới</span>}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <NotificationPanel
+                  items={notificationItems}
+                  onSelect={(item) => {
+                    onNotificationSelect?.(item);
+                    setNotificationOpen(false);
+                  }}
+                />
               )}
             </div>
             <button
