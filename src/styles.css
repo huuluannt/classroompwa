@@ -1200,6 +1200,10 @@ textarea { min-height: 88px; resize: vertical; }
   background: #fff;
   overflow: hidden;
 }
+.topic-editor-card {
+  border-color: #cbd5e1;
+  border-radius: 14px;
+}
 .intergroup-card {
   border: 1px solid #d8dee7;
   border-radius: 8px;
@@ -1274,6 +1278,80 @@ textarea { min-height: 88px; resize: vertical; }
 .group-topic-topic-row textarea {
   min-height: 40px;
   resize: vertical;
+}
+.topic-editor-card .group-topic-header {
+  margin: 0 10px 8px;
+  padding-bottom: 8px;
+}
+.topic-editor-card .group-topic-bar {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  margin: 0 -10px;
+  padding: 6px 14px;
+  background: #bfdbfe;
+}
+.topic-editor-card .group-topic-badge {
+  font-size: 15px;
+  font-weight: 800;
+}
+.topic-group-title,
+.topic-inline-meta {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.topic-inline-meta {
+  font-size: 13px;
+  font-weight: 600;
+}
+.topic-editor-card .group-topic-compact-field {
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.topic-editor-card .group-topic-compact-field input,
+.topic-inline-meta input {
+  width: 36px;
+  min-height: 24px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  font-size: 13px;
+  text-align: center;
+}
+.topic-editor-card .placeholder-delete-button {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+}
+.topic-editor-card .group-topic-topic-row {
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px 8px;
+}
+.topic-editor-card .group-topic-topic-row > span {
+  margin-top: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.topic-editor-card .topic-line-input {
+  width: 100%;
+  min-height: 30px;
+  border: 1px solid #94a3b8;
+  border-radius: 0;
+  background: #fff;
+  padding: 4px 8px;
+  font-size: 13px;
+}
+.topic-editor-card .group-topic-topic-row p {
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+.topic-editor-card .group-topic-table-wrap,
+.topic-editor-card .intergroup-topic-members {
+  padding: 0 10px 10px;
 }
 .group-topic-topic-row p {
   min-height: 38px;

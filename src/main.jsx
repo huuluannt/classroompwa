@@ -3096,27 +3096,32 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
       ) : (
         <div className="group-topic-list">
           {sortedGroupCards.map((group) => (
-            <section className="group-topic-card" key={group.key}>
+            <section className="group-topic-card topic-editor-card" key={group.key}>
               <div className="group-topic-header">
                 <div className="group-topic-bar">
-                  <span className="group-topic-badge">{group.label}</span>
-                  <label className="group-topic-compact-field">
-                    <span>Thứ tự báo cáo:</span>
-                    {canEdit ? (
-                      <input
-                        inputMode="numeric"
-                        value={draftOrders[group.key] || ""}
-                        onChange={(event) => setDraftOrders((current) => ({ ...current, [group.key]: event.target.value.replace(/\D/g, "") }))}
-                      />
-                    ) : (
-                      <strong>{group.topic?.reportOrder || ""}</strong>
-                    )}
-                  </label>
-                  <label className="group-topic-compact-field">
+                  <span className="group-topic-badge topic-group-title">
+                    <span>{group.label}</span>
+                    <span className="topic-inline-meta">
+                      <span>(STT:</span>
+                      {canEdit ? (
+                        <input
+                          aria-label={`STT báo cáo ${group.label}`}
+                          inputMode="numeric"
+                          value={draftOrders[group.key] || ""}
+                          onChange={(event) => setDraftOrders((current) => ({ ...current, [group.key]: event.target.value.replace(/\D/g, "") }))}
+                        />
+                      ) : (
+                        <strong>{group.topic?.reportOrder || ""}</strong>
+                      )}
+                      <span>)</span>
+                    </span>
+                  </span>
+                  <label className="group-topic-compact-field topic-intergroup-field">
                     <span>Liên nhóm:</span>
                     {canEdit ? (
                       <input
                         inputMode="numeric"
+                        aria-label={`Liên nhóm của ${group.label}`}
                         value={draftIntergroups[group.key] || ""}
                         onChange={(event) => setDraftIntergroups((current) => ({ ...current, [group.key]: event.target.value.replace(/\D/g, "") }))}
                       />
@@ -3137,7 +3142,8 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
                 <div className="group-topic-topic-row">
                   <span>Topic:</span>
                   {canEdit ? (
-                    <textarea
+                    <input
+                      className="topic-line-input"
                       value={draftTopics[group.key] || ""}
                       onChange={(event) => setDraftTopics((current) => ({ ...current, [group.key]: event.target.value }))}
                       placeholder="Nhập tên Topic"
@@ -3418,7 +3424,7 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
       ) : (
         <div className="intergroup-list">
           {linkCards.map((link) => (
-            <section className="group-topic-card intergroup-topic-card" key={link.key}>
+            <section className="group-topic-card topic-editor-card intergroup-topic-card" key={link.key}>
               <div className="group-topic-header">
                 <div className="group-topic-bar intergroup-topic-bar">
                   <span className="group-topic-badge">{link.label}</span>
@@ -3438,7 +3444,8 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
                 <div className="group-topic-topic-row">
                   <span>Topic:</span>
                   {canEdit ? (
-                    <textarea
+                    <input
+                      className="topic-line-input"
                       value={draftTopics[link.key] || ""}
                       onChange={(event) => setDraftTopics((current) => ({ ...current, [link.key]: event.target.value }))}
                       placeholder="Nhập tên Topic liên nhóm"
