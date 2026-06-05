@@ -131,6 +131,7 @@ export const baseCards = [
 ];
 
 export const extraCardLabels = {
+  exams: "Đề thi",
   intergroupTopic: "Topic Liên nhóm",
   peerReview: "Người học chấm điểm",
   personalTopic: "Topic Cá nhân"

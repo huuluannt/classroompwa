@@ -7,6 +7,7 @@ import {
   Bell,
   BellDot,
   Check,
+  ChevronDown,
   ChevronLeft,
   Copy,
   Crown,
@@ -19,6 +20,7 @@ import {
   Menu,
   MoreVertical,
   Paperclip,
+  Pencil,
   Pin,
   PinOff,
   Plus,
@@ -35,10 +37,12 @@ import { hasFirebaseConfig, observeAuth, signInWithGoogle, signOutGoogle } from 
 import {
   deleteAnnouncementFromCloud,
   deleteCourseFromCloud,
+  deleteExamFromCloud,
   deleteLecturerFromCloud,
   deleteMemberFromCloud,
   isSupremeEmail,
   joinClassByCode,
+  loadLocalExamFormTemplates,
   loadLocalClasses,
   mergeSupremeLecturer,
   normalizeEmail,
@@ -49,9 +53,12 @@ import {
   savePrivateClassPins,
   saveLocalClasses,
   saveAnnouncementToCloud,
+  saveExamFormTemplateToCloud,
+  saveExamToCloud,
   notifyAnnouncementEmail,
   subscribeLecturers,
   subscribeClasses,
+  subscribeExamFormTemplates,
   subscribePrivateClassArchives,
   subscribePrivateClassPins,
   submitAssignmentToCloud,
@@ -98,6 +105,8 @@ const MOBILE_VIEWS = {
 };
 const ANNOUNCEMENT_SEEN_PREFIX = "classroompwa-announcement-seen:";
 const ConfirmContext = React.createContext((options, onConfirm) => onConfirm?.());
+const LECTURER_ONLY_CARD_IDS = new Set(["exams"]);
+const MAX_INLINE_EXAM_TEMPLATE_BYTES = 850 * 1024;
 
 function useConfirmAction() {
   return React.useContext(ConfirmContext);
@@ -381,6 +390,7 @@ function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [showManageLecturers, setShowManageLecturers] = useState(false);
   const [lecturers, setLecturers] = useState([]);
+  const [examFormTemplates, setExamFormTemplates] = useState(loadLocalExamFormTemplates);
   const [sidebarPinnedClassIds, setSidebarPinnedClassIds] = useState([]);
   const [sidebarArchivedClassIds, setSidebarArchivedClassIds] = useState([]);
   const [classListMode, setClassListMode] = useState("main");
@@ -484,6 +494,15 @@ function App() {
     }, (nextError) => {
       console.error(nextError);
       setLecturers(mergeSupremeLecturer([]));
+    });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    return subscribeExamFormTemplates(user, (nextTemplates) => {
+      setExamFormTemplates(nextTemplates || {});
+    }, (nextError) => {
+      console.error(nextError);
     });
   }, [user]);
 
@@ -805,6 +824,8 @@ function App() {
           canManageCourseLecturers={selectedClassCanManageLecturers}
           user={user}
           course={selectedClass}
+          examFormTemplates={examFormTemplates}
+          setExamFormTemplates={setExamFormTemplates}
           selectedCard={selectedCard}
           setSelectedCard={setSelectedCard}
           isMobile={isMobile}
@@ -1457,6 +1478,8 @@ function ClassPane({
   canManageCourseLecturers,
   user,
   course,
+  examFormTemplates,
+  setExamFormTemplates,
   selectedCard,
   setSelectedCard,
   isMobile,
@@ -1479,17 +1502,27 @@ function ClassPane({
   const hiddenCards = course.hiddenCards || [];
   const pinnedCards = course.pinnedCards || [];
   const extraCards = course.extraCards || [];
+  const visibleBaseCards = baseCards.filter((card) => admin || !LECTURER_ONLY_CARD_IDS.has(card.id));
   const cardLabels = new Map([...baseCards.map((card) => [card.id, card.label]), ...Object.entries(extraCardLabels)]);
   const cards = orderCards(
-    [...baseCards, ...extraCards.map((id) => ({ id, label: extraCardLabels[id] }))].filter((card) => !hiddenCards.includes(card.id)),
+    [...visibleBaseCards, ...extraCards.map((id) => ({ id, label: extraCardLabels[id] }))]
+      .filter((card) => !LECTURER_ONLY_CARD_IDS.has(card.id) || admin)
+      .filter((card) => !hiddenCards.includes(card.id)),
     course.cardOrder,
     pinnedCards
   );
   const selectedCardLabel = cardLabels.get(selectedCard) || "";
   const addableCards = [...cardLabels.entries()].filter(([id]) => {
+    if (LECTURER_ONLY_CARD_IDS.has(id) && !admin) return false;
     const extraMissing = extraCardLabels[id] && !extraCards.includes(id);
     return hiddenCards.includes(id) || extraMissing;
   });
+  const visibleCardIdKey = cards.map((card) => card.id).join("|");
+
+  useEffect(() => {
+    if (!selectedCard || cards.some((card) => card.id === selectedCard)) return;
+    setSelectedCard(cards[0]?.id || "");
+  }, [cards, selectedCard, setSelectedCard, visibleCardIdKey]);
 
   function selectFallbackCard(nextHiddenCards) {
     const nextCard = cards.find((card) => card.id !== selectedCard && !nextHiddenCards.includes(card.id));
@@ -1639,6 +1672,8 @@ function ClassPane({
             canEditTopics={canEditTopics}
             user={user}
             course={course}
+            examFormTemplates={examFormTemplates}
+            setExamFormTemplates={setExamFormTemplates}
             selectedCard={selectedCard}
             setSelectedCard={setSelectedCard}
             updateCourse={updateCourse}
@@ -1804,7 +1839,7 @@ function CardNavItem({ admin, card, active, pinned, draggable, dragging, dragOve
   );
 }
 
-function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditMembers, canEditTopics, user, course, selectedCard, setSelectedCard, updateCourse }) {
+function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditMembers, canEditTopics, user, course, examFormTemplates, setExamFormTemplates, selectedCard, setSelectedCard, updateCourse }) {
   if (selectedCard === "members") return <MembersCard admin={admin} canManageCourseLecturers={canManageCourseLecturers} classLeader={classLeader} canEditMembers={canEditMembers} user={user} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "announcements") return <AnnouncementsCard admin={admin} classLeader={classLeader} user={user} course={course} updateCourse={updateCourse} onOpenAssignments={() => setSelectedCard("assignments")} />;
   if (selectedCard === "info") return <InfoCard admin={admin} course={course} updateCourse={updateCourse} />;
@@ -1813,6 +1848,7 @@ function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditM
   if (selectedCard === "intergroupTopic") return <IntergroupTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "materials") return <MaterialsCard admin={admin} user={user} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "assignments") return <AssignmentsCard admin={admin} user={user} course={course} updateCourse={updateCourse} />;
+  if (selectedCard === "exams") return admin ? <ExamsCard user={user} course={course} examFormTemplates={examFormTemplates} setExamFormTemplates={setExamFormTemplates} updateCourse={updateCourse} /> : null;
   if (selectedCard === "grades") return <GradesCard admin={admin} user={user} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "personalTopic") return <PersonalTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "peerReview") return <PeerReviewCard admin={admin} user={user} course={course} updateCourse={updateCourse} />;
@@ -3783,6 +3819,987 @@ function MaterialsCard({ admin, user, course, updateCourse }) {
       </div>
     </>
   );
+}
+
+const EXAM_QUESTION_TYPES = [
+  { value: "multipleChoice", label: "Multiple Choice" },
+  { value: "shortAnswer", label: "Short Answer" },
+  { value: "longAnswer", label: "Long Answer" },
+  { value: "checkbox", label: "Checkbox" }
+];
+
+function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, updateCourse }) {
+  const requestConfirm = useConfirmAction();
+  const [selectedExamId, setSelectedExamId] = useState(() => normalizeExams(course.exams)[0]?.id || "");
+  const [draftExams, setDraftExams] = useState(() => normalizeExams(course.exams));
+  const [collapsedParts, setCollapsedParts] = useState({});
+  const [savingExam, setSavingExam] = useState(false);
+  const [importingPartId, setImportingPartId] = useState("");
+  const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
+  const [uploadingTemplateType, setUploadingTemplateType] = useState("");
+  const [saveStatus, setSaveStatus] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const templateMenuRef = useRef(null);
+  const selectedExam = draftExams.find((exam) => exam.id === selectedExamId) || draftExams[0];
+  const examIdsKey = draftExams.map((exam) => exam.id).join("|");
+  const normalizedExamFormTemplates = normalizeExamFormTemplates(examFormTemplates);
+  const supreme = isSupremeEmail(user?.email);
+
+  useOutsideClick(templateMenuRef, templateMenuOpen, () => setTemplateMenuOpen(false));
+
+  useEffect(() => {
+    const nextExams = normalizeExams(course.exams);
+    setDraftExams(nextExams);
+    setSelectedExamId((current) => nextExams.some((exam) => exam.id === current) ? current : nextExams[0]?.id || "");
+  }, [course.exams]);
+
+  useEffect(() => {
+    if (!selectedExam) return;
+    if (draftExams.some((exam) => exam.id === selectedExamId)) return;
+    setSelectedExamId(selectedExam.id);
+  }, [draftExams, examIdsKey, selectedExam, selectedExamId]);
+
+  function updateSelectedExam(patch) {
+    const targetExamId = selectedExam?.id;
+    if (!targetExamId) return;
+    setSaveStatus("");
+    setSaveError("");
+    setDraftExams((currentExams) => currentExams.map((exam) => (
+      exam.id === targetExamId ? { ...exam, ...patch } : exam
+    )));
+  }
+
+  function updateSelectedExamParts(updater) {
+    const targetExamId = selectedExam?.id;
+    if (!targetExamId) return;
+    setSaveStatus("");
+    setSaveError("");
+    setDraftExams((currentExams) => currentExams.map((exam) => (
+      exam.id === targetExamId
+        ? { ...exam, parts: updater(normalizeExamParts(exam.parts)) }
+        : exam
+    )));
+  }
+
+  function createExam() {
+    const nextExam = createExamRecord(draftExams.length);
+    setSaveStatus("");
+    setSaveError("");
+    setDraftExams((currentExams) => [...currentExams, nextExam]);
+    setSelectedExamId(nextExam.id);
+  }
+
+  function renameExam(examId, title) {
+    const nextTitle = title.trim();
+    if (!nextTitle) return;
+    setSaveStatus("");
+    setSaveError("");
+    setDraftExams((currentExams) => currentExams.map((exam) => (
+      exam.id === examId ? { ...exam, title: nextTitle } : exam
+    )));
+  }
+
+  function requestDeleteExam(exam) {
+    requestConfirm({
+      title: "Xóa đề thi?",
+      message: `Bạn có chắc muốn xóa "${exam.title}" không?`,
+      confirmLabel: "Xóa đề thi"
+    }, () => {
+      setSaveStatus("");
+      setSaveError("");
+      const nextExams = draftExams.filter((item) => item.id !== exam.id);
+      const fallbackExams = nextExams.length > 0 ? nextExams : [createExamRecord(0)];
+      setDraftExams(fallbackExams);
+      setSelectedExamId((current) => (
+        current === exam.id ? fallbackExams[0]?.id || "" : current
+      ));
+    });
+  }
+
+  function addPart() {
+    updateSelectedExamParts((parts) => [...parts, createExamPart(parts.length)]);
+  }
+
+  function deletePart(partId) {
+    const targetIndex = selectedParts.findIndex((part) => part.id === partId);
+    requestConfirm({
+      title: "Xóa part?",
+      message: `Bạn có chắc muốn xóa ${selectedParts.length > 1 ? `Phần ${toRomanNumeral(targetIndex + 1)}` : "part này"} không?`,
+      confirmLabel: "Xóa part"
+    }, () => {
+      updateSelectedExamParts((parts) => {
+        const nextParts = parts.filter((part) => part.id !== partId);
+        return nextParts.length > 0 ? nextParts : [createExamPart(0)];
+      });
+      setCollapsedParts((current) => {
+        const nextCollapsedParts = { ...current };
+        delete nextCollapsedParts[partId];
+        return nextCollapsedParts;
+      });
+    });
+  }
+
+  function updatePartType(partId, questionType) {
+    updateSelectedExamParts((parts) => parts.map((part) => (
+      part.id === partId ? { ...part, questionType } : part
+    )));
+  }
+
+  function updatePartPoints(partId, pointsPerQuestion) {
+    updateSelectedExamParts((parts) => parts.map((part) => (
+      part.id === partId ? { ...part, pointsPerQuestion } : part
+    )));
+  }
+
+  function togglePart(partId) {
+    setCollapsedParts((current) => ({ ...current, [partId]: !current[partId] }));
+  }
+
+  async function importQuestions(partId, file) {
+    if (!file) return;
+    setImportingPartId(partId);
+    setSaveStatus("");
+    setSaveError("");
+    try {
+      const importedQuestions = await parseMultipleChoiceDocx(file);
+      if (importedQuestions.length === 0) {
+        setSaveError("Không tìm thấy câu hỏi Multiple Choice trong file Word.");
+        return;
+      }
+      updateSelectedExamParts((parts) => parts.map((part) => {
+        if (part.id !== partId) return part;
+        const currentQuestions = normalizeExamQuestions(part.questions);
+        const nextQuestions = [...currentQuestions, ...importedQuestions];
+        return {
+          ...part,
+          questionType: "multipleChoice",
+          questions: nextQuestions,
+          selectedQuestions: nextQuestions.length,
+          totalQuestions: nextQuestions.length
+        };
+      }));
+      setCollapsedParts((current) => ({ ...current, [partId]: false }));
+      setSaveStatus(`Đã import ${importedQuestions.length} câu hỏi. Bấm Save để lưu.`);
+    } catch (error) {
+      console.error(error);
+      setSaveError(error.message || "Không thể import file Word.");
+    } finally {
+      setImportingPartId("");
+    }
+  }
+
+  function updateQuestion(partId, questionId, patch) {
+    updateSelectedExamParts((parts) => parts.map((part) => {
+      if (part.id !== partId) return part;
+      const questions = normalizeExamQuestions(part.questions).map((question) => (
+        question.id === questionId ? { ...question, ...patch } : question
+      ));
+      return { ...part, questions };
+    }));
+  }
+
+  function updateAnswer(partId, questionId, answerId, patch) {
+    updateSelectedExamParts((parts) => parts.map((part) => {
+      if (part.id !== partId) return part;
+      const questions = normalizeExamQuestions(part.questions).map((question) => {
+        if (question.id !== questionId) return question;
+        const answers = normalizeExamAnswers(question.answers).map((answer) => (
+          answer.id === answerId ? { ...answer, ...patch } : answer
+        ));
+        return { ...question, answers };
+      });
+      return { ...part, questions };
+    }));
+  }
+
+  function selectCorrectAnswer(partId, questionId, answerId, checked = true) {
+    updateSelectedExamParts((parts) => parts.map((part) => {
+      if (part.id !== partId) return part;
+      const multipleChoice = part.questionType === "multipleChoice";
+      const questions = normalizeExamQuestions(part.questions).map((question) => {
+        if (question.id !== questionId) return question;
+        const answers = normalizeExamAnswers(question.answers).map((answer) => {
+          if (multipleChoice) return { ...answer, correct: answer.id === answerId };
+          return answer.id === answerId ? { ...answer, correct: checked } : answer;
+        });
+        return { ...question, answers };
+      });
+      return { ...part, questions };
+    }));
+  }
+
+  function deleteQuestion(partId, questionId) {
+    requestConfirm({
+      title: "Xóa câu hỏi?",
+      message: "Bạn có chắc muốn xóa câu hỏi này không?",
+      confirmLabel: "Xóa câu hỏi"
+    }, () => {
+      updateSelectedExamParts((parts) => parts.map((part) => {
+        if (part.id !== partId) return part;
+        const questions = normalizeExamQuestions(part.questions).filter((question) => question.id !== questionId);
+        return {
+          ...part,
+          questions,
+          selectedQuestions: questions.length,
+          totalQuestions: questions.length
+        };
+      }));
+    });
+  }
+
+  async function uploadExamTemplate(questionType, file) {
+    if (!file) return;
+    setUploadingTemplateType(questionType);
+    setSaveStatus("");
+    setSaveError("");
+    try {
+      if (file.size > MAX_INLINE_EXAM_TEMPLATE_BYTES) {
+        throw new Error("File form DOCX quá lớn. Giữ file dưới 850KB để upload làm form mẫu.");
+      }
+      const dataUrl = await readBrowserFileAsDataUrl(file);
+      const template = {
+        questionType,
+        label: formTemplateLabel(questionType),
+        fileName: file.name,
+        url: dataUrl,
+        previewUrl: dataUrl,
+        type: file.type || "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        uploadedBy: user?.email || "",
+        uploadedAtMillis: Date.now()
+      };
+      const nextTemplates = {
+        ...normalizedExamFormTemplates,
+        [questionType]: template
+      };
+      await saveExamFormTemplateToCloud(questionType, template);
+      setExamFormTemplates(nextTemplates);
+      setSaveStatus(`Đã upload ${template.label}.`);
+    } catch (error) {
+      console.error(error);
+      setSaveError(error.message || "Không thể upload form DOCX.");
+    } finally {
+      setUploadingTemplateType("");
+    }
+  }
+
+  async function saveExams() {
+    setSavingExam(true);
+    setSaveStatus("");
+    setSaveError("");
+    try {
+      const examsToSave = normalizeExams(draftExams);
+      const nextExamIds = new Set(examsToSave.map((exam) => exam.id));
+      const deletedExamIds = normalizeExams(course.exams)
+        .map((exam) => exam.id)
+        .filter((examId) => !nextExamIds.has(examId));
+      await updateCourse((current) => ({ ...current, exams: examsToSave }), { sync: false });
+      await Promise.all([
+        ...examsToSave.map((exam) => saveExamToCloud(course.id, exam)),
+        ...deletedExamIds.map((examId) => deleteExamFromCloud(course.id, examId))
+      ]);
+      setSaveStatus("Đã lưu đề thi.");
+    } catch (error) {
+      console.error(error);
+      setSaveError("Không thể lưu đề thi. Vui lòng thử lại.");
+    } finally {
+      setSavingExam(false);
+    }
+  }
+
+  const selectedParts = normalizeExamParts(selectedExam?.parts);
+
+  return (
+    <div className="exam-builder">
+      <div className="exam-panel-head">
+        <h3>Đề thi</h3>
+        <div className="exam-head-actions">
+          <ExamDropdown
+            exams={draftExams}
+            selectedExam={selectedExam}
+            onCreateExam={createExam}
+            onSelectExam={setSelectedExamId}
+            onRenameExam={renameExam}
+            onDeleteExam={requestDeleteExam}
+          />
+          <button className="primary-action compact exam-save-button" type="button" onClick={saveExams} disabled={savingExam}>
+            {savingExam ? "Saving..." : "Save"}
+          </button>
+          <div className="exam-template-menu-wrap" ref={templateMenuRef}>
+            <button
+              className="icon-button exam-template-trigger"
+              type="button"
+              aria-label="Form đề thi"
+              aria-haspopup="menu"
+              aria-expanded={templateMenuOpen}
+              onClick={() => setTemplateMenuOpen((current) => !current)}
+            >
+              <MoreVertical size={18} />
+            </button>
+            {templateMenuOpen && (
+              <ExamFormTemplateMenu
+                templates={normalizedExamFormTemplates}
+                supreme={supreme}
+                uploadingType={uploadingTemplateType}
+                onDownload={downloadExamFormTemplate}
+                onUpload={uploadExamTemplate}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+      {saveStatus && <p className="success-text">{saveStatus}</p>}
+      {saveError && <p className="error-text">{saveError}</p>}
+      {selectedExam && (
+        <div className="exam-detail">
+          <div className="exam-detail-head">
+            <div className="exam-detail-title-row">
+              <h2>{selectedExam.title}</h2>
+              <label className="exam-duration-field">
+                <span>Thời gian:</span>
+                <input
+                  value={selectedExam.duration || ""}
+                  onChange={(event) => updateSelectedExam({ duration: event.target.value })}
+                  placeholder="00:00"
+                />
+              </label>
+            </div>
+            <input
+              className="exam-description-input"
+              value={selectedExam.description || ""}
+              onChange={(event) => updateSelectedExam({ description: event.target.value })}
+              placeholder="Description..."
+            />
+          </div>
+          <div className="exam-part-list">
+            {selectedParts.map((part, index) => {
+              const questions = Array.isArray(part.questions) ? part.questions : [];
+              const collapsed = Boolean(collapsedParts[part.id]);
+              const questionCount = questions.length || Number(part.totalQuestions || part.selectedQuestions || 0);
+              const partScore = formatPointValue(Number(part.pointsPerQuestion || 0) * questionCount);
+              return (
+              <section className={`exam-part-card ${collapsed ? "collapsed" : ""}`} key={part.id}>
+                <div
+                  className={`exam-part-toolbar ${selectedParts.length === 1 ? "single-part" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={!collapsed}
+                  onClick={() => togglePart(part.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      togglePart(part.id);
+                    }
+                  }}
+                >
+                  {selectedParts.length > 1 && <strong>Phần {toRomanNumeral(index + 1)}.</strong>}
+                  <select
+                    className="exam-question-select"
+                    value={part.questionType}
+                    aria-label={`Loại câu hỏi phần ${index + 1}`}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={(event) => updatePartType(part.id, event.target.value)}
+                  >
+                    {EXAM_QUESTION_TYPES.map((type) => (
+                      <option key={type.value} value={type.value}>{type.label}</option>
+                    ))}
+                  </select>
+                  <label className={`exam-import-button ${importingPartId === part.id ? "is-loading" : ""}`} onClick={(event) => event.stopPropagation()}>
+                    {importingPartId === part.id ? "Importing..." : "+ Import"}
+                    <input
+                      type="file"
+                      accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      disabled={Boolean(importingPartId)}
+                      onChange={(event) => {
+                        importQuestions(part.id, event.target.files?.[0]);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
+                  <label className="exam-points-field" onClick={(event) => event.stopPropagation()}>
+                    <input
+                      value={part.pointsPerQuestion || ""}
+                      inputMode="decimal"
+                      onChange={(event) => updatePartPoints(part.id, event.target.value)}
+                      placeholder="0"
+                      aria-label={`Điểm mỗi câu phần ${index + 1}`}
+                    />
+                    <span>đ/câu</span>
+                    <strong>({partScore} đ)</strong>
+                  </label>
+                  <span className="exam-total">Tổng số: {questionCount} câu</span>
+                  <button
+                    className="exam-part-delete"
+                    type="button"
+                    title="Xóa part"
+                    aria-label={`Xóa part ${index + 1}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      deletePart(part.id);
+                    }}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                {!collapsed && (
+                  <div className="exam-part-body">
+                    {questions.length === 0 ? (
+                      <div className="exam-empty-questions">Chưa có câu hỏi được tạo</div>
+                    ) : (
+                      <div className="exam-question-list">
+                        {questions.map((question, questionIndex) => (
+                          <ExamQuestionEditor
+                            key={question.id || questionIndex}
+                            part={part}
+                            question={question}
+                            questionIndex={questionIndex}
+                            onQuestionChange={(patch) => updateQuestion(part.id, question.id, patch)}
+                            onAnswerChange={(answerId, patch) => updateAnswer(part.id, question.id, answerId, patch)}
+                            onCorrectChange={(answerId, checked) => selectCorrectAnswer(part.id, question.id, answerId, checked)}
+                            onDelete={() => deleteQuestion(part.id, question.id)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+              );
+            })}
+            <div className="exam-add-part-row">
+              <button className="exam-add-part-button" type="button" onClick={addPart}>+ Add Part</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExamDropdown({ exams, selectedExam, onCreateExam, onSelectExam, onRenameExam, onDeleteExam }) {
+  const [open, setOpen] = useState(false);
+  const [editingExamId, setEditingExamId] = useState("");
+  const [titleDraft, setTitleDraft] = useState("");
+  const dropdownRef = useRef(null);
+  useOutsideClick(dropdownRef, open, () => {
+    setOpen(false);
+    setEditingExamId("");
+  });
+
+  function startEditing(exam) {
+    setEditingExamId(exam.id);
+    setTitleDraft(exam.title || "");
+  }
+
+  function commitTitle(examId) {
+    onRenameExam(examId, titleDraft);
+    setEditingExamId("");
+  }
+
+  return (
+    <div className="exam-dropdown" ref={dropdownRef}>
+      <button className="exam-select-trigger" type="button" onClick={() => setOpen((current) => !current)} aria-haspopup="listbox" aria-expanded={open}>
+        <span>{selectedExam?.title || "Đề thi"}</span>
+        <ChevronDown size={16} />
+      </button>
+      {open && (
+        <div className="exam-dropdown-menu" role="listbox">
+          <button className="exam-dropdown-create" type="button" onClick={() => {
+            onCreateExam();
+            setOpen(false);
+          }}>
+            Tạo đề thi mới...
+          </button>
+          {exams.map((exam) => {
+            const editing = editingExamId === exam.id;
+            return (
+              <div className={`exam-dropdown-row ${selectedExam?.id === exam.id ? "active" : ""}`} key={exam.id}>
+                {editing ? (
+                  <input
+                    className="exam-dropdown-edit-input"
+                    value={titleDraft}
+                    autoFocus
+                    onChange={(event) => setTitleDraft(event.target.value)}
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") commitTitle(exam.id);
+                      if (event.key === "Escape") setEditingExamId("");
+                    }}
+                    onBlur={() => commitTitle(exam.id)}
+                  />
+                ) : (
+                  <button className="exam-dropdown-name" type="button" onClick={() => {
+                    onSelectExam(exam.id);
+                    setOpen(false);
+                  }}>
+                    {exam.title}
+                  </button>
+                )}
+                <div className="exam-dropdown-icons">
+                  <button type="button" title="Sửa tên đề thi" aria-label={`Sửa tên ${exam.title}`} onClick={(event) => {
+                    event.stopPropagation();
+                    startEditing(exam);
+                  }}>
+                    <Pencil size={14} />
+                  </button>
+                  <button type="button" title="Xóa đề thi" aria-label={`Xóa ${exam.title}`} onClick={(event) => {
+                    event.stopPropagation();
+                    setOpen(false);
+                    onDeleteExam(exam);
+                  }}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExamFormTemplateMenu({ templates, supreme, uploadingType, onDownload, onUpload }) {
+  return (
+    <div className="exam-template-menu" role="menu">
+      {EXAM_QUESTION_TYPES.map((type) => {
+        const template = templates[type.value];
+        return (
+          <div className="exam-template-row" key={type.value} role="menuitem">
+            <span>
+              Form {type.label}
+              {template?.fileName && <small>{template.fileName}</small>}
+            </span>
+            <div className="exam-template-actions">
+              <button type="button" title="Tải form" aria-label={`Tải Form ${type.label}`} onClick={() => onDownload(type.value, template)}>
+                <Download size={15} />
+              </button>
+              {supreme && (
+                <label className={`exam-template-upload ${uploadingType === type.value ? "is-loading" : ""}`} title="Upload form">
+                  <Upload size={15} />
+                  <input
+                    type="file"
+                    accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    disabled={Boolean(uploadingType)}
+                    aria-label={`Upload Form ${type.label}`}
+                    onChange={(event) => {
+                      onUpload(type.value, event.target.files?.[0]);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ExamQuestionEditor({ part, question, questionIndex, onQuestionChange, onAnswerChange, onCorrectChange, onDelete }) {
+  const answers = normalizeExamAnswers(question.answers);
+  const multipleChoice = part.questionType === "multipleChoice";
+  return (
+    <article className="exam-question-row">
+      <div className="exam-question-head">
+        <strong>Câu {questionIndex + 1}</strong>
+        <button className="icon-danger" type="button" onClick={onDelete} title="Xóa câu hỏi" aria-label={`Xóa câu hỏi ${questionIndex + 1}`}>
+          <Trash2 size={14} />
+        </button>
+      </div>
+      <textarea
+        className="exam-question-text"
+        value={question.text || ""}
+        onChange={(event) => onQuestionChange({ text: event.target.value })}
+        placeholder="Nhập câu hỏi..."
+      />
+      <div className="exam-answer-list">
+        {answers.map((answer, answerIndex) => (
+          <label className={`exam-answer-row ${answer.correct ? "correct" : ""}`} key={answer.id || answerIndex}>
+            <input
+              type={multipleChoice ? "radio" : "checkbox"}
+              name={`${question.id}-correct`}
+              checked={Boolean(answer.correct)}
+              onChange={(event) => onCorrectChange(answer.id, event.target.checked)}
+            />
+            <span>{String.fromCharCode(65 + answerIndex)}.</span>
+            <input
+              value={answer.text || ""}
+              onChange={(event) => onAnswerChange(answer.id, { text: event.target.value })}
+              placeholder={`Đáp án ${answerIndex + 1}`}
+            />
+          </label>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function normalizeExams(exams) {
+  const list = Array.isArray(exams) ? exams.filter(Boolean) : [];
+  const normalized = list.map((exam, index) => ({
+    ...exam,
+    id: exam.id || `exam-${index + 1}`,
+    title: exam.title || `Đề thi ${index + 1}`,
+    description: exam.description || "",
+    duration: exam.duration || "",
+    parts: normalizeExamParts(exam.parts),
+    createdAtMillis: exam.createdAtMillis || 0
+  }));
+  return normalized.length > 0 ? normalized : [defaultExamRecord()];
+}
+
+function normalizeExamParts(parts) {
+  const list = Array.isArray(parts) && parts.length > 0 ? parts : [defaultExamPart()];
+  return list.map((part, index) => {
+    const questionType = EXAM_QUESTION_TYPES.some((type) => type.value === part.questionType)
+      ? part.questionType
+      : "multipleChoice";
+    const questions = normalizeExamQuestions(part.questions);
+    return {
+      ...part,
+      id: part.id || `part-${index + 1}`,
+      questionType,
+      questions,
+      pointsPerQuestion: part.pointsPerQuestion || "",
+      selectedQuestions: questions.length || Number(part.selectedQuestions || 0),
+      totalQuestions: questions.length || Number(part.totalQuestions || 0)
+    };
+  });
+}
+
+function normalizeExamQuestions(questions) {
+  return (Array.isArray(questions) ? questions : []).filter(Boolean).map((question, index) => ({
+    ...question,
+    id: question.id || crypto.randomUUID(),
+    text: question.text || question.title || question.content || "",
+    answers: normalizeExamAnswers(question.answers),
+    order: Number(question.order || index + 1)
+  }));
+}
+
+function normalizeExamAnswers(answers) {
+  return (Array.isArray(answers) ? answers : []).filter(Boolean).map((answer, index) => ({
+    ...answer,
+    id: answer.id || crypto.randomUUID(),
+    text: answer.text || answer.content || "",
+    correct: Boolean(answer.correct),
+    order: Number(answer.order || index + 1)
+  }));
+}
+
+function defaultExamRecord() {
+  return {
+    id: "exam-1",
+    title: "Đề thi 1",
+    description: "",
+    duration: "",
+    createdAtMillis: 0,
+    parts: [defaultExamPart()]
+  };
+}
+
+function defaultExamPart() {
+  return {
+    id: "part-1",
+    questionType: "multipleChoice",
+    questions: [],
+    pointsPerQuestion: "",
+    selectedQuestions: 0,
+    totalQuestions: 0
+  };
+}
+
+function createExamRecord(index) {
+  return {
+    id: crypto.randomUUID(),
+    title: `Đề thi ${index + 1}`,
+    description: "",
+    duration: "",
+    createdAtMillis: Date.now(),
+    parts: [createExamPart(0)]
+  };
+}
+
+function createExamPart(index) {
+  return {
+    id: crypto.randomUUID(),
+    questionType: "multipleChoice",
+    questions: [],
+    pointsPerQuestion: "",
+    selectedQuestions: 0,
+    totalQuestions: 0,
+    order: index + 1
+  };
+}
+
+function normalizeExamFormTemplates(templates) {
+  const source = templates && typeof templates === "object" ? templates : {};
+  return Object.fromEntries(EXAM_QUESTION_TYPES.map((type) => {
+    const template = source[type.value] || {};
+    return [type.value, {
+      questionType: type.value,
+      label: template.label || formTemplateLabel(type.value),
+      fileName: template.fileName || "",
+      url: template.url || "",
+      previewUrl: template.previewUrl || "",
+      type: template.type || "",
+      uploadedBy: template.uploadedBy || "",
+      uploadedAtMillis: Number(template.uploadedAtMillis || 0)
+    }];
+  }));
+}
+
+function formTemplateLabel(questionType) {
+  const type = EXAM_QUESTION_TYPES.find((item) => item.value === questionType);
+  return `Form ${type?.label || "Multiple Choice"}`;
+}
+
+function formatPointValue(value) {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount)) return "0";
+  return Number.isInteger(amount) ? String(amount) : amount.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function toRomanNumeral(value) {
+  const numerals = [
+    [1000, "M"],
+    [900, "CM"],
+    [500, "D"],
+    [400, "CD"],
+    [100, "C"],
+    [90, "XC"],
+    [50, "L"],
+    [40, "XL"],
+    [10, "X"],
+    [9, "IX"],
+    [5, "V"],
+    [4, "IV"],
+    [1, "I"]
+  ];
+  let remaining = Number(value || 0);
+  let result = "";
+  numerals.forEach(([amount, label]) => {
+    while (remaining >= amount) {
+      result += label;
+      remaining -= amount;
+    }
+  });
+  return result || String(value || "");
+}
+
+async function downloadExamFormTemplate(questionType, template = {}) {
+  if (template?.url) {
+    downloadExternalFile(template.url, template.fileName || `${slugifyFileName(formTemplateLabel(questionType))}.docx`);
+    return;
+  }
+  const blob = await createExamFormTemplateDocx(questionType);
+  downloadBlob(blob, `${slugifyFileName(formTemplateLabel(questionType))}.docx`);
+}
+
+function downloadExternalFile(url, fileName) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.target = "_blank";
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function downloadBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  try {
+    downloadExternalFile(url, fileName);
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+}
+
+function readBrowserFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Không thể đọc file DOCX."));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function createExamFormTemplateDocx(questionType) {
+  const module = await import("jszip");
+  const JSZip = module.default || module;
+  const zip = new JSZip();
+  zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`);
+  zip.folder("_rels").file(".rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`);
+  zip.folder("word").file("document.xml", examFormDocumentXml(questionType));
+  return zip.generateAsync({
+    type: "blob",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  });
+}
+
+function examFormDocumentXml(questionType) {
+  const rows = examFormParagraphs(questionType);
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    ${rows.map((row) => docxParagraph(row.text, row.level, row.bold)).join("\n")}
+    <w:sectPr />
+  </w:body>
+</w:document>`;
+}
+
+function examFormParagraphs(questionType) {
+  if (questionType === "shortAnswer") {
+    return [
+      { level: 0, text: "Câu hỏi Short Answer thứ nhất?" },
+      { level: 1, text: "Đáp án ngắn mẫu", bold: true },
+      { level: 0, text: "Câu hỏi Short Answer thứ hai?" },
+      { level: 1, text: "Đáp án ngắn mẫu", bold: true }
+    ];
+  }
+  if (questionType === "longAnswer") {
+    return [
+      { level: 0, text: "Câu hỏi Long Answer thứ nhất?" },
+      { level: 1, text: "Gợi ý đáp án dài / rubric mẫu", bold: true },
+      { level: 0, text: "Câu hỏi Long Answer thứ hai?" },
+      { level: 1, text: "Gợi ý đáp án dài / rubric mẫu", bold: true }
+    ];
+  }
+  if (questionType === "checkbox") {
+    return [
+      { level: 0, text: "Câu hỏi Checkbox thứ nhất?" },
+      { level: 1, text: "Đáp án 1", bold: true },
+      { level: 1, text: "Đáp án 2", bold: true },
+      { level: 1, text: "Đáp án 3" },
+      { level: 1, text: "Đáp án 4" }
+    ];
+  }
+  return [
+    { level: 0, text: "Câu hỏi Multiple Choice thứ nhất?" },
+    { level: 1, text: "Đáp án 1" },
+    { level: 1, text: "Đáp án 2", bold: true },
+    { level: 1, text: "Đáp án 3" },
+    { level: 1, text: "Đáp án 4" }
+  ];
+}
+
+function docxParagraph(text, level = 0, bold = false) {
+  return `<w:p>
+  <w:pPr><w:numPr><w:ilvl w:val="${level}"/><w:numId w:val="1"/></w:numPr></w:pPr>
+  <w:r>${bold ? "<w:rPr><w:b/></w:rPr>" : ""}<w:t>${escapeXml(text)}</w:t></w:r>
+</w:p>`;
+}
+
+function escapeXml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&apos;"
+  }[char]));
+}
+
+function slugifyFileName(value) {
+  return String(value || "exam-form")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/Đ/g, "D")
+    .replace(/đ/g, "d")
+    .replace(/[^A-Za-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase() || "exam-form";
+}
+
+async function parseMultipleChoiceDocx(file) {
+  const module = await import("jszip");
+  const JSZip = module.default || module;
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  const documentEntry = zip.file("word/document.xml");
+  if (!documentEntry) throw new Error("File Word không đúng định dạng DOCX.");
+
+  const xmlText = await documentEntry.async("text");
+  const documentXml = new DOMParser().parseFromString(xmlText, "application/xml");
+  if (documentXml.querySelector("parsererror")) throw new Error("Không thể đọc nội dung file Word.");
+
+  const paragraphs = [...documentXml.getElementsByTagNameNS("*", "p")]
+    .map(readDocxParagraph)
+    .filter((paragraph) => paragraph.text.trim());
+  const questions = [];
+  let currentQuestion = null;
+
+  paragraphs.forEach((paragraph) => {
+    if (paragraph.level <= 0 || !currentQuestion) {
+      currentQuestion = {
+        id: crypto.randomUUID(),
+        text: stripListPrefix(paragraph.text),
+        answers: [],
+        order: questions.length + 1
+      };
+      questions.push(currentQuestion);
+      return;
+    }
+
+    currentQuestion.answers.push({
+      id: crypto.randomUUID(),
+      text: stripListPrefix(paragraph.text),
+      correct: paragraph.bold,
+      order: currentQuestion.answers.length + 1
+    });
+  });
+
+  return questions
+    .map((question) => ({ ...question, answers: normalizeExamAnswers(question.answers) }))
+    .filter((question) => question.text.trim() && question.answers.length > 0);
+}
+
+function readDocxParagraph(paragraphNode) {
+  const levelNode = firstDescendant(paragraphNode, "ilvl");
+  const levelValue = levelNode ? Number(nodeAttr(levelNode, "val")) : 0;
+  const runs = [...paragraphNode.getElementsByTagNameNS("*", "r")];
+  const text = runs.length
+    ? runs.map((run) => [...run.getElementsByTagNameNS("*", "t")].map((textNode) => textNode.textContent || "").join("")).join("")
+    : [...paragraphNode.getElementsByTagNameNS("*", "t")].map((textNode) => textNode.textContent || "").join("");
+  const bold = runs.some((run) => isDocxBoldRun(run)) || Boolean(firstDescendant(paragraphNode, "b"));
+  return {
+    text: text.trim(),
+    level: Number.isFinite(levelValue) ? levelValue : 0,
+    bold
+  };
+}
+
+function isDocxBoldRun(runNode) {
+  const boldNode = firstDescendant(runNode, "b");
+  if (!boldNode) return false;
+  const value = nodeAttr(boldNode, "val");
+  return value !== "false" && value !== "0";
+}
+
+function firstDescendant(node, localName) {
+  return [...node.getElementsByTagNameNS("*", localName)][0] || null;
+}
+
+function nodeAttr(node, localName) {
+  return node?.getAttribute(`w:${localName}`)
+    || node?.getAttribute(localName)
+    || node?.getAttributeNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main", localName)
+    || "";
+}
+
+function stripListPrefix(text = "") {
+  return String(text || "")
+    .replace(/^\s*(?:\d+[\).]|[A-Za-z][\).]|[ivxlcdm]+[\).])\s+/i, "")
+    .trim();
 }
 
 

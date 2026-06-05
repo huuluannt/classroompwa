@@ -19,6 +19,7 @@ import { uploadDriveFile } from "./driveStorage";
 const LS_KEY = "classroompwa-state";
 const PIN_LS_PREFIX = "classroompwa-class-pins:";
 const ARCHIVE_LS_PREFIX = "classroompwa-class-archives:";
+const EXAM_FORM_TEMPLATES_LS_KEY = "classroompwa-exam-form-templates";
 const CLASS_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const CLASS_CODE_LENGTH = 5;
 const DATE_TIME_24_OPTIONS = {
@@ -56,6 +57,19 @@ export function loadLocalClasses() {
 
 export function saveLocalClasses(classes) {
   localStorage.setItem(LS_KEY, JSON.stringify(classes));
+}
+
+export function loadLocalExamFormTemplates() {
+  try {
+    const saved = localStorage.getItem(EXAM_FORM_TEMPLATES_LS_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveLocalExamFormTemplates(templates) {
+  localStorage.setItem(EXAM_FORM_TEMPLATES_LS_KEY, JSON.stringify(templates || {}));
 }
 
 export function loadLocalClassPins(email) {
@@ -501,7 +515,7 @@ export async function saveCourseToCloud(course, options = {}) {
   if (!hasFirebaseConfig) return;
   const { writeSummary = true, writeClassDoc = true, writeMembers = true, classFields = null, memberFields = null } = options;
   const courseRef = doc(db, "classes", course.id);
-  const { members, profiles, announcements, ...courseData } = course;
+  const { members, profiles, announcements, exams, ...courseData } = course;
   if (writeClassDoc) {
     await setDoc(courseRef, normalizeCourseForFirestore(courseData, classFields), { merge: true });
   }
@@ -664,6 +678,40 @@ export async function syncUserProfile(user, options = {}) {
   };
 }
 
+export function subscribeExamFormTemplates(user, onNext, onError) {
+  if (!user?.email) return () => {};
+  if (!hasFirebaseConfig) {
+    onNext(loadLocalExamFormTemplates());
+    return () => {};
+  }
+  return onSnapshot(doc(db, "appConfig", "examFormTemplates"), (snapshot) => {
+    onNext(snapshot.exists() ? snapshot.data()?.templates || {} : {});
+  }, onError);
+}
+
+export async function saveExamFormTemplateToCloud(questionType, template) {
+  const nextTemplate = {
+    ...template,
+    questionType,
+    uploadedAtMillis: template.uploadedAtMillis || Date.now()
+  };
+  if (!hasFirebaseConfig) {
+    const nextTemplates = {
+      ...loadLocalExamFormTemplates(),
+      [questionType]: nextTemplate
+    };
+    saveLocalExamFormTemplates(nextTemplates);
+    return nextTemplate;
+  }
+  await setDoc(doc(db, "appConfig", "examFormTemplates"), {
+    templates: {
+      [questionType]: nextTemplate
+    },
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+  return nextTemplate;
+}
+
 export async function uploadClassFile(courseOrId, folder, file, shareOptions = {}) {
   if (!file) return { fileName: "", url: "" };
   if (!hasFirebaseConfig) return readFileAsDataUrl(file);
@@ -719,6 +767,33 @@ export async function saveAnnouncementToCloud(courseId, announcement) {
   return savedAnnouncement;
 }
 
+export async function saveExamToCloud(courseId, exam) {
+  if (!hasFirebaseConfig) return exam;
+  const examRef = exam.id
+    ? doc(db, "classes", courseId, "exams", exam.id)
+    : doc(collection(db, "classes", courseId, "exams"));
+  const savedExam = {
+    ...exam,
+    id: examRef.id,
+    title: exam.title || "",
+    parts: Array.isArray(exam.parts) ? exam.parts : [],
+    createdAtMillis: exam.createdAtMillis || Date.now(),
+    updatedAtMillis: Date.now()
+  };
+  await setDoc(examRef, {
+    ...savedExam,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+  await setDoc(doc(db, "classes", courseId), { updatedAt: serverTimestamp() }, { merge: true });
+  return savedExam;
+}
+
+export async function deleteExamFromCloud(courseId, examId) {
+  if (!hasFirebaseConfig || !courseId || !examId) return;
+  await deleteDoc(doc(db, "classes", courseId, "exams", examId));
+  await setDoc(doc(db, "classes", courseId), { updatedAt: serverTimestamp() }, { merge: true });
+}
+
 export async function deleteAnnouncementFromCloud(courseId, announcementId) {
   if (!hasFirebaseConfig || !announcementId) return;
   await deleteDoc(doc(db, "classes", courseId, "announcements", announcementId));
@@ -770,11 +845,12 @@ function readFileAsDataUrl(file) {
 }
 
 async function hydrateCourse(id, data, includeAllMembers, user, announcementItems) {
-  const [membersSnapshot, submissions, peerReviewResponses, cloudAnnouncements] = await Promise.all([
+  const [membersSnapshot, submissions, peerReviewResponses, cloudAnnouncements, exams] = await Promise.all([
     getDocs(collection(db, "classes", id, "members")),
     loadSubmissions(id, includeAllMembers, user),
     loadPeerReviewResponses(id, includeAllMembers, user),
-    announcementItems ? Promise.resolve(announcementItems) : loadAnnouncements(id)
+    announcementItems ? Promise.resolve(announcementItems) : loadAnnouncements(id),
+    includeAllMembers ? loadExams(id) : Promise.resolve([])
   ]);
   const rawMembers = membersSnapshot.docs
     .map((item) => item.data())
@@ -788,6 +864,7 @@ async function hydrateCourse(id, data, includeAllMembers, user, announcementItem
     members,
     profiles,
     announcements: mergeAnnouncements(course.announcements || [], cloudAnnouncements),
+    exams: includeAllMembers ? exams : [],
     assignments: course.assignments.map((assignment) => ({
       ...assignment,
       submissions: mergeSubmissions(
@@ -812,6 +889,13 @@ function applyProfileToMember(member, profile) {
 async function loadAnnouncements(classId) {
   const snapshot = await getDocs(collection(db, "classes", classId, "announcements"));
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+}
+
+async function loadExams(classId) {
+  const snapshot = await getDocs(collection(db, "classes", classId, "exams"));
+  return snapshot.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .sort((first, second) => Number(first.createdAtMillis || 0) - Number(second.createdAtMillis || 0));
 }
 
 async function loadProfiles(emails) {
@@ -969,6 +1053,8 @@ function withCourseDefaults(course) {
     assignments: [],
     gradebooks: [],
     peerReviews: [],
+    exams: [],
+    examFormTemplates: {},
     extraCards: [],
     hiddenCards: [],
     pinnedCards: [],

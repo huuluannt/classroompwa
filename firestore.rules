@@ -121,6 +121,11 @@ service cloud.firestore {
         && request.resource.data.email == request.auth.token.email;
     }
 
+    match /appConfig/examFormTemplates {
+      allow read: if isPrimaryLecturer();
+      allow write: if isSupreme();
+    }
+
     match /{path=**}/members/{email} {
       allow read: if isSupreme()
         || (signedIn() && resource.data.email == request.auth.token.email);
@@ -202,6 +207,10 @@ service cloud.firestore {
           );
 
         allow update, delete: if isCourseLecturer(classId);
+      }
+
+      match /exams/{examId} {
+        allow read, create, update, delete: if isCourseLecturer(classId);
       }
 
       match /members/{email} {

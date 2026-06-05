@@ -310,6 +310,8 @@ function decodeFirestoreValue(value) {
 
 function canUploadToCourse(email, course, member, folderPath = "") {
   const normalized = normalizeEmail(email);
+  const supremeEmail = normalizeEmail(process.env.SUPREME_EMAIL || "hhluan@hcmus.edu.vn");
+  if (normalized && normalized === supremeEmail) return true;
   const ownerEmail = normalizeEmail(course.ownerEmail);
   const lecturerEmails = new Set([
     ownerEmail,
