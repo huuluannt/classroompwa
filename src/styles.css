@@ -1431,6 +1431,20 @@ textarea { min-height: 88px; resize: vertical; }
   border-color: #fde68a;
 }
 .feed-item strong, .feed-item small { display: block; }
+.announcement-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.announcement-content p {
+  flex: 1 1 260px;
+  margin: 0;
+}
+.announcement-view-assignment {
+  min-height: 30px;
+  padding-inline: 14px;
+}
 .feed-item p {
   margin-bottom: 0;
   white-space: pre-line;
@@ -1589,15 +1603,23 @@ textarea { min-height: 88px; resize: vertical; }
 }
 .expand-card p { color: #42526b; }
 .compact-table td { padding: 9px; }
+.assignment-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0 12px;
+}
 .assignment-ratio-row {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 12px;
-  padding: 8px 10px;
+  margin: 0;
+  padding: 4px 8px;
   border: 1px solid #e1e7ef;
   border-radius: 8px;
   background: #f8fafc;
+  min-height: 34px;
 }
 .assignment-ratio-row > span {
   font-weight: 800;
@@ -1607,10 +1629,10 @@ textarea { min-height: 88px; resize: vertical; }
   color: #64748b;
 }
 .assignment-deadline-row {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 8px;
+  margin: 0;
   flex-wrap: wrap;
 }
 .assignment-deadline-row > span {
@@ -1620,6 +1642,13 @@ textarea { min-height: 88px; resize: vertical; }
 .assignment-deadline-row input {
   width: 210px;
   min-height: 34px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  padding: 5px 9px;
+}
+.assignment-results-toggle {
+  min-height: 34px;
+  white-space: nowrap;
 }
 .assignment-submissions-table th:nth-child(1),
 .assignment-submissions-table td:nth-child(1) {
@@ -1650,10 +1679,14 @@ textarea { min-height: 88px; resize: vertical; }
   font-weight: 800;
 }
 .ratio-input {
-  width: 78px;
-  min-height: 34px;
+  width: 52px;
+  min-height: 30px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  padding: 4px 6px;
   text-align: center;
   background: #fff;
+  box-shadow: none;
 }
 .ratio-input:disabled {
   background: #eef2f7;
@@ -2929,12 +2962,11 @@ textarea {
 
 .assignment-ratio-row {
   gap: 6px;
-  margin-bottom: 8px;
-  padding: 6px 8px;
+  padding: 4px 7px;
 }
 .ratio-input {
-  width: 64px;
-  min-height: 30px;
+  width: 50px;
+  min-height: 28px;
 }
 .review-form input { width: 62px; }
 .review-form button { min-width: 76px; }

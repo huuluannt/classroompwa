@@ -1640,6 +1640,7 @@ function ClassPane({
             user={user}
             course={course}
             selectedCard={selectedCard}
+            setSelectedCard={setSelectedCard}
             updateCourse={updateCourse}
           />
         </section>
@@ -1803,9 +1804,9 @@ function CardNavItem({ admin, card, active, pinned, draggable, dragging, dragOve
   );
 }
 
-function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditMembers, canEditTopics, user, course, selectedCard, updateCourse }) {
+function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditMembers, canEditTopics, user, course, selectedCard, setSelectedCard, updateCourse }) {
   if (selectedCard === "members") return <MembersCard admin={admin} canManageCourseLecturers={canManageCourseLecturers} classLeader={classLeader} canEditMembers={canEditMembers} user={user} course={course} updateCourse={updateCourse} />;
-  if (selectedCard === "announcements") return <AnnouncementsCard admin={admin} classLeader={classLeader} user={user} course={course} updateCourse={updateCourse} />;
+  if (selectedCard === "announcements") return <AnnouncementsCard admin={admin} classLeader={classLeader} user={user} course={course} updateCourse={updateCourse} onOpenAssignments={() => setSelectedCard("assignments")} />;
   if (selectedCard === "info") return <InfoCard admin={admin} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "schedule") return <ScheduleCard admin={admin} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "groupTopic") return <GroupTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
@@ -2383,7 +2384,7 @@ function MemberNumberInput({ className, value, onCommit }) {
 }
 
 
-function AnnouncementsCard({ admin, classLeader, user, course, updateCourse }) {
+function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onOpenAssignments }) {
   const requestConfirm = useConfirmAction();
   const [content, setContent] = useState("");
   const [files, setFiles] = useState([]);
@@ -2649,8 +2650,15 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse }) {
                 </div>
               )}
             </div>
-            <p>{item.content}</p>
-            <div className="link-list">{extractUrls(item.content).map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}</div>
+            <div className="announcement-content">
+              <p>{announcementDisplayContent(item)}</p>
+              {item.assignmentId && (
+                <button className="join-action compact announcement-view-assignment" type="button" onClick={onOpenAssignments}>
+                  Xem
+                </button>
+              )}
+            </div>
+            <div className="link-list">{extractUrls(announcementDisplayContent(item)).map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}</div>
             {item.attachments?.length > 0 && (
               <div className="attachment-grid">
                 {item.attachments.map((file, index) => {
@@ -4010,27 +4018,32 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
       {open && (
         <div>
           <p>{assignment.content}</p>
-          <div className="assignment-deadline-row">
-            <span>Hạn nộp:</span>
-            {admin ? (
-              <input
-                type="datetime-local"
-                value={assignmentDateTimeLocalValue(assignment)}
-                onChange={(event) => updateAssignmentDeadline(updateCourse, assignment.id, event.target.value)}
-              />
-            ) : (
-              <strong>{assignmentDeadlineLabel(assignment) || "Không giới hạn"}</strong>
-            )}
-          </div>
-          <div className="assignment-ratio-row">
-            <span>Tỉ lệ:</span>
-            {admin && !lastAssignment ? (
-              <AssignmentRatioInput value={assignment.ratio || ""} onCommit={(value) => updateAssignmentRatio(updateCourse, assignment.id, value)} />
-            ) : (
-              <input className="ratio-input" value={assignment.ratio || "0"} disabled readOnly />
-            )}
-            <strong>%</strong>
-            {admin && lastAssignment && <small>Tự động tính phần còn lại</small>}
+          <div className="assignment-meta-row">
+            <div className="assignment-deadline-row">
+              <span>Hạn nộp:</span>
+              {admin ? (
+                <input
+                  type="datetime-local"
+                  value={assignmentDateTimeLocalValue(assignment)}
+                  onChange={(event) => updateAssignmentDeadline(updateCourse, assignment.id, event.target.value)}
+                />
+              ) : (
+                <strong>{assignmentDeadlineLabel(assignment) || "Không giới hạn"}</strong>
+              )}
+            </div>
+            <div className="assignment-ratio-row">
+              <span>Tỉ lệ:</span>
+              {admin && !lastAssignment ? (
+                <AssignmentRatioInput value={assignment.ratio || ""} onCommit={(value) => updateAssignmentRatio(updateCourse, assignment.id, value)} />
+              ) : (
+                <input className="ratio-input" value={assignment.ratio || "0"} disabled readOnly />
+              )}
+              <strong>%</strong>
+              {admin && lastAssignment && <small>Tự động tính phần còn lại</small>}
+            </div>
+            <button className="join-action compact assignment-results-toggle" onClick={() => setShowResults(!showResults)}>
+              {admin ? "Xem kết quả nộp bài" : "Xem bài đã nộp"}
+            </button>
           </div>
           {!admin && (
             <>
@@ -4047,9 +4060,6 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
               {submitError && <p className="error-text">{submitError}</p>}
             </>
           )}
-          <button className="join-action compact" onClick={() => setShowResults(!showResults)}>
-            {admin ? "Xem kết quả nộp bài" : "Xem bài đã nộp"}
-          </button>
           {showResults && (
             <table className="data-table compact-table assignment-submissions-table">
               <thead><tr><th>Họ tên</th><th>File</th><th>Thời gian</th><th>Email</th></tr></thead>
@@ -4143,12 +4153,20 @@ function assignmentTitleWithRatio(assignment) {
 }
 
 function assignmentAnnouncementContent(assignment) {
-  const lines = [`Tiêu đề bài tập: ${assignment?.title || "Bài tập"}`];
+  const lines = [`Bài tập: ${assignment?.title || "Bài tập"}`];
   const content = String(assignment?.content || "").trim();
-  if (content) lines.push(`Nội dung giao bài: ${content}`);
+  if (content) lines.push(`Nội dung: ${content}`);
   const dueAtMillis = assignmentDeadlineMillis(assignment);
   if (dueAtMillis) lines.push(`Deadline: ${formatDateTime24(dueAtMillis)}`);
   return lines.join("\n");
+}
+
+function announcementDisplayContent(announcement) {
+  const content = String(announcement?.content || "");
+  if (!announcement?.assignmentId) return content;
+  return content
+    .replace(/^Tiêu đề bài tập:/gm, "Bài tập:")
+    .replace(/^Nội dung giao bài:/gm, "Nội dung:");
 }
 
 function assignmentDateTimeLocalValue(assignment) {
