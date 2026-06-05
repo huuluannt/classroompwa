@@ -3066,7 +3066,7 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
         title="Topic Nhóm"
         action={canEdit && (
           <div className="panel-actions">
-            <div className="material-add-wrap" ref={addPopoverRef}>
+            <div className="material-add-wrap topic-add-wrap" ref={addPopoverRef}>
               <button className="topic-add-button" type="button" onClick={() => setAddOpen((current) => !current)}>
                 <Plus size={14} /> New Topic
               </button>
@@ -3394,7 +3394,7 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
         title="Topic Liên nhóm"
         action={canEdit && (
           <div className="panel-actions">
-            <div className="material-add-wrap" ref={addPopoverRef}>
+            <div className="material-add-wrap topic-add-wrap" ref={addPopoverRef}>
               <button className="topic-add-button" type="button" onClick={() => setAddOpen((current) => !current)}>
                 <Plus size={14} /> New Topic
               </button>
