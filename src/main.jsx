@@ -4528,15 +4528,18 @@ function GroupGradebookCards({ admin, user, course, draftRows, onScoreChange, on
   return (
     <div className="grade-topic-list">
       {cards.map((card) => (
-        <section className="group-topic-card grade-topic-card" key={card.gradeKey}>
+        <section className="group-topic-card topic-editor-card grade-topic-card" key={card.gradeKey}>
           <div className="group-topic-header">
             <div className="group-topic-bar grade-topic-bar">
-              <span className="group-topic-badge">{card.label}</span>
-              <label className="group-topic-compact-field">
-                <span>Thứ tự báo cáo:</span>
-                <strong className="score-box read-only">{card.reportOrder || ""}</strong>
-              </label>
-              <label className="group-topic-compact-field">
+              <span className="group-topic-badge topic-group-title">
+                <span>{card.label}</span>
+                <span className="topic-inline-meta">
+                  <span>(STT:</span>
+                  <strong className="score-box read-only">{card.reportOrder || ""}</strong>
+                  <span>)</span>
+                </span>
+              </span>
+              <label className="group-topic-compact-field grade-score-field">
                 <span>Điểm:</span>
                 {admin ? (
                   <input className="score-input" data-enter-group="group-grade-score" inputMode="decimal" value={card.score} onKeyDown={(event) => focusNextInputOnEnter(event, "group-grade-score")} onChange={(event) => onScoreChange(card.gradeKey, event.target.value)} />
@@ -4573,11 +4576,11 @@ function IntergroupGradebookCards({ admin, user, course, draftRows, onScoreChang
   return (
     <div className="grade-topic-list">
       {cards.map((card) => (
-        <section className="group-topic-card grade-topic-card" key={card.gradeKey}>
+        <section className="group-topic-card topic-editor-card grade-topic-card" key={card.gradeKey}>
           <div className="group-topic-header">
             <div className="group-topic-bar intergroup-grade-bar">
               <span className="group-topic-badge">{card.label}</span>
-              <label className="group-topic-compact-field">
+              <label className="group-topic-compact-field grade-score-field">
                 <span>Điểm:</span>
                 {admin ? (
                   <input className="score-input" data-enter-group="intergroup-grade-score" inputMode="decimal" value={card.score} onKeyDown={(event) => focusNextInputOnEnter(event, "intergroup-grade-score")} onChange={(event) => onScoreChange(card.gradeKey, event.target.value)} />

@@ -1320,6 +1320,17 @@ textarea { min-height: 88px; resize: vertical; }
   font-size: 13px;
   text-align: center;
 }
+.topic-editor-card .topic-intergroup-field input,
+.topic-inline-meta input {
+  border: 0;
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.62);
+}
+.topic-editor-card .topic-intergroup-field input:focus,
+.topic-inline-meta input:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.28);
+  outline-offset: 1px;
+}
 .topic-editor-card .placeholder-delete-button {
   width: 26px;
   height: 26px;
@@ -2170,9 +2181,48 @@ textarea { min-height: 88px; resize: vertical; }
   display: grid;
   gap: 12px;
 }
+.grade-topic-card.topic-editor-card .group-topic-bar {
+  grid-template-columns: minmax(0, 1fr) auto;
+  background: #bfdbfe;
+}
+.grade-topic-card.topic-editor-card .group-topic-badge {
+  font-size: 15px;
+}
+.grade-topic-card.topic-editor-card .topic-inline-meta .score-box.read-only {
+  min-width: 36px;
+  min-height: 24px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.62);
+  font-size: 13px;
+}
+.grade-topic-card.topic-editor-card .grade-score-field {
+  font-size: 14px;
+  font-weight: 700;
+}
+.grade-topic-card.topic-editor-card .grade-score-field .score-input,
+.grade-topic-card.topic-editor-card .grade-score-field .score-box {
+  width: 52px;
+  min-width: 52px;
+  min-height: 28px;
+  padding: 3px 7px;
+  border: 1px solid #94a3b8;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 13px;
+  text-align: center;
+}
 .grade-topic-card .group-topic-topic-row p {
   background: #f1f5f9;
   color: #172033;
+}
+.grade-topic-card.topic-editor-card .group-topic-topic-row p {
+  min-height: 30px;
+  padding: 5px 8px;
+  border-color: #b8c6dc;
+  background: #f8fafc;
+  line-height: 1.35;
 }
 .grade-topic-bar {
   grid-template-columns: minmax(120px, 1fr) auto auto;
