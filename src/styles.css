@@ -2004,13 +2004,25 @@ textarea { min-height: 88px; resize: vertical; }
   min-height: 92px;
 }
 .assignment-add-popover {
-  width: min(560px, calc(100vw - 34px));
+  width: min(680px, calc(100vw - 34px));
 }
 .assignment-create-popover-row {
-  display: grid;
-  grid-template-columns: auto minmax(190px, 1fr) auto;
+  display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+}
+.assignment-create-popover-row select {
+  width: 136px;
+  flex: 0 0 136px;
+}
+.assignment-create-popover-row input[type="datetime-local"] {
+  width: auto;
+  flex: 1 1 220px;
+  min-width: 210px;
+}
+.assignment-create-popover-row .dark-action {
+  margin-left: auto;
 }
 .assignment-create-popover-row label,
 .grade-add-row label {

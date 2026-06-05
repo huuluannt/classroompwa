@@ -3781,7 +3781,7 @@ function MaterialsCard({ admin, user, course, updateCourse }) {
 function AssignmentsCard({ admin, user, course, updateCourse }) {
   const addPopoverRef = useRef(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [draft, setDraft] = useState({ title: "", content: "", dueAt: "" });
+  const [draft, setDraft] = useState({ title: "", content: "", type: "personal", dueAt: "" });
   const [creatingAssignment, setCreatingAssignment] = useState(false);
   const [assignmentCreateError, setAssignmentCreateError] = useState("");
   const [assignmentCreateNotice, setAssignmentCreateNotice] = useState("");
@@ -3799,10 +3799,12 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
     setAssignmentCreateNotice("");
     try {
       const dueAtMillis = draft.dueAt ? new Date(draft.dueAt).getTime() : 0;
+      const assignmentType = normalizeGradebookType(draft.type, "personal");
       const assignment = {
         id: crypto.randomUUID(),
         title,
         content: draft.content.trim(),
+        type: assignmentType,
         dueAt: draft.dueAt,
         dueAtMillis: dueAtMillis || "",
         ratio: "0",
@@ -3839,7 +3841,7 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
         };
       }, { sync: true });
 
-      setDraft({ title: "", content: "", dueAt: "" });
+      setDraft({ title: "", content: "", type: "personal", dueAt: "" });
       setAddOpen(false);
       if (hasFirebaseConfig) {
         try {
@@ -3890,6 +3892,18 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
                   onChange={(event) => setDraft({ ...draft, content: event.target.value })}
                 />
                 <div className="assignment-create-popover-row">
+                  <label htmlFor="assignment-type">Type:</label>
+                  <select
+                    id="assignment-type"
+                    aria-label="Loại bài tập"
+                    disabled={creatingAssignment}
+                    value={draft.type}
+                    onChange={(event) => setDraft({ ...draft, type: event.target.value })}
+                  >
+                    <option value="personal">Cá nhân</option>
+                    <option value="group">Nhóm</option>
+                    <option value="intergroup">Liên nhóm</option>
+                  </select>
                   <label htmlFor="assignment-due-at">Deadline:</label>
                   <input
                     id="assignment-due-at"
@@ -4079,63 +4093,12 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
 }
 
 function GradesCard({ admin, user, course, updateCourse }) {
-  const addPopoverRef = useRef(null);
-  const [addOpen, setAddOpen] = useState(false);
-  const [assignmentId, setAssignmentId] = useState(course.assignments[0]?.id || "");
-  const [type, setType] = useState("group");
-  const assignmentOptionsSignature = course.assignments.map((item) => item.id).join("|");
-  const canCreateGradebook = Boolean(assignmentId) && gradebookSourceCount(course, type) > 0;
-  const visibleGradebooks = admin ? (course.gradebooks || []) : (course.gradebooks || []).filter(isGradebookPublished);
-
-  useOutsideClick(addPopoverRef, addOpen, () => setAddOpen(false));
-
-  useEffect(() => {
-    if (!course.assignments.some((item) => item.id === assignmentId)) {
-      setAssignmentId(course.assignments[0]?.id || "");
-    }
-  }, [assignmentId, assignmentOptionsSignature]);
-
-  function handleCreateGradebook() {
-    if (!canCreateGradebook) return;
-    createGradebook(course, updateCourse, assignmentId, type);
-    setAddOpen(false);
-  }
+  const automaticGradebooks = buildAutomaticGradebooks(course);
+  const visibleGradebooks = admin ? automaticGradebooks : automaticGradebooks.filter(isGradebookPublished);
 
   return (
     <>
-      <PanelTitle
-        title="Bảng điểm"
-        action={admin && (
-          <div className="material-add-wrap" ref={addPopoverRef}>
-            <button className="material-add-button" type="button" onClick={() => setAddOpen((current) => !current)}>
-              <Plus size={14} /> Add
-            </button>
-            {addOpen && (
-              <div className="material-add-popover grade-add-popover">
-                <div className="grade-add-row">
-                  <label htmlFor="gradebook-assignment">Assignment:</label>
-                  <select id="gradebook-assignment" value={assignmentId} onChange={(event) => setAssignmentId(event.target.value)}>
-                    {course.assignments.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
-                  </select>
-                </div>
-                <div className="grade-add-row">
-                  <label htmlFor="gradebook-type">Type:</label>
-                  <select id="gradebook-type" value={type} onChange={(event) => setType(event.target.value)}>
-                    <option value="personal">Cá nhân</option>
-                    <option value="group">Nhóm</option>
-                    <option value="intergroup">Liên nhóm</option>
-                  </select>
-                </div>
-                <div className="material-upload-actions">
-                  <button className="primary-action compact dark-action" type="button" onClick={handleCreateGradebook} disabled={!canCreateGradebook}>
-                    <Plus size={14} /> Create
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      />
+      <PanelTitle title="Bảng điểm" />
       <div className="list-stack">
         <SummaryGradebookItem admin={admin} user={user} course={course} />
         {!admin && visibleGradebooks.length === 0 && (
@@ -4148,7 +4111,6 @@ function GradesCard({ admin, user, course, updateCourse }) {
     </>
   );
 }
-
 function AssignmentRatioInput({ value, onCommit }) {
   const [draft, setDraft] = useState(String(value ?? ""));
 
@@ -4297,10 +4259,68 @@ const gradebookTypeLabels = {
   intergroup: "Liên nhóm"
 };
 
+function normalizeGradebookType(type, fallback = "personal") {
+  return gradebookTypeLabels[type] ? type : fallback;
+}
+
+function findStoredGradebook(course, assignmentId) {
+  return [...(course.gradebooks || [])]
+    .reverse()
+    .find((book) => String(book.assignmentId || "") === String(assignmentId || ""));
+}
+
+function assignmentGradebookType(assignment, storedBook) {
+  if (gradebookTypeLabels[assignment?.type]) return assignment.type;
+  if (gradebookTypeLabels[storedBook?.type]) return storedBook.type;
+  return "personal";
+}
+
+function buildAutomaticGradebook(course, assignment) {
+  const storedBook = findStoredGradebook(course, assignment.id);
+  const type = assignmentGradebookType(assignment, storedBook);
+  const id = storedBook?.id || `gradebook-${assignment.id}`;
+  return {
+    ...(storedBook || {}),
+    id,
+    assignmentId: assignment.id,
+    title: `Điểm ${assignmentTitleWithRatio(assignment)} (${gradebookTypeLabels[type]})`,
+    type,
+    published: storedBook?.published === true,
+    rows: storedBook?.rows || [],
+    autoGenerated: true
+  };
+}
+
+function buildAutomaticGradebooks(course) {
+  return normalizeAssignmentRatios(course.assignments || []).map((assignment) => buildAutomaticGradebook(course, assignment));
+}
+
+function upsertGradebookRecord(gradebooks, book, patch) {
+  const records = gradebooks || [];
+  const assignmentId = book.assignmentId || "";
+  const bookId = book.id || `gradebook-${assignmentId}`;
+  const hasMatchingId = records.some((item) => String(item.id || "") === String(bookId || ""));
+  const matches = (item) => hasMatchingId
+    ? String(item.id || "") === String(bookId || "")
+    : String(item.assignmentId || "") === String(assignmentId || "");
+  const baseRecord = {
+    id: bookId,
+    assignmentId,
+    title: book.title || "",
+    type: normalizeGradebookType(book.type, "personal"),
+    published: book.published === true,
+    rows: book.rows || []
+  };
+  if (records.some(matches)) {
+    return records.map((item) => matches(item) ? { ...item, ...baseRecord, ...patch, id: item.id || bookId } : item);
+  }
+  return [...records, { ...baseRecord, ...patch }];
+}
+
 function gradebookTitleWithRatio(book, course, bookType) {
   const assignment = (course.assignments || []).find((item) => item.id === book.assignmentId);
   if (!assignment) return book.title;
-  return `Điểm ${assignmentTitleWithRatio(assignment)} (${gradebookTypeLabels[bookType] || gradebookTypeLabels.group})`;
+  return `Điểm ${assignmentTitleWithRatio(assignment)} (${gradebookTypeLabels[bookType] || gradebookTypeLabels.personal})`;
 }
 
 function isGradebookPublished(book) {
@@ -4400,7 +4420,7 @@ function GradebookItem({ admin, user, book, course, updateCourse }) {
   const [open, setOpen] = useState(false);
   const [draftRows, setDraftRows] = useState(book.rows || []);
   const [dirty, setDirty] = useState(false);
-  const bookType = gradebookTypeLabels[book.type] ? book.type : "group";
+  const bookType = normalizeGradebookType(book.type, "personal");
   const published = isGradebookPublished(book);
 
   useEffect(() => {
@@ -4430,7 +4450,11 @@ function GradebookItem({ admin, user, book, course, updateCourse }) {
     const nextRows = buildGradebookRowsForSave(course, bookType, draftRows);
     updateCourse((current) => ({
       ...current,
-      gradebooks: (current.gradebooks || []).map((item) => item.id === book.id ? { ...item, type: bookType, rows: nextRows } : item)
+      gradebooks: upsertGradebookRecord(current.gradebooks || [], book, {
+        title: gradebookTitleWithRatio(book, current, bookType),
+        type: bookType,
+        rows: nextRows
+      })
     }), { toast: true });
     setDirty(false);
   }
@@ -4439,9 +4463,12 @@ function GradebookItem({ admin, user, book, course, updateCourse }) {
     const nextRows = buildGradebookRowsForSave(course, bookType, draftRows);
     updateCourse((current) => ({
       ...current,
-      gradebooks: (current.gradebooks || []).map((item) => (
-        item.id === book.id ? { ...item, type: bookType, rows: nextRows, published: true } : item
-      ))
+      gradebooks: upsertGradebookRecord(current.gradebooks || [], book, {
+        title: gradebookTitleWithRatio(book, current, bookType),
+        type: bookType,
+        rows: nextRows,
+        published: true
+      })
     }), { toast: "Đã publish bảng điểm." });
     setDirty(false);
   }
@@ -4449,9 +4476,11 @@ function GradebookItem({ admin, user, book, course, updateCourse }) {
   function unpublishScores() {
     updateCourse((current) => ({
       ...current,
-      gradebooks: (current.gradebooks || []).map((item) => (
-        item.id === book.id ? { ...item, published: false } : item
-      ))
+      gradebooks: upsertGradebookRecord(current.gradebooks || [], book, {
+        title: gradebookTitleWithRatio(book, current, bookType),
+        type: bookType,
+        published: false
+      })
     }), { toast: "Đã ẩn bảng điểm với học viên." });
   }
 
@@ -4471,7 +4500,7 @@ function GradebookItem({ admin, user, book, course, updateCourse }) {
             {published ? "Unpublish" : "Publish"}
           </button>
         )}
-        {admin && <button className="icon-danger" onClick={() => requestConfirm({
+        {admin && !book.autoGenerated && <button className="icon-danger" onClick={() => requestConfirm({
           title: "Xác nhận xóa bảng điểm",
           message: `Bạn có chắc muốn xóa bảng điểm "${book.title}" không?`,
           confirmLabel: "Xóa bảng điểm"
@@ -4752,16 +4781,17 @@ function buildSummaryComponent(course, assignment, member, admin) {
   const book = findSummaryGradebook(course, assignment.id, admin);
   if (!book) return emptySummaryScore(assignment.id);
 
-  const bookType = gradebookTypeLabels[book.type] ? book.type : "group";
+  const bookType = normalizeGradebookType(book.type, "personal");
   if (bookType === "personal") return personalSummaryScore(course, book, assignment.id, member);
   if (bookType === "intergroup") return intergroupSummaryScore(course, book, assignment.id, member);
   return groupSummaryScore(course, book, assignment.id, member);
 }
 
 function findSummaryGradebook(course, assignmentId, admin) {
-  return [...(course.gradebooks || [])]
-    .reverse()
-    .find((book) => String(book.assignmentId || "") === String(assignmentId || "") && (admin || isGradebookPublished(book)));
+  const assignment = (course.assignments || []).find((item) => String(item.id || "") === String(assignmentId || ""));
+  const book = assignment ? buildAutomaticGradebook(course, assignment) : findStoredGradebook(course, assignmentId);
+  if (!book) return null;
+  return admin || isGradebookPublished(book) ? book : null;
 }
 
 function personalSummaryScore(course, book, assignmentId, member) {
