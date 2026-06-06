@@ -9,6 +9,7 @@ import {
   Check,
   ChevronDown,
   ChevronLeft,
+  Clock,
   Copy,
   Crown,
   Download,
@@ -23,6 +24,7 @@ import {
   Pencil,
   Pin,
   PinOff,
+  PlayCircle,
   Plus,
   Search,
   Send,
@@ -4802,19 +4804,188 @@ function stripListPrefix(text = "") {
     .trim();
 }
 
+const ASSIGNMENT_FORMATS = [
+  { value: "uploadFile", label: "Upload file" },
+  { value: "exam", label: "Exam" },
+  { value: "simple", label: "Simple" }
+];
+const ASSIGNMENT_EXAM_SESSION_PREFIX = "classroompwa-active-exam-session:";
 
 function AssignmentsCard({ admin, user, course, updateCourse }) {
+  const requestConfirm = useConfirmAction();
   const addPopoverRef = useRef(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [draft, setDraft] = useState({ title: "", content: "", type: "personal", dueAt: "" });
+  const [draft, setDraft] = useState({ title: "", content: "", type: "personal", format: "uploadFile" });
   const [creatingAssignment, setCreatingAssignment] = useState(false);
   const [assignmentCreateError, setAssignmentCreateError] = useState("");
   const [assignmentCreateNotice, setAssignmentCreateNotice] = useState("");
+  const [activeExamState, setActiveExamState] = useState(() => loadLocalAssignmentExamSession(course.id, user?.email));
+  const [activeExamSubmitting, setActiveExamSubmitting] = useState(false);
+  const [activeExamError, setActiveExamError] = useState("");
   const assignments = normalizeAssignmentRatios(course.assignments || []);
+  const activeExamAssignment = activeExamState
+    ? assignments.find((assignment) => assignment.id === activeExamState.assignmentId)
+    : null;
+  const activeExam = activeExamAssignment ? assignmentExamSnapshot(activeExamAssignment) : null;
 
   useOutsideClick(addPopoverRef, addOpen, () => {
     if (!creatingAssignment) setAddOpen(false);
   });
+
+  useEffect(() => {
+    if (!user?.email || !course?.id) return;
+    if (activeExamState) saveLocalAssignmentExamSession(course.id, user.email, activeExamState);
+    else clearLocalAssignmentExamSession(course.id, user.email);
+  }, [activeExamState, course?.id, user?.email]);
+
+  useEffect(() => {
+    if (admin || activeExamState || !user?.email) return;
+    const restoredAttempt = findActiveExamAttempt(assignments, user.email);
+    if (restoredAttempt) {
+      setActiveExamState({
+        assignmentId: restoredAttempt.assignmentId,
+        startedAtMillis: restoredAttempt.examStartedAtMillis || restoredAttempt.submittedAtMillis || Date.now(),
+        answers: loadLocalAssignmentExamSession(course.id, user.email)?.answers || restoredAttempt.examAnswers || {},
+        cloudAttemptId: restoredAttempt.id || "",
+        hidden: false
+      });
+    }
+  }, [admin, activeExamState, assignments, course.id, user?.email]);
+
+  useEffect(() => {
+    if (!activeExamState) return;
+    const assignment = assignments.find((item) => item.id === activeExamState.assignmentId);
+    if (!assignment || normalizeAssignmentFormat(assignment.format) !== "exam" || !assignmentExamSnapshot(assignment)) {
+      setActiveExamState(null);
+    }
+  }, [activeExamState, assignments]);
+
+  async function startAssignmentExam(assignment, exam) {
+    if (!assignment || !exam) return;
+    setActiveExamError("");
+    if (activeExamState?.assignmentId === assignment.id) {
+      setActiveExamState((current) => current ? { ...current, hidden: false } : current);
+      return;
+    }
+    const startedAtMillis = Date.now();
+    const nextSession = {
+      assignmentId: assignment.id,
+      startedAtMillis,
+      answers: {},
+      hidden: false
+    };
+    setActiveExamState(nextSession);
+    saveLocalAssignmentExamSession(course.id, user.email, nextSession);
+    try {
+      const attemptSubmission = {
+        email: user.email,
+        name: assignmentSubmissionName(course, { email: user.email }, user),
+        submittedAt: formatDateTime24(startedAtMillis),
+        submittedAtMillis: startedAtMillis,
+        late: isAssignmentSubmissionLate(assignment, { submittedAtMillis: startedAtMillis }),
+        fileName: `Đang làm: ${exam.title || "Đề thi"}`,
+        url: "",
+        type: "exam",
+        status: "started",
+        examId: exam.id || assignment.examId || "",
+        examTitle: exam.title || "",
+        examQuestionCount: examTotalQuestionCount(exam),
+        examDuration: exam.duration || "",
+        examStartedAtMillis: startedAtMillis,
+        examAnswers: {}
+      };
+      const savedAttempt = await submitAssignmentToCloud(course.id, assignment.id, attemptSubmission);
+      setActiveExamState((current) => (
+        current?.assignmentId === assignment.id && current.startedAtMillis === startedAtMillis
+          ? { ...current, cloudAttemptId: savedAttempt.id || "" }
+          : current
+      ));
+      updateCourse((current) => ({
+        ...current,
+        assignments: current.assignments.map((item) => item.id === assignment.id
+          ? { ...item, submissions: mergeAssignmentSubmissionList(item.submissions || [], [savedAttempt]) }
+          : item)
+      }), { sync: false });
+    } catch (error) {
+      console.error(error);
+      setActiveExamError("Đã bắt đầu tính giờ trên thiết bị này, nhưng chưa ghi được trạng thái bắt đầu lên cloud. Vui lòng kiểm tra mạng trước khi tiếp tục.");
+    }
+  }
+
+  function showActiveExam(assignmentId) {
+    setActiveExamState((current) => (
+      current?.assignmentId === assignmentId ? { ...current, hidden: false } : current
+    ));
+  }
+
+  function hideActiveExam() {
+    setActiveExamState((current) => current ? { ...current, hidden: true } : current);
+  }
+
+  function updateActiveExamAnswer(questionKey, value) {
+    setActiveExamState((current) => {
+      const durationSeconds = parseExamDurationSeconds(activeExam?.duration);
+      if (!current || !activeExam || (durationSeconds && examRemainingSeconds(activeExam, current) <= 0)) return current;
+      return {
+        ...current,
+        answers: {
+          ...(current.answers || {}),
+          [questionKey]: value
+        }
+      };
+    });
+  }
+
+  function requestSubmitActiveExam() {
+    if (!activeExamState || !activeExamAssignment || !activeExam) return;
+    requestConfirm({
+      title: "Submit bài thi?",
+      message: `Bạn có chắc muốn nộp "${activeExam.title || "Đề thi"}" không? Sau khi submit, bài làm sẽ được gửi cho giảng viên.`,
+      confirmLabel: "Submit",
+      cancelLabel: "Cancel"
+    }, () => submitActiveExam(activeExamAssignment, activeExam, activeExamState));
+  }
+
+  async function submitActiveExam(assignment, exam, session) {
+    if (activeExamSubmitting || !assignment || !exam || !session) return;
+    setActiveExamSubmitting(true);
+    setActiveExamError("");
+    try {
+      const submittedAtMillis = Date.now();
+      const submission = {
+        email: user.email,
+        name: assignmentSubmissionName(course, { email: user.email }, user),
+        submittedAt: formatDateTime24(submittedAtMillis),
+        submittedAtMillis,
+        late: isAssignmentSubmissionLate(assignment, { submittedAtMillis }),
+        fileName: `Bài làm: ${exam.title || "Đề thi"}`,
+        url: "",
+        type: "exam",
+        status: "submitted",
+        examId: exam.id || assignment.examId || "",
+        examTitle: exam.title || "",
+        examQuestionCount: examTotalQuestionCount(exam),
+        examDuration: exam.duration || "",
+        examStartedAtMillis: session.startedAtMillis,
+        examSubmittedAtMillis: submittedAtMillis,
+        examAnswers: session.answers || {}
+      };
+      const savedSubmission = await submitAssignmentToCloud(course.id, assignment.id, submission);
+      updateCourse((current) => ({
+        ...current,
+        assignments: current.assignments.map((item) => item.id === assignment.id
+          ? { ...item, submissions: mergeAssignmentSubmissionList(item.submissions || [], [savedSubmission]) }
+          : item)
+      }), { sync: false });
+      setActiveExamState(null);
+      setAssignmentCreateNotice("Đã submit bài thi.");
+    } catch (error) {
+      console.error(error);
+      setActiveExamError("Không thể submit bài thi. Vui lòng thử lại hoặc báo admin kiểm tra quyền Firestore.");
+    } finally {
+      setActiveExamSubmitting(false);
+    }
+  }
 
   async function createAssignmentCard() {
     const title = draft.title.trim();
@@ -4823,15 +4994,18 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
     setAssignmentCreateError("");
     setAssignmentCreateNotice("");
     try {
-      const dueAtMillis = draft.dueAt ? new Date(draft.dueAt).getTime() : 0;
       const assignmentType = normalizeGradebookType(draft.type, "personal");
+      const assignmentFormat = normalizeAssignmentFormat(draft.format);
       const assignment = {
         id: crypto.randomUUID(),
         title,
         content: draft.content.trim(),
         type: assignmentType,
-        dueAt: draft.dueAt,
-        dueAtMillis: dueAtMillis || "",
+        format: assignmentFormat,
+        examId: "",
+        examSnapshot: null,
+        dueAt: "",
+        dueAtMillis: "",
         ratio: "0",
         submissions: []
       };
@@ -4866,7 +5040,7 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
         };
       }, { sync: true });
 
-      setDraft({ title: "", content: "", type: "personal", dueAt: "" });
+      setDraft({ title: "", content: "", type: "personal", format: "uploadFile" });
       setAddOpen(false);
       if (hasFirebaseConfig) {
         try {
@@ -4891,6 +5065,21 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
     } finally {
       setCreatingAssignment(false);
     }
+  }
+
+  if (!admin && activeExamState && !activeExamState.hidden && activeExamAssignment && activeExam) {
+    return (
+      <AssignmentExamWorkspace
+        assignment={activeExamAssignment}
+        exam={activeExam}
+        session={activeExamState}
+        submitting={activeExamSubmitting}
+        submitError={activeExamError}
+        onAnswerChange={updateActiveExamAnswer}
+        onHide={hideActiveExam}
+        onSubmit={requestSubmitActiveExam}
+      />
+    );
   }
 
   return (
@@ -4929,15 +5118,19 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
                     <option value="group">Nhóm</option>
                     <option value="intergroup">Liên nhóm</option>
                   </select>
-                  <label htmlFor="assignment-due-at">Deadline:</label>
-                  <input
-                    id="assignment-due-at"
-                    type="datetime-local"
-                    aria-label="Hạn nộp bài"
+                  <label htmlFor="assignment-format">Format:</label>
+                  <select
+                    id="assignment-format"
+                    className="assignment-format-select"
+                    aria-label="Format bài tập"
                     disabled={creatingAssignment}
-                    value={draft.dueAt}
-                    onChange={(event) => setDraft({ ...draft, dueAt: event.target.value })}
-                  />
+                    value={draft.format}
+                    onChange={(event) => setDraft({ ...draft, format: event.target.value })}
+                  >
+                    {ASSIGNMENT_FORMATS.map((format) => (
+                      <option value={format.value} key={format.value}>{format.label}</option>
+                    ))}
+                  </select>
                   <button className="primary-action compact dark-action" type="button" onClick={createAssignmentCard} disabled={creatingAssignment || !draft.title.trim()}>
                     {creatingAssignment ? <span className="button-spinner" /> : <FilePlus2 size={14} />}
                     {creatingAssignment ? "Creating" : "Create"}
@@ -4963,6 +5156,9 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
             assignmentCount={assignments.length}
             user={user}
             updateCourse={updateCourse}
+            activeExamState={activeExamState}
+            onStartExam={startAssignmentExam}
+            onShowExam={showActiveExam}
           />
         ))}
       </div>
@@ -4971,7 +5167,7 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
 }
 
 
-function AssignmentItem({ admin, course, assignment, assignmentIndex, assignmentCount, user, updateCourse }) {
+function AssignmentItem({ admin, course, assignment, assignmentIndex, assignmentCount, user, updateCourse, activeExamState, onStartExam, onShowExam }) {
   const requestConfirm = useConfirmAction();
   const [open, setOpen] = useState(false);
   const [fileName, setFileName] = useState("");
@@ -4980,9 +5176,26 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [showResults, setShowResults] = useState(false);
+  const [startExamOpen, setStartExamOpen] = useState(false);
+  const [reviewSubmission, setReviewSubmission] = useState(null);
   const lastAssignment = assignmentIndex === assignmentCount - 1;
-  const userSubmissions = assignment.submissions?.filter((item) => item.email === user.email) || [];
-  const visibleSubmissions = admin ? (assignment.submissions || []) : userSubmissions;
+  const assignmentFormat = normalizeAssignmentFormat(assignment.format);
+  const canHaveSubmissions = assignmentFormat !== "simple";
+  const availableExams = useMemo(() => (
+    Array.isArray(course.exams) && course.exams.length > 0 ? normalizeExams(course.exams) : []
+  ), [course.exams]);
+  const adminSelectedExam = assignmentFormat === "exam" ? findAssignmentExam(assignment, availableExams) : null;
+  const learnerExam = assignmentFormat === "exam" ? assignmentExamSnapshot(assignment) : null;
+  const activeExamForAssignment = activeExamState?.assignmentId === assignment.id;
+  const completedSubmissions = (assignment.submissions || []).filter(isCompletedAssignmentSubmission);
+  const userSubmissions = canHaveSubmissions ? completedSubmissions.filter((item) => item.email === user.email) : [];
+  const visibleSubmissions = canHaveSubmissions ? (admin ? (assignment.submissions || []) : userSubmissions) : [];
+
+  useEffect(() => {
+    if (assignmentFormat !== "exam") {
+      setStartExamOpen(false);
+    }
+  }, [assignmentFormat]);
 
   async function submitAssignment() {
     if (submitting || (!fileName && !file)) return;
@@ -5005,7 +5218,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
       updateCourse((current) => ({
         ...current,
         assignments: current.assignments.map((item) => item.id === assignment.id
-          ? { ...item, submissions: [...(item.submissions || []), savedSubmission] }
+          ? { ...item, submissions: mergeAssignmentSubmissionList(item.submissions || [], [savedSubmission]) }
           : item)
       }), { sync: false });
       setFileName("");
@@ -5020,6 +5233,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
   }
 
   return (
+    <>
     <article className="expand-card">
       <div className="assignment-head">
         <button onClick={() => setOpen(!open)}>
@@ -5036,6 +5250,10 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
         <div>
           <p>{assignment.content}</p>
           <div className="assignment-meta-row">
+            <div className="assignment-format-row">
+              <span>Format:</span>
+              <strong>{assignmentFormatLabel(assignmentFormat)}</strong>
+            </div>
             <div className="assignment-deadline-row">
               <span>Hạn nộp:</span>
               {admin ? (
@@ -5058,11 +5276,44 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
               <strong>%</strong>
               {admin && lastAssignment && <small>Tự động tính phần còn lại</small>}
             </div>
-            <button className="join-action compact assignment-results-toggle" onClick={() => setShowResults(!showResults)}>
-              {admin ? "Xem kết quả nộp bài" : "Xem bài đã nộp"}
-            </button>
+            {canHaveSubmissions && (
+              <button className="join-action compact assignment-results-toggle" onClick={() => setShowResults(!showResults)}>
+                {admin ? "Xem kết quả nộp bài" : "Xem bài đã nộp"}
+              </button>
+            )}
           </div>
-          {!admin && (
+          {assignmentFormat === "exam" && admin && (
+            <div className="assignment-exam-picker-row">
+              <label htmlFor={`assignment-exam-${assignment.id}`}>Đề thi:</label>
+              <select
+                id={`assignment-exam-${assignment.id}`}
+                value={assignment.examId || ""}
+                onChange={(event) => updateAssignmentExam(updateCourse, assignment.id, event.target.value, availableExams)}
+              >
+                <option value="">Chọn đề thi</option>
+                {availableExams.map((exam) => (
+                  <option value={exam.id} key={exam.id}>{exam.title}</option>
+                ))}
+              </select>
+              {adminSelectedExam && (
+                <small>{examTotalQuestionCount(adminSelectedExam)} câu · {formatExamDurationLabel(adminSelectedExam.duration)}</small>
+              )}
+              {availableExams.length === 0 && <small>Chưa có đề thi trong card Đề thi.</small>}
+            </div>
+          )}
+          {assignmentFormat === "exam" && !admin && (
+            <AssignmentExamLearnerPanel
+              exam={learnerExam}
+              active={activeExamForAssignment}
+              submitted={submitted || userSubmissions.length > 0}
+              submitError={submitError}
+              onStart={() => {
+                if (activeExamForAssignment) onShowExam?.(assignment.id);
+                else setStartExamOpen(true);
+              }}
+            />
+          )}
+          {assignmentFormat === "uploadFile" && !admin && (
             <>
               <div className={`upload-row ${submitting ? "is-uploading" : ""}`}>
                 <input disabled={submitting} value={fileName} onChange={(event) => setFileName(event.target.value)} placeholder="Tên file bài tập" />
@@ -5077,7 +5328,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
               {submitError && <p className="error-text">{submitError}</p>}
             </>
           )}
-          {showResults && (
+          {canHaveSubmissions && showResults && (
             <table className="data-table compact-table assignment-submissions-table">
               <thead><tr><th>Họ tên</th><th>File</th><th>Thời gian</th><th>Email</th></tr></thead>
               <tbody>
@@ -5087,12 +5338,24 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                   const previewUrl = filePreviewUrl(submission);
                   const downloadUrl = fileDownloadUrl(submission);
                   const isLate = isAssignmentSubmissionLate(assignment, submission);
+                  const canReviewExam = isReviewableExamSubmission(submission) && assignmentExamSnapshot(assignment);
                   return (
                     <tr key={`${submission.email}-${submission.id || index}`}>
                       <td>{assignmentSubmissionName(course, submission, user)}</td>
                       <td>
                         <div className="submission-file-actions">
-                          <button className="link-button" onClick={() => previewUrl && window.open(previewUrl, "_blank", "noopener,noreferrer")}>{submission.fileName || "file"}</button>
+                          <button
+                            className="link-button"
+                            onClick={() => {
+                              if (canReviewExam) {
+                                setReviewSubmission(submission);
+                                return;
+                              }
+                              if (previewUrl) window.open(previewUrl, "_blank", "noopener,noreferrer");
+                            }}
+                          >
+                            {submission.fileName || "file"}
+                          </button>
                           {downloadUrl && (
                             <button className="download-icon-button" type="button" title="Tải file" aria-label={`Tải ${submission.fileName || "file"}`} onClick={() => window.open(downloadUrl, "_blank", "noopener,noreferrer")}>
                               <Download size={15} />
@@ -5114,6 +5377,248 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
             </table>
           )}
         </div>
+      )}
+    </article>
+    {startExamOpen && learnerExam && (
+      <AssignmentExamStartModal
+        exam={learnerExam}
+        onCancel={() => setStartExamOpen(false)}
+        onStart={() => {
+          onStartExam?.(assignment, learnerExam);
+          setSubmitted(false);
+          setSubmitError("");
+          setStartExamOpen(false);
+        }}
+      />
+    )}
+    {reviewSubmission && assignmentExamSnapshot(assignment) && (
+      <AssignmentExamReviewModal
+        assignment={assignment}
+        exam={assignmentExamSnapshot(assignment)}
+        submission={reviewSubmission}
+        onClose={() => setReviewSubmission(null)}
+      />
+    )}
+    </>
+  );
+}
+
+function AssignmentExamStartModal({ exam, onCancel, onStart }) {
+  return (
+    <Modal title="Bắt đầu làm bài" onClose={onCancel}>
+      <div className="assignment-exam-start-summary">
+        <strong>{exam.title || "Đề thi"}</strong>
+        <span>Tổng cộng: {examTotalQuestionCount(exam)} câu</span>
+        <span>Thời gian làm bài: {formatExamDurationLabel(exam.duration)}</span>
+      </div>
+      <div className="confirm-actions">
+        <button className="secondary-action" type="button" onClick={onCancel}>Cancel</button>
+        <button className="primary-action compact" type="button" onClick={onStart}>
+          <PlayCircle size={15} /> Làm bài
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function AssignmentExamLearnerPanel({
+  exam,
+  active,
+  submitted,
+  submitError,
+  onStart
+}) {
+  if (!exam) {
+    return <div className="assignment-exam-empty">Chưa có đề thi được chọn.</div>;
+  }
+
+  return (
+    <div className="assignment-exam-summary">
+      <div>
+        <strong>Đề thi: {exam.title || "Đề thi"}</strong>
+        <small>{examTotalQuestionCount(exam)} câu · {formatExamDurationLabel(exam.duration)}</small>
+      </div>
+      <button className="join-action compact" type="button" onClick={onStart}>
+        <PlayCircle size={15} /> {active ? "Tiếp tục làm bài" : "Làm bài"}
+      </button>
+      {submitted && <p className="success-text">Bạn đã submit bài thi thành công.</p>}
+      {submitError && <p className="error-text">{submitError}</p>}
+    </div>
+  );
+}
+
+function AssignmentExamWorkspace({ assignment, exam, session, submitting, submitError, onAnswerChange, onHide, onSubmit }) {
+  const durationSeconds = parseExamDurationSeconds(exam?.duration);
+  const [remainingSeconds, setRemainingSeconds] = useState(() => examRemainingSeconds(exam, session));
+  const timeExpired = Boolean(durationSeconds && remainingSeconds <= 0);
+  const warningTime = Boolean(durationSeconds && remainingSeconds > 0 && remainingSeconds <= 300);
+  const answers = session?.answers || {};
+  const parts = normalizeExamParts(exam.parts);
+
+  useEffect(() => {
+    setRemainingSeconds(examRemainingSeconds(exam, session));
+    if (!durationSeconds) return undefined;
+    function tick() {
+      setRemainingSeconds(examRemainingSeconds(exam, session));
+    }
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [durationSeconds, exam, session]);
+
+  return (
+    <div className="assignment-exam-workspace">
+      <div className="assignment-exam-sticky-head">
+        <div>
+          <strong>{exam.title || "Đề thi"}</strong>
+          <small>{assignment?.title ? `${assignment.title} · ` : ""}{examTotalQuestionCount(exam)} câu</small>
+        </div>
+        <div className="assignment-exam-head-actions">
+          <span className={`assignment-exam-timer ${timeExpired ? "expired" : ""} ${warningTime ? "warning" : ""}`}>
+            <Clock size={15} />
+            {durationSeconds ? formatCountdown(remainingSeconds) : "Không giới hạn"}
+          </span>
+          <button className="primary-action compact" type="button" onClick={onSubmit} disabled={submitting}>
+            {submitting ? <span className="button-spinner" /> : <Send size={15} />}
+            {submitting ? "Submitting" : "Submit"}
+          </button>
+          <button className="secondary-action compact" type="button" onClick={onHide} disabled={submitting || timeExpired}>Hide</button>
+        </div>
+      </div>
+      <div className="assignment-exam-scroll">
+        {timeExpired && <p className="error-text">Đã hết thời gian làm bài. Bạn không thể tiếp tục chọn/nhập đáp án. Bấm Submit để gửi bài.</p>}
+        <div className="assignment-exam-question-list">
+          {parts.map((part, partIndex) => {
+            const questions = normalizeExamQuestions(part.questions);
+            if (questions.length === 0) return null;
+            return (
+              <section className="assignment-exam-part" key={part.id || partIndex}>
+                {parts.length > 1 && <h4>Phần {toRomanNumeral(partIndex + 1)}</h4>}
+                {questions.map((question, questionIndex) => (
+                  <AssignmentExamQuestion
+                    key={question.id || `${partIndex}-${questionIndex}`}
+                    part={part}
+                    question={question}
+                    questionIndex={questionIndex}
+                    value={answers[examQuestionResponseKey(part, question)]}
+                    disabled={submitting || timeExpired}
+                    onChange={(value) => onAnswerChange(examQuestionResponseKey(part, question), value)}
+                  />
+                ))}
+              </section>
+            );
+          })}
+        </div>
+        <div className="assignment-exam-submit-row">
+          <button className="primary-action compact" type="button" onClick={onSubmit} disabled={submitting}>
+            {submitting ? <span className="button-spinner" /> : <Send size={15} />}
+            {submitting ? "Submitting" : "Submit"}
+          </button>
+        </div>
+        {submitting && <UploadStatus label="Đang submit bài thi..." />}
+        {submitError && <p className="error-text">{submitError}</p>}
+      </div>
+    </div>
+  );
+}
+
+function AssignmentExamReviewModal({ assignment, exam, submission, onClose }) {
+  const parts = normalizeExamParts(exam.parts);
+  const answers = submission.examAnswers || {};
+  return (
+    <Modal title="Bài làm đã nộp" onClose={onClose} className="assignment-exam-review-modal">
+      <div className="assignment-exam-review-head">
+        <strong>{submission.examTitle || exam.title || "Đề thi"}</strong>
+        <span>{assignment?.title ? `${assignment.title} · ` : ""}{examTotalQuestionCount(exam)} câu</span>
+        <span>Đã nộp: {submission.submittedAt || formatDateTime24(submission.submittedAtMillis || Date.now())}</span>
+      </div>
+      <div className="assignment-exam-review-body">
+        <div className="assignment-exam-question-list">
+          {parts.map((part, partIndex) => {
+            const questions = normalizeExamQuestions(part.questions);
+            if (questions.length === 0) return null;
+            return (
+              <section className="assignment-exam-part" key={part.id || partIndex}>
+                {parts.length > 1 && <h4>Phần {toRomanNumeral(partIndex + 1)}</h4>}
+                {questions.map((question, questionIndex) => (
+                  <AssignmentExamQuestion
+                    key={question.id || `${partIndex}-${questionIndex}`}
+                    part={part}
+                    question={question}
+                    questionIndex={questionIndex}
+                    value={answers[examQuestionResponseKey(part, question)]}
+                    disabled
+                    reviewMode
+                  />
+                ))}
+              </section>
+            );
+          })}
+        </div>
+      </div>
+      <div className="confirm-actions">
+        <button className="secondary-action" type="button" onClick={onClose}>Close</button>
+      </div>
+    </Modal>
+  );
+}
+
+function AssignmentExamQuestion({ part, question, questionIndex, value, disabled, onChange = () => {}, reviewMode = false }) {
+  const questionType = part.questionType || "multipleChoice";
+  const answers = normalizeExamAnswers(question.answers);
+  const checkboxValue = Array.isArray(value) ? value : [];
+
+  function toggleCheckbox(answerId, checked) {
+    onChange(checked
+      ? [...checkboxValue, answerId]
+      : checkboxValue.filter((item) => item !== answerId));
+  }
+
+  return (
+    <article className={`assignment-exam-question ${reviewMode ? "review-mode" : ""}`}>
+      <strong>Câu {questionIndex + 1}</strong>
+      <p>{question.text || "Câu hỏi"}</p>
+      {(questionType === "multipleChoice" || questionType === "checkbox") ? (
+        <div className="assignment-exam-answer-list">
+          {answers.map((answer, answerIndex) => (
+            <label
+              className={`assignment-exam-answer ${
+                questionType === "multipleChoice"
+                  ? value === answer.id ? "selected" : ""
+                  : checkboxValue.includes(answer.id) ? "selected" : ""
+              }`}
+              key={answer.id || answerIndex}
+            >
+              <input
+                type={questionType === "multipleChoice" ? "radio" : "checkbox"}
+                name={question.id}
+                checked={questionType === "multipleChoice" ? value === answer.id : checkboxValue.includes(answer.id)}
+                disabled={disabled}
+                onChange={(event) => {
+                  if (questionType === "multipleChoice") onChange(answer.id);
+                  else toggleCheckbox(answer.id, event.target.checked);
+                }}
+              />
+              <span>{String.fromCharCode(65 + answerIndex)}.</span>
+              <em>{answer.text || `Đáp án ${answerIndex + 1}`}</em>
+            </label>
+          ))}
+        </div>
+      ) : questionType === "shortAnswer" ? (
+        <input
+          className="assignment-exam-text-answer"
+          disabled={disabled}
+          value={value || ""}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="Nhập câu trả lời..."
+        />
+      ) : (
+        <textarea
+          className="assignment-exam-long-answer"
+          disabled={disabled}
+          value={value || ""}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="Nhập câu trả lời..."
+        />
       )}
     </article>
   );
@@ -5138,6 +5643,200 @@ function GradesCard({ admin, user, course, updateCourse }) {
     </>
   );
 }
+
+function assignmentExamSessionStorageKey(courseId, email) {
+  return `${ASSIGNMENT_EXAM_SESSION_PREFIX}${courseId || "course"}:${normalizeEmail(email || "")}`;
+}
+
+function loadLocalAssignmentExamSession(courseId, email) {
+  if (!courseId || !email) return null;
+  try {
+    const saved = localStorage.getItem(assignmentExamSessionStorageKey(courseId, email));
+    if (!saved) return null;
+    const session = JSON.parse(saved);
+    if (!session?.assignmentId || !Number(session.startedAtMillis || 0)) return null;
+    return {
+      assignmentId: session.assignmentId,
+      startedAtMillis: Number(session.startedAtMillis),
+      answers: session.answers && typeof session.answers === "object" ? session.answers : {},
+      cloudAttemptId: session.cloudAttemptId || "",
+      hidden: false
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalAssignmentExamSession(courseId, email, session) {
+  if (!courseId || !email || !session?.assignmentId) return;
+  localStorage.setItem(assignmentExamSessionStorageKey(courseId, email), JSON.stringify({
+    assignmentId: session.assignmentId,
+    startedAtMillis: Number(session.startedAtMillis || Date.now()),
+    answers: session.answers || {},
+    cloudAttemptId: session.cloudAttemptId || "",
+    savedAtMillis: Date.now()
+  }));
+}
+
+function clearLocalAssignmentExamSession(courseId, email) {
+  if (!courseId || !email) return;
+  localStorage.removeItem(assignmentExamSessionStorageKey(courseId, email));
+}
+
+function isCompletedAssignmentSubmission(submission) {
+  return submission?.status !== "started";
+}
+
+function isReviewableExamSubmission(submission) {
+  return submission?.type === "exam" && submission?.status !== "started";
+}
+
+function findActiveExamAttempt(assignments = [], email = "") {
+  const normalizedEmail = normalizeEmail(email);
+  const attempts = [];
+  assignments.forEach((assignment) => {
+    if (normalizeAssignmentFormat(assignment.format) !== "exam") return;
+    const submissions = assignment.submissions || [];
+    const submittedStarts = new Set(submissions
+      .filter((submission) => normalizeEmail(submission.email) === normalizedEmail && submission.type === "exam" && submission.status === "submitted")
+      .map((submission) => String(submission.examStartedAtMillis || "")));
+    submissions.forEach((submission) => {
+      if (normalizeEmail(submission.email) !== normalizedEmail) return;
+      if (submission.type !== "exam" || submission.status !== "started") return;
+      const startedAt = Number(submission.examStartedAtMillis || submission.submittedAtMillis || 0);
+      if (!startedAt || submittedStarts.has(String(startedAt))) return;
+      attempts.push({
+        ...submission,
+        assignmentId: assignment.id,
+        examStartedAtMillis: startedAt
+      });
+    });
+  });
+  return attempts.sort((first, second) => Number(second.examStartedAtMillis || 0) - Number(first.examStartedAtMillis || 0))[0] || null;
+}
+
+function mergeAssignmentSubmissionList(primary = [], secondary = []) {
+  const seen = new Set();
+  return [...primary, ...secondary].filter((submission) => {
+    const key = submission.id || `${submission.email}-${submission.assignmentId}-${submission.status || ""}-${submission.submittedAtMillis || submission.submittedAt || ""}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function normalizeAssignmentFormat(format) {
+  if (format === "upload") return "uploadFile";
+  return ASSIGNMENT_FORMATS.some((item) => item.value === format) ? format : "uploadFile";
+}
+
+function assignmentFormatLabel(format) {
+  return ASSIGNMENT_FORMATS.find((item) => item.value === normalizeAssignmentFormat(format))?.label || "Upload file";
+}
+
+function findAssignmentExam(assignment, exams = []) {
+  const examId = assignment?.examId || "";
+  return exams.find((exam) => String(exam.id || "") === String(examId)) || assignmentExamSnapshot(assignment);
+}
+
+function assignmentExamSnapshot(assignment) {
+  if (!assignment?.examSnapshot) return null;
+  return createAssignmentExamSnapshot(assignment.examSnapshot);
+}
+
+function updateAssignmentExam(updateCourse, assignmentId, examId, exams = []) {
+  const exam = exams.find((item) => String(item.id || "") === String(examId || ""));
+  updateCourse((current) => ({
+    ...current,
+    assignments: normalizeAssignmentRatios((current.assignments || []).map((item) => (
+      item.id === assignmentId
+        ? {
+            ...item,
+            examId,
+            examSnapshot: exam ? createAssignmentExamSnapshot(exam) : null
+          }
+        : item
+    )))
+  }));
+}
+
+function createAssignmentExamSnapshot(exam) {
+  if (!exam) return null;
+  const normalizedExam = {
+    ...exam,
+    title: exam.title || "Đề thi",
+    description: exam.description || "",
+    duration: exam.duration || "",
+    parts: normalizeExamParts(exam.parts)
+  };
+  return {
+    id: normalizedExam.id || "",
+    title: normalizedExam.title,
+    description: normalizedExam.description,
+    duration: normalizedExam.duration,
+    parts: normalizedExam.parts.map((part) => ({
+      id: part.id || crypto.randomUUID(),
+      questionType: part.questionType || "multipleChoice",
+      pointsPerQuestion: part.pointsPerQuestion || "",
+      questions: normalizeExamQuestions(part.questions).map((question) => ({
+        id: question.id || crypto.randomUUID(),
+        text: question.text || "",
+        order: question.order || 0,
+        answers: normalizeExamAnswers(question.answers).map((answer) => ({
+          id: answer.id || crypto.randomUUID(),
+          text: answer.text || "",
+          order: answer.order || 0
+        }))
+      }))
+    }))
+  };
+}
+
+function examTotalQuestionCount(exam) {
+  return normalizeExamParts(exam?.parts).reduce((total, part) => total + normalizeExamQuestions(part.questions).length, 0);
+}
+
+function parseExamDurationSeconds(duration) {
+  const raw = String(duration || "").trim();
+  if (!raw) return 0;
+  if (!raw.includes(":")) {
+    const minutes = Number(raw);
+    return Number.isFinite(minutes) && minutes > 0 ? Math.round(minutes * 60) : 0;
+  }
+  const parts = raw.split(":").map((part) => Number(part.trim()));
+  if (parts.some((part) => !Number.isFinite(part) || part < 0)) return 0;
+  if (parts.length === 2) return Math.round(parts[0] * 60 + parts[1]);
+  if (parts.length === 3) return Math.round(parts[0] * 3600 + parts[1] * 60 + parts[2]);
+  return 0;
+}
+
+function formatExamDurationLabel(duration) {
+  const seconds = parseExamDurationSeconds(duration);
+  return seconds ? formatCountdown(seconds) : "Không giới hạn";
+}
+
+function examRemainingSeconds(exam, session) {
+  const durationSeconds = parseExamDurationSeconds(exam?.duration);
+  if (!durationSeconds || !session?.startedAtMillis) return durationSeconds;
+  const elapsedSeconds = Math.floor((Date.now() - session.startedAtMillis) / 1000);
+  return Math.max(0, durationSeconds - elapsedSeconds);
+}
+
+function formatCountdown(totalSeconds) {
+  const seconds = Math.max(0, Math.floor(Number(totalSeconds || 0)));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+  if (hours > 0) {
+    return [hours, minutes, remainingSeconds].map((part) => String(part).padStart(2, "0")).join(":");
+  }
+  return [minutes, remainingSeconds].map((part) => String(part).padStart(2, "0")).join(":");
+}
+
+function examQuestionResponseKey(part, question) {
+  return `${part?.id || "part"}:${question?.id || "question"}`;
+}
+
 function AssignmentRatioInput({ value, onCommit }) {
   const [draft, setDraft] = useState(String(value ?? ""));
 
@@ -5252,7 +5951,10 @@ function updateAssignmentRatio(updateCourse, assignmentId, ratio) {
 
 function normalizeAssignmentRatios(assignments) {
   if (!assignments.length) return [];
-  const normalized = assignments.map((assignment) => ({ ...assignment }));
+  const normalized = assignments.map((assignment) => ({
+    ...assignment,
+    format: normalizeAssignmentFormat(assignment.format)
+  }));
   const lastIndex = normalized.length - 1;
 
   for (let index = 0; index < lastIndex; index += 1) {
@@ -6403,10 +7105,10 @@ function ConfirmModal({ title, message, confirmLabel, cancelLabel, onCancel, onC
   );
 }
 
-function Modal({ title, children, onClose }) {
+function Modal({ title, children, onClose, className = "" }) {
   return (
     <div className="modal-backdrop">
-      <section className="modal">
+      <section className={`modal ${className}`.trim()}>
         <div className="panel-title"><h3>{title}</h3><button className="icon-button" onClick={onClose}><X size={18} /></button></div>
         {children}
       </section>

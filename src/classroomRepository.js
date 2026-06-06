@@ -722,6 +722,7 @@ export async function uploadClassFile(courseOrId, folder, file, shareOptions = {
 export async function submitAssignmentToCloud(courseId, assignmentId, submission) {
   if (!hasFirebaseConfig) return { id: crypto.randomUUID(), assignmentId, ...submission };
   const submissionRef = doc(collection(db, "classes", courseId, "submissions"));
+  const submittedAtMillis = submission.submittedAtMillis || Date.now();
   const savedSubmission = {
     assignmentId,
     email: submission.email,
@@ -730,9 +731,17 @@ export async function submitAssignmentToCloud(courseId, assignmentId, submission
     url: submission.url || "",
     previewUrl: submission.previewUrl || "",
     type: submission.type || "",
-    submittedAt: submission.submittedAt || formatDateTime24(),
-    submittedAtMillis: submission.submittedAtMillis || Date.now(),
+    status: submission.status || "submitted",
+    submittedAt: submission.submittedAt || formatDateTime24(submittedAtMillis),
+    submittedAtMillis,
     late: Boolean(submission.late),
+    examId: submission.examId || "",
+    examTitle: submission.examTitle || "",
+    examQuestionCount: Number(submission.examQuestionCount || 0),
+    examDuration: submission.examDuration || "",
+    examStartedAtMillis: Number(submission.examStartedAtMillis || 0),
+    examSubmittedAtMillis: Number(submission.examSubmittedAtMillis || 0),
+    examAnswers: submission.examAnswers || {},
     createdAt: serverTimestamp()
   };
   await setDoc(submissionRef, savedSubmission);
