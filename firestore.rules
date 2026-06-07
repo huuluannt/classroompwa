@@ -189,7 +189,15 @@ service cloud.firestore {
             && request.resource.data.assignmentId is string
           );
 
-        allow update, delete: if isCourseLecturer(classId);
+        allow update: if isCourseLecturer(classId)
+          || (
+            isAcceptedMember(classId)
+            && resource.data.email == request.auth.token.email
+            && request.resource.data.email == resource.data.email
+            && request.resource.data.assignmentId == resource.data.assignmentId
+          );
+
+        allow delete: if isCourseLecturer(classId);
       }
 
       match /peerReviewResponses/{responseId} {

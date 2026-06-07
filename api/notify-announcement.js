@@ -37,16 +37,25 @@ export default async function handler(request, response) {
 
     const course = decodeFirestoreDocument(courseDoc);
     const announcement = decodeFirestoreDocument(announcementDoc);
-    if (announcement.author !== requester.email) {
+    const members = memberDocs.map(decodeFirestoreDocument);
+    const requesterEmail = normalizeEmail(requester.email);
+    if (normalizeEmail(announcement.author) !== requesterEmail) {
       return response.status(403).json({ error: "Only the announcement author can trigger email notifications." });
+    }
+    if (!course.announcementEmailEnabled) {
+      return response.status(200).json({ sentCount: 0, skipped: true, reason: "email_disabled" });
+    }
+    if (!isCourseParticipant(requesterEmail, course, members)) {
+      return response.status(403).json({ error: "Only course members can trigger email notifications." });
     }
 
     const recipients = uniqueEmails(
-      memberDocs
-        .map(decodeFirestoreDocument)
-        .filter((member) => member.status === "accepted")
-        .map((member) => member.email)
-        .filter((email) => email && email !== requester.email)
+      [
+        ...courseLecturerEmails(course),
+        ...members
+          .filter((member) => member.status === "accepted")
+          .map((member) => member.email)
+      ]
     );
 
     if (recipients.length === 0) return response.status(200).json({ sentCount: 0, skipped: false });
@@ -59,6 +68,7 @@ export default async function handler(request, response) {
       course,
       announcement,
       origin,
+      from,
       replyTo: process.env.EMAIL_REPLY_TO || announcement.author
     });
     const sentIds = [];
@@ -71,7 +81,7 @@ export default async function handler(request, response) {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          from,
+          from: email.from,
           to: recipient,
           reply_to: email.replyTo,
           subject: email.subject,
@@ -145,14 +155,22 @@ async function getFirestoreDocument(projectId, path, idToken) {
 }
 
 async function listFirestoreDocuments(projectId, path, idToken) {
-  const firestoreResponse = await fetch(`${FIRESTORE_ROOT}/${encodeURIComponent(projectId)}/databases/(default)/documents/${encodeDocumentPath(path)}?pageSize=300`, {
-    headers: { Authorization: `Bearer ${idToken}` }
-  });
-  const result = await firestoreResponse.json().catch(() => ({}));
-  if (!firestoreResponse.ok) {
-    throw Object.assign(new Error(result.error?.message || "Firestore collection read failed."), { status: firestoreResponse.status });
-  }
-  return result.documents || [];
+  const documents = [];
+  let pageToken = "";
+  do {
+    const query = new URLSearchParams({ pageSize: "300" });
+    if (pageToken) query.set("pageToken", pageToken);
+    const firestoreResponse = await fetch(`${FIRESTORE_ROOT}/${encodeURIComponent(projectId)}/databases/(default)/documents/${encodeDocumentPath(path)}?${query}`, {
+      headers: { Authorization: `Bearer ${idToken}` }
+    });
+    const result = await firestoreResponse.json().catch(() => ({}));
+    if (!firestoreResponse.ok) {
+      throw Object.assign(new Error(result.error?.message || "Firestore collection read failed."), { status: firestoreResponse.status });
+    }
+    documents.push(...(result.documents || []));
+    pageToken = result.nextPageToken || "";
+  } while (pageToken);
+  return documents;
 }
 
 function encodeDocumentPath(path) {
@@ -185,7 +203,30 @@ function decodeFirestoreValue(value) {
   return "";
 }
 
-function buildAnnouncementEmail({ course, announcement, origin, replyTo }) {
+function courseLecturerEmails(course) {
+  return [
+    course.ownerEmail,
+    ...(course.lecturerEmails || []),
+    ...(course.lecturers || []).map((lecturer) => lecturer.email)
+  ];
+}
+
+function isCourseLecturer(email, course) {
+  const normalized = normalizeEmail(email);
+  const supremeEmail = normalizeEmail(process.env.SUPREME_EMAIL || "hhluan@hcmus.edu.vn");
+  if (!normalized) return false;
+  if (normalized === supremeEmail) return true;
+  return courseLecturerEmails(course).map(normalizeEmail).includes(normalized);
+}
+
+function isCourseParticipant(email, course, members) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return false;
+  return isCourseLecturer(normalized, course)
+    || members.some((member) => normalizeEmail(member.email) === normalized && member.status === "accepted");
+}
+
+function buildAnnouncementEmail({ course, announcement, origin, from, replyTo }) {
   const className = course.name || "Lớp học";
   const authorName = announcement.authorName || announcement.author || "Thành viên";
   const content = announcement.content || "";
@@ -217,11 +258,33 @@ function buildAnnouncementEmail({ course, announcement, origin, replyTo }) {
   ].filter(Boolean).join("\n");
 
   return {
+    from: buildAnnouncementFromAddress(from, authorName),
     subject: `[${className}] Thông báo mới từ ${authorName}`,
     html,
     text,
     replyTo
   };
+}
+
+function buildAnnouncementFromAddress(from, authorName) {
+  const address = extractEmailAddress(from);
+  if (!address) return from;
+  const displayName = sanitizeEmailDisplayName(`${authorName || "Classroom"} qua Classroom`);
+  return `${displayName} <${address}>`;
+}
+
+function extractEmailAddress(value) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/<([^>]+)>/);
+  const address = (match?.[1] || raw).trim();
+  return address.includes("@") ? address : "";
+}
+
+function sanitizeEmailDisplayName(value) {
+  return String(value || "")
+    .replace(/[\r\n<>"]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim() || "Classroom";
 }
 
 function escapeHtml(value) {
@@ -237,6 +300,10 @@ function escapeAttribute(value) {
   return escapeHtml(value).replace(/`/g, "&#096;");
 }
 
+function normalizeEmail(email = "") {
+  return String(email || "").trim().toLowerCase();
+}
+
 function uniqueEmails(emails) {
-  return [...new Set(emails.map((email) => String(email || "").trim().toLowerCase()).filter((email) => email.includes("@")))];
+  return [...new Set(emails.map(normalizeEmail).filter((email) => email.includes("@")))];
 }

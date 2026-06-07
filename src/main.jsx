@@ -2435,6 +2435,7 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onO
   const [postNotice, setPostNotice] = useState("");
   const postPermission = getAnnouncementPostPermission(course);
   const explicitPostPermission = course.announcementPostPermission || "";
+  const announcementEmailEnabled = Boolean(course.announcementEmailEnabled);
   const canPost = canPostAnnouncement(course, user, admin, classLeader);
   const canSchedulePost = admin || classLeader;
 
@@ -2464,6 +2465,18 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onO
     });
   }
 
+  function updateAnnouncementEmailEnabled(enabled) {
+    updateCourse((current) => ({
+      ...current,
+      announcementEmailEnabled: enabled
+    }), {
+      toast: enabled ? "Đã bật gửi email thông báo cho lớp." : "Đã tắt gửi email thông báo cho lớp.",
+      writeMembers: false,
+      writeSummary: false,
+      classFields: ["announcementEmailEnabled"]
+    });
+  }
+
   async function submitPost() {
     if (!content.trim() && files.length === 0) return;
     if (!canPost) {
@@ -2478,6 +2491,7 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onO
       const scheduledAtMillis = canSchedulePost && scheduledAt ? new Date(scheduledAt).getTime() : 0;
       const hasValidFutureSchedule = Number.isFinite(scheduledAtMillis) && scheduledAtMillis > createdAtMillis;
       const publishAtMillis = hasValidFutureSchedule ? scheduledAtMillis : createdAtMillis;
+      const emailRequested = announcementEmailEnabled;
       const attachments = hasFirebaseConfig
         ? await uploadManyFiles(course, "announcements", files, { anyoneWithLink: true, writerEmails: adminWriterEmails() })
         : await Promise.all(files.map(readFileAsDataUrl));
@@ -2515,12 +2529,16 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onO
       setScheduledAt("");
 
       if (hasValidFutureSchedule) {
-        setPostNotice(`Đã hẹn giờ đăng tin lúc ${savedAnnouncement.scheduledAt}.`);
-      } else if (hasFirebaseConfig) {
+        setPostNotice(emailRequested
+          ? `Đã hẹn giờ đăng tin lúc ${savedAnnouncement.scheduledAt}. Email chỉ gửi cho bài đăng ngay.`
+          : `Đã hẹn giờ đăng tin lúc ${savedAnnouncement.scheduledAt}.`);
+      } else if (hasFirebaseConfig && emailRequested) {
         try {
           const emailResult = await notifyAnnouncementEmail(course.id, savedAnnouncement.id);
           if (emailResult.skipped && emailResult.reason === "missing_email_config") {
             setPostNotice("Đã đăng tin. Chưa gửi email vì chưa cấu hình RESEND_API_KEY và EMAIL_FROM trên Vercel.");
+          } else if (emailResult.skipped && emailResult.reason === "email_disabled") {
+            setPostNotice("Đã đăng tin.");
           } else if (emailResult.sentCount > 0) {
             setPostNotice(`Đã gửi email thông báo đến ${emailResult.sentCount} thành viên.`);
           } else {
@@ -2530,6 +2548,8 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onO
           console.error(error);
           setPostError("Đã đăng tin nhưng không gửi được email thông báo.");
         }
+      } else {
+        setPostNotice(emailRequested ? "Đã đăng tin. Email chỉ gửi khi app chạy với Firebase/Vercel." : "Đã đăng tin.");
       }
     } catch (error) {
       console.error(error);
@@ -2575,18 +2595,29 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onO
       <PanelTitle
         title="Thông báo"
         action={admin && (
-          <select
-            className="announcement-permission-select"
-            aria-label="Quyền đăng tin"
-            title="Quyền đăng tin"
-            value={explicitPostPermission || postPermission}
-            onChange={(event) => updatePostPermission(event.target.value)}
-          >
-            <option value="" disabled>Quyền đăng tin</option>
-            {ANNOUNCEMENT_POST_PERMISSION_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
+          <div className="panel-actions announcement-title-actions">
+            <label className="check-row announcement-email-check">
+              <input
+                type="checkbox"
+                disabled={posting}
+                checked={announcementEmailEnabled}
+                onChange={(event) => updateAnnouncementEmailEnabled(event.target.checked)}
+              />
+              Email
+            </label>
+            <select
+              className="announcement-permission-select"
+              aria-label="Quyền đăng tin"
+              title="Quyền đăng tin"
+              value={explicitPostPermission || postPermission}
+              onChange={(event) => updatePostPermission(event.target.value)}
+            >
+              <option value="" disabled>Quyền đăng tin</option>
+              {ANNOUNCEMENT_POST_PERMISSION_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </div>
         )}
       />
       {canPost ? (
@@ -3693,11 +3724,13 @@ function MaterialsCard({ admin, user, course, updateCourse }) {
       resetMaterialDraft();
       setAddOpen(false);
 
-      if (hasFirebaseConfig) {
+      if (hasFirebaseConfig && course.announcementEmailEnabled) {
         try {
           const emailResult = await notifyAnnouncementEmail(course.id, savedAnnouncement.id);
           if (emailResult.skipped && emailResult.reason === "missing_email_config") {
             setMaterialNotice("Đã upload tài liệu. Chưa gửi email vì chưa cấu hình RESEND_API_KEY và EMAIL_FROM trên Vercel.");
+          } else if (emailResult.skipped && emailResult.reason === "email_disabled") {
+            setMaterialNotice("Đã upload tài liệu.");
           } else if (emailResult.sentCount > 0) {
             setMaterialNotice(`Đã upload tài liệu và gửi email đến ${emailResult.sentCount} thành viên.`);
           } else {
@@ -3953,19 +3986,28 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
     )));
   }
 
+  function updatePartWrittenPointOptions(partId, writtenPointOptions) {
+    updateSelectedExamParts((parts) => parts.map((part) => (
+      part.id === partId ? { ...part, writtenPointOptions } : part
+    )));
+  }
+
   function togglePart(partId) {
     setCollapsedParts((current) => ({ ...current, [partId]: !current[partId] }));
   }
 
   async function importQuestions(partId, file) {
     if (!file) return;
+    const targetPart = selectedParts.find((part) => part.id === partId);
+    const questionType = targetPart?.questionType || "multipleChoice";
+    const typeLabel = EXAM_QUESTION_TYPES.find((type) => type.value === questionType)?.label || "Multiple Choice";
     setImportingPartId(partId);
     setSaveStatus("");
     setSaveError("");
     try {
-      const importedQuestions = await parseMultipleChoiceDocx(file);
+      const importedQuestions = await parseExamDocx(file, questionType);
       if (importedQuestions.length === 0) {
-        setSaveError("Không tìm thấy câu hỏi Multiple Choice trong file Word.");
+        setSaveError(`Không tìm thấy câu hỏi ${typeLabel} trong file Word.`);
         return;
       }
       updateSelectedExamParts((parts) => parts.map((part) => {
@@ -3974,7 +4016,7 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
         const nextQuestions = [...currentQuestions, ...importedQuestions];
         return {
           ...part,
-          questionType: "multipleChoice",
+          questionType,
           questions: nextQuestions,
           selectedQuestions: nextQuestions.length,
           totalQuestions: nextQuestions.length
@@ -4177,7 +4219,11 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
               const questions = Array.isArray(part.questions) ? part.questions : [];
               const collapsed = Boolean(collapsedParts[part.id]);
               const questionCount = questions.length || Number(part.totalQuestions || part.selectedQuestions || 0);
-              const partScore = formatPointValue(Number(part.pointsPerQuestion || 0) * questionCount);
+              const writtenAnswer = isWrittenExamQuestionType(part.questionType);
+              const pointPerQuestion = writtenAnswer
+                ? maxWrittenPointOption(part.writtenPointOptions)
+                : Number(part.pointsPerQuestion || 0);
+              const partScore = formatPointValue(pointPerQuestion * questionCount);
               return (
               <section className={`exam-part-card ${collapsed ? "collapsed" : ""}`} key={part.id}>
                 <div
@@ -4217,17 +4263,30 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
                       }}
                     />
                   </label>
-                  <label className="exam-points-field" onClick={(event) => event.stopPropagation()}>
-                    <input
-                      value={part.pointsPerQuestion || ""}
-                      inputMode="decimal"
-                      onChange={(event) => updatePartPoints(part.id, event.target.value)}
-                      placeholder="0"
-                      aria-label={`Điểm mỗi câu phần ${index + 1}`}
-                    />
-                    <span>đ/câu</span>
-                    <strong>({partScore} đ)</strong>
-                  </label>
+                  {writtenAnswer ? (
+                    <label className="exam-written-points-field" onClick={(event) => event.stopPropagation()} title="Các mức điểm cách nhau bằng dấu phẩy">
+                      <input
+                        value={part.writtenPointOptions || ""}
+                        inputMode="text"
+                        onChange={(event) => updatePartWrittenPointOptions(part.id, event.target.value)}
+                        placeholder="0, 0.25, 0.5, 0.75"
+                        aria-label={`Các mức điểm phần ${index + 1}`}
+                      />
+                      <strong>({partScore} đ)</strong>
+                    </label>
+                  ) : (
+                    <label className="exam-points-field" onClick={(event) => event.stopPropagation()}>
+                      <input
+                        value={part.pointsPerQuestion || ""}
+                        inputMode="decimal"
+                        onChange={(event) => updatePartPoints(part.id, event.target.value)}
+                        placeholder="0"
+                        aria-label={`Điểm mỗi câu phần ${index + 1}`}
+                      />
+                      <span>đ/câu</span>
+                      <strong>({partScore} đ)</strong>
+                    </label>
+                  )}
                   <span className="exam-total">Tổng số: {questionCount} câu</span>
                   <button
                     className="exam-part-delete"
@@ -4401,6 +4460,7 @@ function ExamFormTemplateMenu({ templates, supreme, uploadingType, onDownload, o
 function ExamQuestionEditor({ part, question, questionIndex, onQuestionChange, onAnswerChange, onCorrectChange, onDelete }) {
   const answers = normalizeExamAnswers(question.answers);
   const multipleChoice = part.questionType === "multipleChoice";
+  const writtenAnswer = part.questionType === "shortAnswer" || part.questionType === "longAnswer";
   return (
     <article className="exam-question-row">
       <div className="exam-question-head">
@@ -4415,24 +4475,44 @@ function ExamQuestionEditor({ part, question, questionIndex, onQuestionChange, o
         onChange={(event) => onQuestionChange({ text: event.target.value })}
         placeholder="Nhập câu hỏi..."
       />
-      <div className="exam-answer-list">
-        {answers.map((answer, answerIndex) => (
-          <label className={`exam-answer-row ${answer.correct ? "correct" : ""}`} key={answer.id || answerIndex}>
+      {writtenAnswer ? (
+        <div className="exam-written-answer-preview">
+          {part.questionType === "shortAnswer" ? (
             <input
-              type={multipleChoice ? "radio" : "checkbox"}
-              name={`${question.id}-correct`}
-              checked={Boolean(answer.correct)}
-              onChange={(event) => onCorrectChange(answer.id, event.target.checked)}
+              className="exam-written-answer-input"
+              readOnly
+              placeholder="Ô nhập câu trả lời 1 dòng"
+              aria-label="Ô nhập câu trả lời 1 dòng"
             />
-            <span>{String.fromCharCode(65 + answerIndex)}.</span>
-            <input
-              value={answer.text || ""}
-              onChange={(event) => onAnswerChange(answer.id, { text: event.target.value })}
-              placeholder={`Đáp án ${answerIndex + 1}`}
+          ) : (
+            <textarea
+              className="exam-written-answer-input long"
+              readOnly
+              placeholder="Ô nhập câu trả lời nhiều dòng"
+              aria-label="Ô nhập câu trả lời nhiều dòng"
             />
-          </label>
-        ))}
-      </div>
+          )}
+        </div>
+      ) : (
+        <div className="exam-answer-list">
+          {answers.map((answer, answerIndex) => (
+            <label className={`exam-answer-row ${answer.correct ? "correct" : ""}`} key={answer.id || answerIndex}>
+              <input
+                type={multipleChoice ? "radio" : "checkbox"}
+                name={`${question.id}-correct`}
+                checked={Boolean(answer.correct)}
+                onChange={(event) => onCorrectChange(answer.id, event.target.checked)}
+              />
+              <span>{String.fromCharCode(65 + answerIndex)}.</span>
+              <input
+                value={answer.text || ""}
+                onChange={(event) => onAnswerChange(answer.id, { text: event.target.value })}
+                placeholder={`Đáp án ${answerIndex + 1}`}
+              />
+            </label>
+          ))}
+        </div>
+      )}
     </article>
   );
 }
@@ -4464,6 +4544,7 @@ function normalizeExamParts(parts) {
       questionType,
       questions,
       pointsPerQuestion: part.pointsPerQuestion || "",
+      writtenPointOptions: normalizeWrittenPointOptions(part, questionType),
       selectedQuestions: questions.length || Number(part.selectedQuestions || 0),
       totalQuestions: questions.length || Number(part.totalQuestions || 0)
     };
@@ -4507,6 +4588,7 @@ function defaultExamPart() {
     questionType: "multipleChoice",
     questions: [],
     pointsPerQuestion: "",
+    writtenPointOptions: "",
     selectedQuestions: 0,
     totalQuestions: 0
   };
@@ -4529,6 +4611,7 @@ function createExamPart(index) {
     questionType: "multipleChoice",
     questions: [],
     pointsPerQuestion: "",
+    writtenPointOptions: "",
     selectedQuestions: 0,
     totalQuestions: 0,
     order: index + 1
@@ -4561,6 +4644,35 @@ function formatPointValue(value) {
   const amount = Number(value || 0);
   if (!Number.isFinite(amount)) return "0";
   return Number.isInteger(amount) ? String(amount) : amount.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function isWrittenExamQuestionType(questionType) {
+  return questionType === "shortAnswer" || questionType === "longAnswer";
+}
+
+function normalizeWrittenPointOptions(part, questionType) {
+  const candidateKeys = ["writtenPointOptions", "scoreOptions", "gradingPoints", "pointOptions"];
+  const explicitValue = candidateKeys
+    .map((key) => part?.[key])
+    .find((value) => value !== undefined && value !== null);
+  if (explicitValue !== undefined) return String(explicitValue);
+  if (!isWrittenExamQuestionType(questionType)) return "";
+  const pointsPerQuestion = Number(part?.pointsPerQuestion || 0);
+  return Number.isFinite(pointsPerQuestion) && pointsPerQuestion > 0
+    ? `0, ${formatPointValue(pointsPerQuestion)}`
+    : "";
+}
+
+function parseWrittenPointOptions(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .filter((amount) => Number.isFinite(amount) && amount >= 0);
+}
+
+function maxWrittenPointOption(value) {
+  const pointOptions = parseWrittenPointOptions(value);
+  return pointOptions.length > 0 ? Math.max(...pointOptions) : 0;
 }
 
 function toRomanNumeral(value) {
@@ -4723,7 +4835,19 @@ function slugifyFileName(value) {
     .toLowerCase() || "exam-form";
 }
 
+async function parseExamDocx(file, questionType = "multipleChoice") {
+  const paragraphs = await readExamDocxParagraphs(file);
+  if (questionType === "shortAnswer" || questionType === "longAnswer") {
+    return parseWrittenAnswerDocxParagraphs(paragraphs, questionType);
+  }
+  return parseMultipleChoiceDocxParagraphs(paragraphs);
+}
+
 async function parseMultipleChoiceDocx(file) {
+  return parseMultipleChoiceDocxParagraphs(await readExamDocxParagraphs(file));
+}
+
+async function readExamDocxParagraphs(file) {
   const module = await import("jszip");
   const JSZip = module.default || module;
   const zip = await JSZip.loadAsync(await file.arrayBuffer());
@@ -4737,10 +4861,16 @@ async function parseMultipleChoiceDocx(file) {
   const paragraphs = [...documentXml.getElementsByTagNameNS("*", "p")]
     .map(readDocxParagraph)
     .filter((paragraph) => paragraph.text.trim());
+  return paragraphs;
+}
+
+function parseMultipleChoiceDocxParagraphs(paragraphs) {
+  const usesExplicitList = paragraphs.some((paragraph) => paragraph.hasListLevel);
+  const sourceParagraphs = usesExplicitList ? paragraphs.filter((paragraph) => paragraph.hasListLevel) : paragraphs;
   const questions = [];
   let currentQuestion = null;
 
-  paragraphs.forEach((paragraph) => {
+  sourceParagraphs.forEach((paragraph) => {
     if (paragraph.level <= 0 || !currentQuestion) {
       currentQuestion = {
         id: crypto.randomUUID(),
@@ -4765,8 +4895,26 @@ async function parseMultipleChoiceDocx(file) {
     .filter((question) => question.text.trim() && question.answers.length > 0);
 }
 
+function parseWrittenAnswerDocxParagraphs(paragraphs, questionType) {
+  const usesExplicitList = paragraphs.some((paragraph) => paragraph.hasListLevel);
+  const questionParagraphs = paragraphs.filter((paragraph) => (
+    paragraph.level <= 0
+      && paragraph.text.trim()
+      && (!usesExplicitList || paragraph.hasListLevel)
+  ));
+
+  return questionParagraphs.map((paragraph, index) => ({
+    id: crypto.randomUUID(),
+    text: stripListPrefix(paragraph.text),
+    answers: [],
+    answerType: questionType,
+    order: index + 1
+  })).filter((question) => question.text.trim());
+}
+
 function readDocxParagraph(paragraphNode) {
   const levelNode = firstDescendant(paragraphNode, "ilvl");
+  const listNode = firstDescendant(paragraphNode, "numPr");
   const levelValue = levelNode ? Number(nodeAttr(levelNode, "val")) : 0;
   const runs = [...paragraphNode.getElementsByTagNameNS("*", "r")];
   const text = runs.length
@@ -4776,7 +4924,8 @@ function readDocxParagraph(paragraphNode) {
   return {
     text: text.trim(),
     level: Number.isFinite(levelValue) ? levelValue : 0,
-    bold
+    bold,
+    hasListLevel: Boolean(levelNode || listNode)
   };
 }
 
@@ -4877,9 +5026,11 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
     setActiveExamState(nextSession);
     saveLocalAssignmentExamSession(course.id, user.email, nextSession);
     try {
+      const submitter = assignmentSubmissionIdentity(course, { email: user.email }, user);
       const attemptSubmission = {
-        email: user.email,
-        name: assignmentSubmissionName(course, { email: user.email }, user),
+        email: submitter.email || user.email,
+        name: submitter.name,
+        studentId: submitter.studentId,
         submittedAt: formatDateTime24(startedAtMillis),
         submittedAtMillis: startedAtMillis,
         late: isAssignmentSubmissionLate(assignment, { submittedAtMillis: startedAtMillis }),
@@ -4952,9 +5103,13 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
     setActiveExamError("");
     try {
       const submittedAtMillis = Date.now();
+      const submitter = assignmentSubmissionIdentity(course, { email: user.email }, user);
+      const startedAttempt = findStartedExamSubmissionForSession(assignment, user.email, session);
       const submission = {
-        email: user.email,
-        name: assignmentSubmissionName(course, { email: user.email }, user),
+        id: session.cloudAttemptId || startedAttempt?.id || "",
+        email: submitter.email || user.email,
+        name: submitter.name,
+        studentId: submitter.studentId,
         submittedAt: formatDateTime24(submittedAtMillis),
         submittedAtMillis,
         late: isAssignmentSubmissionLate(assignment, { submittedAtMillis }),
@@ -5042,11 +5197,13 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
 
       setDraft({ title: "", content: "", type: "personal", format: "uploadFile" });
       setAddOpen(false);
-      if (hasFirebaseConfig) {
+      if (hasFirebaseConfig && course.announcementEmailEnabled) {
         try {
           const emailResult = await notifyAnnouncementEmail(course.id, savedAnnouncement.id);
           if (emailResult.skipped && emailResult.reason === "missing_email_config") {
             setAssignmentCreateNotice("Đã tạo bài tập và thông báo. Chưa gửi email vì chưa cấu hình RESEND_API_KEY và EMAIL_FROM trên Vercel.");
+          } else if (emailResult.skipped && emailResult.reason === "email_disabled") {
+            setAssignmentCreateNotice("Đã tạo bài tập và thông báo.");
           } else if (emailResult.sentCount > 0) {
             setAssignmentCreateNotice(`Đã tạo bài tập và gửi email thông báo đến ${emailResult.sentCount} thành viên.`);
           } else {
@@ -5189,7 +5346,9 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
   const activeExamForAssignment = activeExamState?.assignmentId === assignment.id;
   const completedSubmissions = (assignment.submissions || []).filter(isCompletedAssignmentSubmission);
   const userSubmissions = canHaveSubmissions ? completedSubmissions.filter((item) => item.email === user.email) : [];
-  const visibleSubmissions = canHaveSubmissions ? (admin ? (assignment.submissions || []) : userSubmissions) : [];
+  const visibleSubmissions = canHaveSubmissions
+    ? (admin ? cleanAssignmentSubmissionList(assignment.submissions || []) : userSubmissions)
+    : [];
 
   useEffect(() => {
     if (assignmentFormat !== "exam") {
@@ -5206,9 +5365,11 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
       const uploaded = file
         ? await uploadClassFile(course, `submissions/${assignment.id}/${user.email}`, file, { readerEmails: adminWriterEmails(), writerEmails: adminWriterEmails() })
         : { fileName, url: "" };
+      const submitter = assignmentSubmissionIdentity(course, { email: user.email }, user);
       const submission = {
-        email: user.email,
-        name: assignmentSubmissionName(course, { email: user.email }, user),
+        email: submitter.email || user.email,
+        name: submitter.name,
+        studentId: submitter.studentId,
         submittedAt: formatDateTime24(submittedAtMillis),
         submittedAtMillis,
         late: isAssignmentSubmissionLate(assignment, { submittedAtMillis }),
@@ -5393,6 +5554,8 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
     )}
     {reviewSubmission && assignmentExamSnapshot(assignment) && (
       <AssignmentExamReviewModal
+        course={course}
+        user={user}
         assignment={assignment}
         exam={assignmentExamSnapshot(assignment)}
         submission={reviewSubmission}
@@ -5521,15 +5684,21 @@ function AssignmentExamWorkspace({ assignment, exam, session, submitting, submit
   );
 }
 
-function AssignmentExamReviewModal({ assignment, exam, submission, onClose }) {
+function AssignmentExamReviewModal({ course, user, assignment, exam, submission, onClose }) {
   const parts = normalizeExamParts(exam.parts);
   const answers = submission.examAnswers || {};
+  const submitter = assignmentSubmissionIdentity(course, submission, user);
   return (
     <Modal title="Bài làm đã nộp" onClose={onClose} className="assignment-exam-review-modal">
       <div className="assignment-exam-review-head">
         <strong>{submission.examTitle || exam.title || "Đề thi"}</strong>
         <span>{assignment?.title ? `${assignment.title} · ` : ""}{examTotalQuestionCount(exam)} câu</span>
         <span>Đã nộp: {submission.submittedAt || formatDateTime24(submission.submittedAtMillis || Date.now())}</span>
+        <div className="assignment-exam-review-submitter">
+          <span><b>Họ tên người nộp:</b> {submitter.name || "Chưa có"}</span>
+          <span><b>Mã số:</b> {submitter.studentId || "Chưa có"}</span>
+          <span><b>Email:</b> {submitter.email || "Chưa có"}</span>
+        </div>
       </div>
       <div className="assignment-exam-review-body">
         <div className="assignment-exam-question-list">
@@ -5627,19 +5796,67 @@ function AssignmentExamQuestion({ part, question, questionIndex, value, disabled
 function GradesCard({ admin, user, course, updateCourse }) {
   const automaticGradebooks = buildAutomaticGradebooks(course);
   const visibleGradebooks = admin ? automaticGradebooks : automaticGradebooks.filter(isGradebookPublished);
+  const [gradingContext, setGradingContext] = useState(null);
+  const summaryPublished = course.summaryGradebookPublished === true;
+  const showSummaryGradebook = admin || summaryPublished;
+
+  function saveExamGrades(nextRows) {
+    if (!gradingContext) return;
+    const { assignment, book, exam } = gradingContext;
+    const bookType = normalizeGradebookType(book.type, "personal");
+    const assignmentFormat = normalizeAssignmentFormat(book.assignmentFormat || assignment?.format);
+    updateCourse((current) => ({
+      ...current,
+      gradebooks: upsertGradebookRecord(current.gradebooks || [], book, {
+        title: gradebookTitleWithRatio(book, current, bookType),
+        type: bookType,
+        assignmentFormat,
+        examId: assignment?.examId || book.examId || "",
+        examSnapshot: exam,
+        rows: nextRows
+      })
+    }), { toast: "Đã lưu điểm đề thi." });
+    setGradingContext((current) => current ? {
+      ...current,
+      book: { ...current.book, rows: nextRows },
+      initialRows: nextRows
+    } : current);
+  }
 
   return (
     <>
       <PanelTitle title="Bảng điểm" />
-      <div className="list-stack">
-        <SummaryGradebookItem admin={admin} user={user} course={course} />
-        {!admin && visibleGradebooks.length === 0 && (
-          <div className="empty-state compact-empty">Chưa có bảng điểm được publish.</div>
-        )}
-        {visibleGradebooks.map((book) => (
-          <GradebookItem key={book.id} admin={admin} user={user} book={book} course={course} updateCourse={updateCourse} />
-        ))}
-      </div>
+      {gradingContext ? (
+        <ExamGradingWorkspace
+          course={course}
+          assignment={gradingContext.assignment}
+          book={gradingContext.book}
+          exam={gradingContext.exam}
+          initialRows={gradingContext.initialRows || gradingContext.book.rows || []}
+          onBack={() => setGradingContext(null)}
+          onSave={saveExamGrades}
+        />
+      ) : (
+        <div className="list-stack">
+          {showSummaryGradebook && (
+            <SummaryGradebookItem admin={admin} user={user} course={course} updateCourse={updateCourse} />
+          )}
+          {!admin && visibleGradebooks.length === 0 && !showSummaryGradebook && (
+            <div className="empty-state compact-empty">Chưa có bảng điểm được publish.</div>
+          )}
+          {visibleGradebooks.map((book) => (
+            <GradebookItem
+              key={book.id}
+              admin={admin}
+              user={user}
+              book={book}
+              course={course}
+              updateCourse={updateCourse}
+              onOpenExamGrading={(context) => setGradingContext(context)}
+            />
+          ))}
+        </div>
+      )}
     </>
   );
 }
@@ -5715,14 +5932,54 @@ function findActiveExamAttempt(assignments = [], email = "") {
   return attempts.sort((first, second) => Number(second.examStartedAtMillis || 0) - Number(first.examStartedAtMillis || 0))[0] || null;
 }
 
+function findStartedExamSubmissionForSession(assignment, email, session) {
+  const normalizedEmail = normalizeEmail(email);
+  const startedAt = Number(session?.startedAtMillis || 0);
+  if (!assignment || !normalizedEmail || !startedAt) return null;
+  return (assignment.submissions || []).find((submission) => (
+    normalizeEmail(submission.email) === normalizedEmail
+    && submission.type === "exam"
+    && submission.status === "started"
+    && Number(submission.examStartedAtMillis || submission.submittedAtMillis || 0) === startedAt
+  )) || null;
+}
+
 function mergeAssignmentSubmissionList(primary = [], secondary = []) {
-  const seen = new Set();
-  return [...primary, ...secondary].filter((submission) => {
-    const key = submission.id || `${submission.email}-${submission.assignmentId}-${submission.status || ""}-${submission.submittedAtMillis || submission.submittedAt || ""}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+  const byKey = new Map();
+  [...primary, ...secondary].filter(Boolean).forEach((submission) => {
+    byKey.set(assignmentSubmissionMergeKey(submission), submission);
   });
+  return cleanAssignmentSubmissionList([...byKey.values()]);
+}
+
+function cleanAssignmentSubmissionList(submissions = []) {
+  const submittedExamAttempts = new Set(submissions
+    .filter((submission) => submission?.type === "exam" && submission.status === "submitted")
+    .map(examAttemptSignature)
+    .filter(Boolean));
+
+  return submissions.filter((submission) => {
+    if (submission?.type !== "exam" || submission.status !== "started") return true;
+    const signature = examAttemptSignature(submission);
+    return !signature || !submittedExamAttempts.has(signature);
+  });
+}
+
+function assignmentSubmissionMergeKey(submission) {
+  return submission.id
+    || `${normalizeEmail(submission.email)}-${submission.assignmentId || ""}-${submission.status || ""}-${submission.submittedAtMillis || submission.submittedAt || ""}`;
+}
+
+function examAttemptSignature(submission) {
+  const startedAt = Number(submission?.examStartedAtMillis || submission?.submittedAtMillis || 0);
+  const email = normalizeEmail(submission?.email || "");
+  if (!email || !startedAt) return "";
+  return [
+    email,
+    submission?.assignmentId || "",
+    submission?.examId || "",
+    startedAt
+  ].join("|");
 }
 
 function normalizeAssignmentFormat(format) {
@@ -5778,6 +6035,7 @@ function createAssignmentExamSnapshot(exam) {
       id: part.id || crypto.randomUUID(),
       questionType: part.questionType || "multipleChoice",
       pointsPerQuestion: part.pointsPerQuestion || "",
+      writtenPointOptions: part.writtenPointOptions || "",
       questions: normalizeExamQuestions(part.questions).map((question) => ({
         id: question.id || crypto.randomUUID(),
         text: question.text || "",
@@ -5918,15 +6176,32 @@ function isAssignmentSubmissionLate(assignment, submission) {
 }
 
 function assignmentSubmissionName(course, submission, currentUser) {
+  return assignmentSubmissionIdentity(course, submission, currentUser).name;
+}
+
+function assignmentSubmissionIdentity(course, submission, currentUser) {
   const email = normalizeEmail(submission?.email || "");
   const members = course?.members || [];
   const member = members.find((item) => normalizeEmail(item.email) === email);
-  const profile = course?.profiles?.[submission?.email] || course?.profiles?.[email] || {};
-  if (submission?.name) return submission.name;
-  if (member?.name) return member.name;
-  if (profile?.displayName) return profile.displayName;
-  if (normalizeEmail(currentUser?.email || "") === email) return currentUser.displayName || currentUser.email;
-  return submission?.email || "";
+  const profile = course?.profiles?.[submission?.email]
+    || course?.profiles?.[email]
+    || course?.profiles?.[member?.email]
+    || {};
+  const currentUserMatches = normalizeEmail(currentUser?.email || "") === email;
+  const fallbackEmail = submission?.email || member?.email || (currentUserMatches ? currentUser?.email : "") || "";
+  return {
+    name: submission?.name
+      || member?.name
+      || profile?.displayName
+      || (currentUserMatches ? currentUser?.displayName || currentUser?.email : "")
+      || fallbackEmail,
+    studentId: submission?.studentId
+      || member?.studentId
+      || profile?.studentId
+      || (currentUserMatches ? currentUser?.studentId : "")
+      || "",
+    email: fallbackEmail
+  };
 }
 
 function updateAssignmentDeadline(updateCourse, assignmentId, dueAt) {
@@ -6015,6 +6290,7 @@ function assignmentGradebookType(assignment, storedBook) {
 function buildAutomaticGradebook(course, assignment) {
   const storedBook = findStoredGradebook(course, assignment.id);
   const type = assignmentGradebookType(assignment, storedBook);
+  const assignmentFormat = normalizeAssignmentFormat(assignment.format);
   const id = storedBook?.id || `gradebook-${assignment.id}`;
   return {
     ...(storedBook || {}),
@@ -6022,6 +6298,9 @@ function buildAutomaticGradebook(course, assignment) {
     assignmentId: assignment.id,
     title: `Điểm ${assignmentTitleWithRatio(assignment)} (${gradebookTypeLabels[type]})`,
     type,
+    assignmentFormat,
+    examId: assignment.examId || storedBook?.examId || "",
+    examSnapshot: assignmentFormat === "exam" ? assignmentExamSnapshot(assignment) : null,
     published: storedBook?.published === true,
     rows: storedBook?.rows || [],
     autoGenerated: true
@@ -6045,6 +6324,9 @@ function upsertGradebookRecord(gradebooks, book, patch) {
     assignmentId,
     title: book.title || "",
     type: normalizeGradebookType(book.type, "personal"),
+    assignmentFormat: normalizeAssignmentFormat(book.assignmentFormat),
+    examId: book.examId || "",
+    examSnapshot: book.examSnapshot || null,
     published: book.published === true,
     rows: book.rows || []
   };
@@ -6085,12 +6367,21 @@ function createGradebook(course, updateCourse, assignmentId, type) {
   }));
 }
 
-function SummaryGradebookItem({ admin, user, course }) {
+function SummaryGradebookItem({ admin, user, course, updateCourse }) {
   const [open, setOpen] = useState(false);
   const allAssignments = normalizeAssignmentRatios(course.assignments || []);
   const assignments = admin ? allAssignments : allAssignments.filter((assignment) => findSummaryGradebook(course, assignment.id, admin));
   const rows = buildSummaryGradeRows(course, assignments, admin, user);
   const colSpan = assignments.length + 4;
+  const published = course.summaryGradebookPublished === true;
+
+  function togglePublish() {
+    if (!admin || !updateCourse) return;
+    updateCourse((current) => ({
+      ...current,
+      summaryGradebookPublished: !published
+    }), { toast: published ? "Đã ẩn bảng điểm tổng kết." : "Đã publish bảng điểm tổng kết." });
+  }
 
   return (
     <article className="expand-card summary-gradebook">
@@ -6098,10 +6389,20 @@ function SummaryGradebookItem({ admin, user, course }) {
         <button onClick={() => setOpen(!open)}>
           <strong>BẢNG ĐIỂM TỔNG KẾT</strong>
           <small>{assignments.length ? `${assignments.length} bài tập` : "Chưa có bài tập"}</small>
+          {admin && <small>{published ? "Đã publish" : "Nháp"}</small>}
         </button>
         {admin && assignments.length > 0 && (
           <button className="export-button summary-export-button" type="button" onClick={() => exportSummaryGradebook(course, assignments, rows)}>
             <Download size={15} /> Export Excel
+          </button>
+        )}
+        {admin && (
+          <button
+            className={`join-action compact publish-score-button ${published ? "is-published" : ""}`}
+            type="button"
+            onClick={togglePublish}
+          >
+            {published ? "Unpublish" : "Publish"}
           </button>
         )}
       </div>
@@ -6152,11 +6453,16 @@ function SummaryGradebookItem({ admin, user, course }) {
   );
 }
 
-function GradebookItem({ admin, user, book, course, updateCourse }) {
+function GradebookItem({ admin, user, book, course, updateCourse, onOpenExamGrading }) {
   const requestConfirm = useConfirmAction();
   const [open, setOpen] = useState(false);
   const [draftRows, setDraftRows] = useState(book.rows || []);
   const [dirty, setDirty] = useState(false);
+  const assignment = gradebookAssignment(course, book);
+  const assignmentFormat = normalizeAssignmentFormat(book.assignmentFormat || assignment?.format);
+  const examGradebook = isExamGradebook(book, assignment);
+  const availableExams = Array.isArray(course.exams) && course.exams.length > 0 ? normalizeExams(course.exams) : [];
+  const exam = examGradebook ? findAssignmentExam(assignment, availableExams) : null;
   const bookType = normalizeGradebookType(book.type, "personal");
   const published = isGradebookPublished(book);
 
@@ -6184,29 +6490,41 @@ function GradebookItem({ admin, user, book, course, updateCourse }) {
   }
 
   function saveScores() {
-    const nextRows = buildGradebookRowsForSave(course, bookType, draftRows);
+    const nextRows = examGradebook
+      ? buildExamGradeRowsForSave(course, assignment, exam, draftRows)
+      : buildGradebookRowsForSave(course, bookType, draftRows);
     updateCourse((current) => ({
       ...current,
       gradebooks: upsertGradebookRecord(current.gradebooks || [], book, {
         title: gradebookTitleWithRatio(book, current, bookType),
         type: bookType,
+        assignmentFormat,
+        examId: assignment?.examId || book.examId || "",
+        examSnapshot: examGradebook ? exam : null,
         rows: nextRows
       })
     }), { toast: true });
+    setDraftRows(nextRows);
     setDirty(false);
   }
 
   function publishScores() {
-    const nextRows = buildGradebookRowsForSave(course, bookType, draftRows);
+    const nextRows = examGradebook
+      ? buildExamGradeRowsForSave(course, assignment, exam, draftRows)
+      : buildGradebookRowsForSave(course, bookType, draftRows);
     updateCourse((current) => ({
       ...current,
       gradebooks: upsertGradebookRecord(current.gradebooks || [], book, {
         title: gradebookTitleWithRatio(book, current, bookType),
         type: bookType,
+        assignmentFormat,
+        examId: assignment?.examId || book.examId || "",
+        examSnapshot: examGradebook ? exam : null,
         rows: nextRows,
         published: true
       })
     }), { toast: "Đã publish bảng điểm." });
+    setDraftRows(nextRows);
     setDirty(false);
   }
 
@@ -6226,9 +6544,10 @@ function GradebookItem({ admin, user, book, course, updateCourse }) {
       <div className="assignment-head">
         <button onClick={() => setOpen(!open)}>
           <strong>{gradebookTitleWithRatio(book, course, bookType)}</strong>
+          <small>Format: {assignmentFormatLabel(assignmentFormat)}</small>
           {admin && <small>{published ? "Đã publish" : "Nháp"}</small>}
         </button>
-        {admin && open && <button className="primary-action compact save-score-button" onClick={saveScores} disabled={!dirty}>Save</button>}
+        {admin && open && !examGradebook && <button className="primary-action compact save-score-button" onClick={saveScores} disabled={!dirty}>Save</button>}
         {admin && (
           <button
             className={`join-action compact publish-score-button ${published ? "is-published" : ""}`}
@@ -6244,7 +6563,18 @@ function GradebookItem({ admin, user, book, course, updateCourse }) {
         }, () => updateCourse((current) => ({ ...current, gradebooks: (current.gradebooks || []).filter((item) => item.id !== book.id) })))}><Trash2 size={15} /></button>}
       </div>
       {open && (
-        bookType === "personal" ? (
+        examGradebook ? (
+          <ExamGradebookPanel
+            admin={admin}
+            user={user}
+            course={course}
+            assignment={assignment}
+            book={book}
+            exam={exam}
+            draftRows={draftRows}
+            onGrade={() => onOpenExamGrading?.({ assignment, book, exam, initialRows: draftRows })}
+          />
+        ) : bookType === "personal" ? (
           <PersonalGradeTable admin={admin} user={user} course={course} draftRows={draftRows} onScoreChange={changeDraftScore} />
         ) : bookType === "intergroup" ? (
           <IntergroupGradebookCards admin={admin} user={user} course={course} draftRows={draftRows} onScoreChange={changeDraftScore} onBonusChange={changeDraftBonus} />
@@ -6256,7 +6586,290 @@ function GradebookItem({ admin, user, book, course, updateCourse }) {
   );
 }
 
-function PersonalGradeTable({ admin, user, course, draftRows, onScoreChange }) {
+function ExamGradebookPanel({ admin, user, course, assignment, book, exam, draftRows, onGrade }) {
+  if (!exam) {
+    return (
+      <div className="exam-gradebook-panel">
+        <div className="assignment-exam-empty">Chưa có đề thi được chọn cho bài tập này.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="exam-gradebook-panel">
+      <div className="exam-gradebook-meta">
+        <div>
+          <strong>Đề thi: {exam.title || "Đề thi"}</strong>
+          <small>{assignment?.title || book.title || "Bài tập"} · {examTotalQuestionCount(exam)} câu · {formatExamDurationLabel(exam.duration)}</small>
+        </div>
+        {admin && (
+          <button className="primary-action compact exam-grade-action" type="button" onClick={onGrade}>
+            <Check size={15} /> Chấm điểm
+          </button>
+        )}
+      </div>
+      <PersonalGradeTable admin={admin} user={user} course={course} draftRows={draftRows} readOnly emptyScoreLabel={admin ? "" : "Chưa có điểm"} />
+    </div>
+  );
+}
+
+function ExamGradingWorkspace({ course, assignment, book, exam, initialRows, onBack, onSave }) {
+  const parts = normalizeExamParts(exam?.parts).filter((part) => normalizeExamQuestions(part.questions).length > 0);
+  const firstPartId = parts[0]?.id || "total";
+  const [activeTab, setActiveTab] = useState(firstPartId);
+  const [activeQuestions, setActiveQuestions] = useState(() => Object.fromEntries(parts.map((part) => {
+    const firstQuestion = normalizeExamQuestions(part.questions)[0];
+    return [part.id, firstQuestion ? examQuestionResponseKey(part, firstQuestion) : ""];
+  })));
+  const [questionScores, setQuestionScores] = useState(() => examQuestionScoresFromRows(initialRows));
+  const [saveStatus, setSaveStatus] = useState("");
+  const rows = buildExamGradingRows(course, assignment, exam, initialRows, questionScores);
+  const activePart = parts.find((part) => part.id === activeTab);
+
+  function setQuestionScore(email, questionKey, score) {
+    setSaveStatus("");
+    setQuestionScores((current) => ({
+      ...current,
+      [email]: {
+        ...(current[email] || {}),
+        [questionKey]: formatScoreNumber(score)
+      }
+    }));
+  }
+
+  function saveExamGrades() {
+    const nextRows = serializeExamGradeRows(rows, exam);
+    onSave(nextRows);
+    setSaveStatus("Đã lưu điểm đề thi.");
+  }
+
+  return (
+    <div className="exam-grading-workspace">
+      <div className="exam-grading-header">
+        <button className="secondary-action compact exam-grading-back" type="button" onClick={onBack}>
+          <ChevronLeft size={16} /> Back
+        </button>
+        <div>
+          <strong>{exam.title || "Đề thi"}</strong>
+          <span>{assignment?.title || book.title || "Bài tập"} · {examTotalQuestionCount(exam)} câu</span>
+        </div>
+        <button className="primary-action compact" type="button" onClick={saveExamGrades}>
+          <Check size={15} /> Save
+        </button>
+      </div>
+      <div className="exam-grading-tabs" role="tablist" aria-label="Các phần chấm điểm">
+        {parts.map((part, index) => (
+          <button
+            className={activeTab === part.id ? "active" : ""}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === part.id}
+            key={part.id}
+            onClick={() => setActiveTab(part.id)}
+          >
+            {parts.length > 1 ? `Phần ${toRomanNumeral(index + 1)}` : questionTypeLabel(part.questionType)}
+          </button>
+        ))}
+        <button
+          className={activeTab === "total" ? "active" : ""}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "total"}
+          onClick={() => setActiveTab("total")}
+        >
+          Tổng điểm
+        </button>
+      </div>
+      <div className="exam-grading-body">
+        {activeTab === "total" ? (
+          <ExamTotalGradeTable rows={rows} parts={parts} />
+        ) : activePart ? (
+          <ExamGradingPart
+            part={activePart}
+            partIndex={parts.findIndex((part) => part.id === activePart.id)}
+            rows={rows}
+            activeQuestionKey={activeQuestions[activePart.id] || ""}
+            onActiveQuestionChange={(questionKey) => setActiveQuestions((current) => ({ ...current, [activePart.id]: questionKey }))}
+            onQuestionScoreChange={setQuestionScore}
+          />
+        ) : (
+          <div className="empty-state compact-empty">Chưa có câu hỏi trong đề thi.</div>
+        )}
+      </div>
+      {saveStatus && <p className="success-text">{saveStatus}</p>}
+    </div>
+  );
+}
+
+function ExamGradingPart({ part, partIndex, rows, activeQuestionKey, onActiveQuestionChange, onQuestionScoreChange }) {
+  const questions = normalizeExamQuestions(part.questions);
+  const questionType = part.questionType || "multipleChoice";
+  const writtenAnswer = isWrittenExamQuestionType(questionType);
+  const activeQuestion = questions.find((question) => examQuestionResponseKey(part, question) === activeQuestionKey) || questions[0];
+  const resolvedQuestionKey = activeQuestion ? examQuestionResponseKey(part, activeQuestion) : "";
+
+  if (!writtenAnswer) {
+    return (
+      <div className="exam-grading-part">
+        <h4>{partsAwarePartTitle(part, partIndex)}</h4>
+        <ExamAutoPartGradeTable rows={rows} part={part} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="exam-written-grading">
+      <aside className="exam-written-question-nav" aria-label="Danh sách câu hỏi">
+        {questions.map((question, index) => {
+          const questionKey = examQuestionResponseKey(part, question);
+          return (
+            <button
+              className={questionKey === resolvedQuestionKey ? "active" : ""}
+              type="button"
+              key={questionKey}
+              onClick={() => onActiveQuestionChange(questionKey)}
+            >
+              Câu {index + 1}
+            </button>
+          );
+        })}
+      </aside>
+      <div className="exam-written-grading-main">
+        <h4>{questionTypeLabel(questionType)} - Câu {questions.findIndex((question) => examQuestionResponseKey(part, question) === resolvedQuestionKey) + 1}: {activeQuestion?.text || "Câu hỏi"}</h4>
+        <ExamWrittenQuestionGradeTable
+          rows={rows}
+          part={part}
+          question={activeQuestion}
+          questionKey={resolvedQuestionKey}
+          onQuestionScoreChange={onQuestionScoreChange}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ExamAutoPartGradeTable({ rows, part }) {
+  return (
+    <table className="data-table exam-auto-grade-table">
+      <thead>
+        <tr>
+          <th className="stt-col">STT</th>
+          <th className="avatar-col">Ảnh</th>
+          <th>Họ và tên</th>
+          <th>Số câu trả lời đúng</th>
+          <th>Điểm</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <tr><td colSpan="5">Chưa có học viên phù hợp.</td></tr>
+        ) : rows.map((row) => {
+          const partResult = row.partResults[part.id] || emptyExamPartResult(part);
+          return (
+            <tr key={row.key}>
+              <td>{row.member.order}</td>
+              <td><ProfileAvatar user={row.member} label={row.member.name || row.member.email} small /></td>
+              <td>{row.member.name || row.member.email}</td>
+              <td>{partResult.correctCount}/{partResult.questionCount}</td>
+              <td>{formatScoreNumber(partResult.score)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function ExamWrittenQuestionGradeTable({ rows, part, question, questionKey, onQuestionScoreChange }) {
+  const pointOptions = examWrittenPointOptions(part);
+  const longAnswer = part.questionType === "longAnswer";
+
+  return (
+    <table className="data-table exam-written-grade-table">
+      <thead>
+        <tr>
+          <th className="stt-col">STT</th>
+          <th className="avatar-col">Ảnh</th>
+          <th>Họ và tên</th>
+          <th>Trả lời</th>
+          <th>Điểm</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <tr><td colSpan="5">Chưa có học viên phù hợp.</td></tr>
+        ) : rows.map((row) => {
+          const answer = String(row.answers?.[questionKey] || "");
+          const selectedScore = formatScoreNumber(parseScoreValue(row.questionScores?.[questionKey] ?? 0));
+          return (
+            <tr key={`${row.key}-${question?.id || questionKey}`}>
+              <td>{row.member.order}</td>
+              <td><ProfileAvatar user={row.member} label={row.member.name || row.member.email} small /></td>
+              <td>{row.member.name || row.member.email}</td>
+              <td>
+                {longAnswer ? (
+                  <textarea className="exam-grade-answer-text long" value={answer} readOnly />
+                ) : (
+                  <input className="exam-grade-answer-text" value={answer} readOnly />
+                )}
+              </td>
+              <td>
+                <div className="exam-score-buttons" role="group" aria-label={`Điểm ${row.member.name || row.member.email}`}>
+                  {pointOptions.map((score) => {
+                    const scoreLabel = formatScoreNumber(score);
+                    return (
+                      <button
+                        className={selectedScore === scoreLabel ? "active" : ""}
+                        type="button"
+                        key={scoreLabel}
+                        onClick={() => onQuestionScoreChange(row.member.email, questionKey, score)}
+                      >
+                        {scoreLabel}
+                      </button>
+                    );
+                  })}
+                </div>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function ExamTotalGradeTable({ rows, parts }) {
+  return (
+    <table className="data-table exam-total-grade-table">
+      <thead>
+        <tr>
+          <th className="stt-col">STT</th>
+          <th className="avatar-col">Ảnh</th>
+          <th>Họ và tên</th>
+          {parts.map((part, index) => <th key={part.id}>Phần {toRomanNumeral(index + 1)}</th>)}
+          <th>Tổng</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <tr><td colSpan={parts.length + 4}>Chưa có học viên phù hợp.</td></tr>
+        ) : rows.map((row) => (
+          <tr key={row.key}>
+            <td>{row.member.order}</td>
+            <td><ProfileAvatar user={row.member} label={row.member.name || row.member.email} small /></td>
+            <td>{row.member.name || row.member.email}</td>
+            {parts.map((part) => (
+              <td className="score-cell" key={`${row.key}-${part.id}`}>{formatScoreNumber(row.partScores?.[part.id] || 0)}</td>
+            ))}
+            <td className="final-score-cell">{formatScoreNumber(row.totalScore)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function PersonalGradeTable({ admin, user, course, draftRows, onScoreChange, readOnly = false, emptyScoreLabel = "Chưa có điểm" }) {
   const rows = buildPersonalGradeRows(course, draftRows).filter((row) => admin || row.member.email === user.email);
   if (rows.length === 0) return <div className="empty-state compact-empty">Chưa có học viên phù hợp.</div>;
 
@@ -6272,10 +6885,10 @@ function PersonalGradeTable({ admin, user, course, draftRows, onScoreChange }) {
             <td>{row.member.studentId}</td>
             <td>{row.member.email}</td>
             <td>
-              {admin ? (
+              {admin && !readOnly ? (
                 <input className="score-input" data-enter-group="personal-grade-score" inputMode="decimal" value={row.score} onKeyDown={(event) => focusNextInputOnEnter(event, "personal-grade-score")} onChange={(event) => onScoreChange(row.key, event.target.value)} />
               ) : (
-                row.score || "Chưa có điểm"
+                row.score || emptyScoreLabel
               )}
             </td>
           </tr>
@@ -6518,6 +7131,8 @@ function buildSummaryComponent(course, assignment, member, admin) {
   const book = findSummaryGradebook(course, assignment.id, admin);
   if (!book) return emptySummaryScore(assignment.id);
 
+  if (isExamGradebook(book, assignment)) return personalSummaryScore(course, book, assignment.id, member);
+
   const bookType = normalizeGradebookType(book.type, "personal");
   if (bookType === "personal") return personalSummaryScore(course, book, assignment.id, member);
   if (bookType === "intergroup") return intergroupSummaryScore(course, book, assignment.id, member);
@@ -6529,6 +7144,186 @@ function findSummaryGradebook(course, assignmentId, admin) {
   const book = assignment ? buildAutomaticGradebook(course, assignment) : findStoredGradebook(course, assignmentId);
   if (!book) return null;
   return admin || isGradebookPublished(book) ? book : null;
+}
+
+function gradebookAssignment(course, book) {
+  return (course.assignments || []).find((item) => String(item.id || "") === String(book?.assignmentId || ""));
+}
+
+function isExamGradebook(book, assignment) {
+  return normalizeAssignmentFormat(book?.assignmentFormat || assignment?.format) === "exam";
+}
+
+function latestSubmittedExamSubmissionsByEmail(assignment) {
+  const map = new Map();
+  cleanAssignmentSubmissionList(assignment?.submissions || [])
+    .filter((submission) => submission?.type === "exam" && submission.status === "submitted")
+    .sort((first, second) => Number(second.examSubmittedAtMillis || second.submittedAtMillis || 0) - Number(first.examSubmittedAtMillis || first.submittedAtMillis || 0))
+    .forEach((submission) => {
+      const email = normalizeEmail(submission.email || "");
+      if (email && !map.has(email)) map.set(email, submission);
+    });
+  return map;
+}
+
+function examQuestionScoresFromRows(rows = []) {
+  return Object.fromEntries((rows || []).map((row) => [
+    row.email || row.key || "",
+    row.questionScores && typeof row.questionScores === "object" ? row.questionScores : {}
+  ]).filter(([email]) => email));
+}
+
+function buildExamGradeRowsForSave(course, assignment, exam, draftRows) {
+  if (!exam) return draftRows || [];
+  return serializeExamGradeRows(
+    buildExamGradingRows(course, assignment, exam, draftRows, examQuestionScoresFromRows(draftRows)),
+    exam
+  );
+}
+
+function buildExamGradingRows(course, assignment, exam, savedRows = [], questionScoreOverrides = null) {
+  const parts = normalizeExamParts(exam?.parts).filter((part) => normalizeExamQuestions(part.questions).length > 0);
+  const submissionsByEmail = latestSubmittedExamSubmissionsByEmail(assignment);
+  const members = (course.members || [])
+    .filter((member) => member.status === "accepted")
+    .sort(compareMemberOrder);
+
+  return members.map((member) => {
+    const memberEmail = member.email || "";
+    const normalizedEmail = normalizeEmail(memberEmail);
+    const profile = course.profiles?.[memberEmail] || course.profiles?.[normalizedEmail] || {};
+    const savedRow = savedExamGradeRow(savedRows, member);
+    const overrideScores = questionScoreOverrides?.[memberEmail] || questionScoreOverrides?.[normalizedEmail] || {};
+    const questionScores = {
+      ...(savedRow?.questionScores || {}),
+      ...overrideScores
+    };
+    const submission = submissionsByEmail.get(normalizedEmail) || null;
+    const answers = submission?.examAnswers || {};
+    const partResults = Object.fromEntries(parts.map((part) => [
+      part.id,
+      gradeExamPart(part, answers, questionScores)
+    ]));
+    const partScores = Object.fromEntries(parts.map((part) => [
+      part.id,
+      Number(partResults[part.id]?.score || 0)
+    ]));
+    const totalScore = Object.values(partScores).reduce((total, score) => total + Number(score || 0), 0);
+
+    return {
+      key: memberEmail,
+      member: {
+        ...member,
+        photoURL: member.photoURL || profile.photoURL || ""
+      },
+      submission,
+      answers,
+      questionScores,
+      partResults,
+      partScores,
+      totalScore,
+      score: hasExamGradeDetail(savedRow) || submission ? formatScoreNumber(totalScore) : (savedRow?.score || "")
+    };
+  });
+}
+
+function savedExamGradeRow(rows, member) {
+  const memberEmail = member?.email || "";
+  const normalizedEmail = normalizeEmail(memberEmail);
+  return (rows || []).find((row) => (
+    String(row.key || "") === String(memberEmail)
+      || normalizeEmail(row.email || "") === normalizedEmail
+      || normalizeEmail(row.key || "") === normalizedEmail
+  ));
+}
+
+function hasExamGradeDetail(row) {
+  return Boolean(
+    row?.questionScores && typeof row.questionScores === "object"
+      || row?.partScores && typeof row.partScores === "object"
+  );
+}
+
+function serializeExamGradeRows(rows, exam) {
+  const savedAtMillis = Date.now();
+  return rows.map((row) => ({
+    key: row.member.email,
+    email: row.member.email,
+    label: `${row.member.order}. ${row.member.name || row.member.email}`,
+    score: formatScoreNumber(row.totalScore),
+    partScores: Object.fromEntries(Object.entries(row.partScores || {}).map(([partId, score]) => [partId, formatScoreNumber(score)])),
+    questionScores: Object.fromEntries(Object.entries(row.questionScores || {}).map(([questionKey, score]) => [questionKey, formatScoreNumber(parseScoreValue(score))])),
+    examId: exam?.id || "",
+    examTitle: exam?.title || "",
+    savedAtMillis
+  }));
+}
+
+function gradeExamPart(part, answers, questionScores) {
+  const questions = normalizeExamQuestions(part.questions);
+  const writtenAnswer = isWrittenExamQuestionType(part.questionType);
+  const questionResults = questions.map((question) => {
+    const questionKey = examQuestionResponseKey(part, question);
+    const response = answers?.[questionKey];
+    if (writtenAnswer) {
+      const score = parseScoreValue(questionScores?.[questionKey] ?? 0);
+      return { question, questionKey, response, correct: false, score };
+    }
+    const autoResult = gradeAutoExamQuestion(part, question, response);
+    return { question, questionKey, response, ...autoResult };
+  });
+  const score = questionResults.reduce((total, result) => total + Number(result.score || 0), 0);
+  return {
+    questionCount: questions.length,
+    correctCount: writtenAnswer ? 0 : questionResults.filter((result) => result.correct).length,
+    score,
+    questionResults
+  };
+}
+
+function emptyExamPartResult(part) {
+  return {
+    questionCount: normalizeExamQuestions(part?.questions).length,
+    correctCount: 0,
+    score: 0,
+    questionResults: []
+  };
+}
+
+function gradeAutoExamQuestion(part, question, response) {
+  const points = Number(part?.pointsPerQuestion || 0);
+  const answers = normalizeExamAnswers(question.answers);
+  const questionType = part?.questionType || "multipleChoice";
+  if (questionType === "checkbox") {
+    const correctIds = answers.filter((answer) => answer.correct).map((answer) => String(answer.id)).sort();
+    const responseIds = (Array.isArray(response) ? response : []).map((answerId) => String(answerId)).sort();
+    const correct = correctIds.length > 0 && sameStringList(correctIds, responseIds);
+    return { correct, score: correct ? points : 0 };
+  }
+  const correctAnswer = answers.find((answer) => answer.correct);
+  const correct = Boolean(correctAnswer?.id && String(response || "") === String(correctAnswer.id));
+  return { correct, score: correct ? points : 0 };
+}
+
+function sameStringList(first, second) {
+  if (first.length !== second.length) return false;
+  return first.every((item, index) => item === second[index]);
+}
+
+function examWrittenPointOptions(part) {
+  const values = [0, ...parseWrittenPointOptions(part?.writtenPointOptions)];
+  const pointsPerQuestion = Number(part?.pointsPerQuestion || 0);
+  if (values.length === 1 && Number.isFinite(pointsPerQuestion) && pointsPerQuestion > 0) values.push(pointsPerQuestion);
+  return [...new Set(values.filter((value) => Number.isFinite(value) && value >= 0))]
+    .sort((first, second) => first - second);
+}
+
+function questionTypeLabel(questionType) {
+  return EXAM_QUESTION_TYPES.find((type) => type.value === questionType)?.label || "Multiple Choice";
+}
+
+function partsAwarePartTitle(part) {
+  return questionTypeLabel(part?.questionType);
 }
 
 function personalSummaryScore(course, book, assignmentId, member) {

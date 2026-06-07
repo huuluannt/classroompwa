@@ -879,6 +879,19 @@ textarea { min-height: 88px; resize: vertical; }
   color: #172033;
   font-weight: 700;
 }
+.announcement-title-actions {
+  gap: 16px;
+}
+.announcement-email-check {
+  min-width: 104px;
+  min-height: 34px;
+  color: #172033;
+  justify-content: flex-start;
+}
+.announcement-email-check input {
+  width: 16px;
+  height: 16px;
+}
 .member-view-toggle {
   display: inline-flex;
   align-items: center;
@@ -1916,6 +1929,23 @@ textarea { min-height: 88px; resize: vertical; }
   color: #64748b;
   font-weight: 700;
 }
+.assignment-exam-review-submitter {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px 12px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #e1e7ef;
+}
+.assignment-exam-review-submitter span {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.assignment-exam-review-submitter b {
+  color: #0f172a;
+}
 .assignment-exam-review-body {
   min-height: 0;
   overflow-y: auto;
@@ -2655,6 +2685,37 @@ textarea { min-height: 88px; resize: vertical; }
   color: #172033;
   font-size: 13px;
 }
+.exam-written-points-field {
+  min-height: 30px;
+  display: inline-grid;
+  grid-template-columns: 176px auto;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  max-width: 240px;
+  color: #42526b;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.exam-written-points-field input {
+  width: 176px;
+  min-height: 30px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #fff;
+  color: #172033;
+  padding: 4px 8px;
+  font-weight: 800;
+}
+.exam-written-points-field input::placeholder {
+  color: #94a3b8;
+  font-weight: 700;
+}
+.exam-written-points-field strong {
+  color: #172033;
+  font-size: 13px;
+}
 .exam-total {
   justify-self: end;
   white-space: nowrap;
@@ -2753,6 +2814,24 @@ textarea { min-height: 88px; resize: vertical; }
 .exam-answer-row.correct > input:not([type="radio"]):not([type="checkbox"]) {
   border-color: #86efac;
   background: #f0fdf4;
+}
+.exam-written-answer-preview {
+  display: grid;
+  gap: 5px;
+}
+.exam-written-answer-input {
+  width: 100%;
+  min-height: 32px;
+  border: 1px dashed #cbd7e8;
+  border-radius: 7px;
+  background: #f8fafc;
+  color: #64748b;
+  padding: 6px 8px;
+  resize: none;
+}
+.exam-written-answer-input.long {
+  min-height: 78px;
+  resize: vertical;
 }
 .exam-add-part-row {
   display: flex;
@@ -3041,6 +3120,228 @@ textarea { min-height: 88px; resize: vertical; }
 .grade-personal-table th:nth-child(4), .grade-personal-table td:nth-child(4) { width: 100px; }
 .grade-personal-table th:nth-child(5), .grade-personal-table td:nth-child(5) { min-width: max-content; }
 .grade-personal-table th:nth-child(6), .grade-personal-table td:nth-child(6) { width: 90px; text-align: center; }
+.exam-gradebook-panel {
+  display: grid;
+  gap: 10px;
+}
+.exam-gradebook-meta {
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 8px 10px;
+}
+.exam-gradebook-meta > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.exam-gradebook-meta strong,
+.exam-gradebook-meta small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exam-gradebook-meta strong {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 900;
+}
+.exam-gradebook-meta small {
+  color: #64748b;
+  font-weight: 700;
+}
+.exam-grade-action {
+  white-space: nowrap;
+}
+.exam-grading-workspace {
+  min-height: 0;
+  display: grid;
+  gap: 10px;
+}
+.exam-grading-header {
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #e2e8f0;
+  padding: 8px 10px;
+}
+.exam-grading-back {
+  white-space: nowrap;
+}
+.exam-grading-header > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.exam-grading-header strong {
+  color: #020617;
+  font-size: 17px;
+  line-height: 1.2;
+}
+.exam-grading-header span {
+  min-width: 0;
+  overflow: hidden;
+  color: #475569;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exam-grading-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-height: 42px;
+  overflow-x: auto;
+  border: 1px solid #d1d5db;
+  border-radius: 8px 8px 0 0;
+  background: #d9d9d9;
+  padding: 6px 8px;
+}
+.exam-grading-tabs button {
+  min-height: 30px;
+  border: 0;
+  border-right: 1px solid #0f172a;
+  background: transparent;
+  color: #020617;
+  padding: 4px 18px;
+  font-size: 14px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.exam-grading-tabs button:last-child {
+  border-right: 0;
+}
+.exam-grading-tabs button.active {
+  border-radius: 7px;
+  background: #bfdbfe;
+}
+.exam-grading-body {
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid #d1d5db;
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  padding: 10px;
+}
+.exam-grading-part {
+  display: grid;
+  gap: 8px;
+}
+.exam-grading-part h4,
+.exam-written-grading-main h4 {
+  margin: 0;
+  color: #020617;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.exam-auto-grade-table th:nth-child(3),
+.exam-auto-grade-table td:nth-child(3),
+.exam-written-grade-table th:nth-child(3),
+.exam-written-grade-table td:nth-child(3),
+.exam-total-grade-table th:nth-child(3),
+.exam-total-grade-table td:nth-child(3) {
+  min-width: max-content;
+}
+.exam-auto-grade-table th:nth-child(4),
+.exam-auto-grade-table td:nth-child(4),
+.exam-auto-grade-table th:nth-child(5),
+.exam-auto-grade-table td:nth-child(5) {
+  text-align: center;
+}
+.exam-written-grading {
+  min-height: 420px;
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 10px;
+}
+.exam-written-question-nav {
+  max-height: 520px;
+  overflow-y: auto;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+}
+.exam-written-question-nav button {
+  width: 100%;
+  min-height: 38px;
+  border: 0;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fff;
+  color: #020617;
+  text-align: left;
+  padding: 6px 10px;
+  font-weight: 800;
+}
+.exam-written-question-nav button.active {
+  background: #bfdbfe;
+}
+.exam-written-grading-main {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  overflow-x: auto;
+}
+.exam-written-grade-table th:nth-child(4),
+.exam-written-grade-table td:nth-child(4) {
+  min-width: 300px;
+}
+.exam-written-grade-table th:nth-child(5),
+.exam-written-grade-table td:nth-child(5) {
+  min-width: 230px;
+}
+.exam-grade-answer-text {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid #cbd5e1;
+  border-radius: 0;
+  background: #fff;
+  color: #0f172a;
+  padding: 6px 8px;
+}
+.exam-grade-answer-text.long {
+  min-height: 62px;
+  resize: vertical;
+}
+.exam-score-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid #c4c4c4;
+  background: #fff;
+}
+.exam-score-buttons button {
+  min-width: 58px;
+  min-height: 34px;
+  border: 0;
+  border-right: 1px solid #c4c4c4;
+  background: #fff;
+  color: #020617;
+  font-weight: 800;
+}
+.exam-score-buttons button:last-child {
+  border-right: 0;
+}
+.exam-score-buttons button.active {
+  background: #facc15;
+}
+.exam-total-grade-table th,
+.exam-total-grade-table td {
+  text-align: center;
+}
+.exam-total-grade-table th:nth-child(3),
+.exam-total-grade-table td:nth-child(3) {
+  text-align: left;
+}
 .grade-members-table {
   table-layout: auto;
 }
@@ -3936,6 +4237,7 @@ textarea {
   .exam-part-toolbar strong,
   .exam-question-select,
   .exam-points-field,
+  .exam-written-points-field,
   .exam-total {
     font-size: 13px;
   }
@@ -3943,6 +4245,7 @@ textarea {
   .exam-question-select,
   .exam-import-button,
   .exam-points-field,
+  .exam-written-points-field,
   .exam-total {
     grid-column: 1 / -1;
     justify-self: start;
@@ -3980,10 +4283,42 @@ textarea {
     flex: 1 1 100%;
     justify-content: center;
   }
+  .exam-gradebook-meta,
+  .exam-grading-header {
+    grid-template-columns: 1fr;
+  }
+  .exam-grade-action,
+  .exam-grading-header .secondary-action,
+  .exam-grading-header .primary-action {
+    width: 100%;
+    justify-content: center;
+  }
+  .exam-written-grading {
+    grid-template-columns: 1fr;
+  }
+  .exam-written-question-nav {
+    display: flex;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .exam-written-question-nav button {
+    width: auto;
+    min-width: 76px;
+    border-right: 1px solid #e2e8f0;
+    border-bottom: 0;
+    white-space: nowrap;
+  }
+  .exam-score-buttons {
+    flex-wrap: wrap;
+  }
   .assignment-exam-summary .join-action,
   .assignment-exam-submit-row .primary-action {
     width: 100%;
     justify-content: center;
+  }
+  .assignment-exam-review-submitter {
+    grid-template-columns: 1fr;
   }
   .assignment-exam-picker-row select {
     min-width: 0;

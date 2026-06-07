@@ -720,13 +720,20 @@ export async function uploadClassFile(courseOrId, folder, file, shareOptions = {
 }
 
 export async function submitAssignmentToCloud(courseId, assignmentId, submission) {
-  if (!hasFirebaseConfig) return { id: crypto.randomUUID(), assignmentId, ...submission };
-  const submissionRef = doc(collection(db, "classes", courseId, "submissions"));
+  if (!hasFirebaseConfig) {
+    const localSubmissionId = submission.id || crypto.randomUUID();
+    return { ...submission, id: localSubmissionId, assignmentId };
+  }
+  const existingSubmissionId = submission.id || "";
+  const submissionRef = existingSubmissionId
+    ? doc(db, "classes", courseId, "submissions", existingSubmissionId)
+    : doc(collection(db, "classes", courseId, "submissions"));
   const submittedAtMillis = submission.submittedAtMillis || Date.now();
   const savedSubmission = {
     assignmentId,
     email: submission.email,
     name: submission.name || "",
+    studentId: submission.studentId || "",
     fileName: submission.fileName || "",
     url: submission.url || "",
     previewUrl: submission.previewUrl || "",
@@ -742,10 +749,12 @@ export async function submitAssignmentToCloud(courseId, assignmentId, submission
     examStartedAtMillis: Number(submission.examStartedAtMillis || 0),
     examSubmittedAtMillis: Number(submission.examSubmittedAtMillis || 0),
     examAnswers: submission.examAnswers || {},
-    createdAt: serverTimestamp()
+    updatedAt: serverTimestamp()
   };
-  await setDoc(submissionRef, savedSubmission);
-  const { createdAt, ...clientSubmission } = savedSubmission;
+  if (!existingSubmissionId) savedSubmission.createdAt = serverTimestamp();
+  if (existingSubmissionId) await setDoc(submissionRef, savedSubmission, { merge: true });
+  else await setDoc(submissionRef, savedSubmission);
+  const { createdAt, updatedAt, ...clientSubmission } = savedSubmission;
   return { id: submissionRef.id, ...clientSubmission };
 }
 
@@ -940,13 +949,41 @@ async function loadPeerReviewResponses(classId, includeAllMembers, user) {
 }
 
 function mergeSubmissions(primary, secondary) {
-  const seen = new Set();
-  return [...primary, ...secondary].filter((submission) => {
-    const key = submission.id || `${submission.email}-${submission.assignmentId}-${submission.submittedAt}-${submission.fileName}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
+  const byKey = new Map();
+  [...primary, ...secondary].filter(Boolean).forEach((submission) => {
+    byKey.set(submissionMergeKey(submission), submission);
   });
+  return cleanSubmissions([...byKey.values()]);
+}
+
+function cleanSubmissions(submissions) {
+  const submittedExamAttempts = new Set(submissions
+    .filter((submission) => submission?.type === "exam" && submission.status === "submitted")
+    .map(examAttemptSignature)
+    .filter(Boolean));
+
+  return submissions.filter((submission) => {
+    if (submission?.type !== "exam" || submission.status !== "started") return true;
+    const signature = examAttemptSignature(submission);
+    return !signature || !submittedExamAttempts.has(signature);
+  });
+}
+
+function submissionMergeKey(submission) {
+  return submission.id
+    || `${normalizeEmail(submission.email)}-${submission.assignmentId || ""}-${submission.status || ""}-${submission.submittedAtMillis || submission.submittedAt || ""}`;
+}
+
+function examAttemptSignature(submission) {
+  const startedAt = Number(submission?.examStartedAtMillis || submission?.submittedAtMillis || 0);
+  const email = normalizeEmail(submission?.email || "");
+  if (!email || !startedAt) return "";
+  return [
+    email,
+    submission?.assignmentId || "",
+    submission?.examId || "",
+    startedAt
+  ].join("|");
 }
 
 function mergePeerReviewResponses(peerReviews, cloudResponses) {
@@ -1052,6 +1089,7 @@ function withCourseDefaults(course) {
     lecturers,
     lecturerEmails: lecturers.map((lecturer) => lecturer.email),
     announcementPostPermission: "everyone",
+    announcementEmailEnabled: false,
     info: { title: course.name || "", size: 0, time: "", room: "", description: course.description || "", rules: "" },
     scheduleRows: [],
     announcements: [],
