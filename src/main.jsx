@@ -5323,10 +5323,21 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
   );
 }
 
+function assignmentEditDraft(assignment) {
+  return {
+    title: assignment?.title || "",
+    content: assignment?.content || "",
+    type: normalizeGradebookType(assignment?.type, "personal"),
+    format: normalizeAssignmentFormat(assignment?.format)
+  };
+}
 
 function AssignmentItem({ admin, course, assignment, assignmentIndex, assignmentCount, user, updateCourse, activeExamState, onStartExam, onShowExam }) {
   const requestConfirm = useConfirmAction();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState(() => assignmentEditDraft(assignment));
+  const [editError, setEditError] = useState("");
   const [fileName, setFileName] = useState("");
   const [file, setFile] = useState(null);
   const [submitted, setSubmitted] = useState(false);
@@ -5349,6 +5360,10 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
   const visibleSubmissions = canHaveSubmissions
     ? (admin ? cleanAssignmentSubmissionList(assignment.submissions || []) : userSubmissions)
     : [];
+
+  useEffect(() => {
+    if (!editing) setEditDraft(assignmentEditDraft(assignment));
+  }, [assignment.id, assignment.title, assignment.content, assignment.type, assignment.format, editing]);
 
   useEffect(() => {
     if (assignmentFormat !== "exam") {
@@ -5393,6 +5408,47 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
     }
   }
 
+  function startEditingAssignment() {
+    setOpen(true);
+    setShowResults(false);
+    setEditDraft(assignmentEditDraft(assignment));
+    setEditError("");
+    setEditing(true);
+  }
+
+  function cancelEditingAssignment() {
+    setEditDraft(assignmentEditDraft(assignment));
+    setEditError("");
+    setEditing(false);
+  }
+
+  function saveAssignmentEdit() {
+    const title = editDraft.title.trim();
+    if (!title) {
+      setEditError("Title không được để trống.");
+      return;
+    }
+    const nextType = normalizeGradebookType(editDraft.type, "personal");
+    const nextFormat = normalizeAssignmentFormat(editDraft.format);
+    updateCourse((current) => ({
+      ...current,
+      assignments: normalizeAssignmentRatios((current.assignments || []).map((item) => {
+        if (item.id !== assignment.id) return item;
+        return {
+          ...item,
+          title,
+          content: editDraft.content.trim(),
+          type: nextType,
+          format: nextFormat,
+          examId: nextFormat === "exam" ? (item.examId || "") : "",
+          examSnapshot: nextFormat === "exam" ? (item.examSnapshot || null) : null
+        };
+      }))
+    }), { toast: "Đã cập nhật bài tập." });
+    setEditError("");
+    setEditing(false);
+  }
+
   return (
     <>
     <article className="expand-card">
@@ -5401,6 +5457,17 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
           <strong>{assignmentTitleWithRatio(assignment)}</strong>
           {userSubmissions.length > 0 && <small>Đã nộp {userSubmissions.length} lần</small>}
         </button>
+        {admin && (
+          <button
+            className={`icon-soft assignment-edit-button ${editing ? "active" : ""}`}
+            type="button"
+            title="Edit bài tập"
+            aria-label={`Edit ${assignment.title || "bài tập"}`}
+            onClick={startEditingAssignment}
+          >
+            <Pencil size={15} />
+          </button>
+        )}
         {admin && <button className="icon-danger" onClick={() => requestConfirm({
           title: "Xác nhận xóa bài tập",
           message: `Bạn có chắc muốn xóa bài tập "${assignment.title}" không?`,
@@ -5409,7 +5476,57 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
       </div>
       {open && (
         <div>
-          <p>{assignment.content}</p>
+          {editing ? (
+            <div className="assignment-edit-form">
+              <label>
+                <span>Title</span>
+                <input
+                  value={editDraft.title}
+                  onChange={(event) => setEditDraft((current) => ({ ...current, title: event.target.value }))}
+                  placeholder="Title..."
+                />
+              </label>
+              <label className="assignment-edit-content">
+                <span>Assignment</span>
+                <textarea
+                  value={editDraft.content}
+                  onChange={(event) => setEditDraft((current) => ({ ...current, content: event.target.value }))}
+                  placeholder="Assignment..."
+                />
+              </label>
+              <div className="assignment-edit-grid">
+                <label>
+                  <span>Type</span>
+                  <select
+                    value={editDraft.type}
+                    onChange={(event) => setEditDraft((current) => ({ ...current, type: event.target.value }))}
+                  >
+                    <option value="personal">Cá nhân</option>
+                    <option value="group">Nhóm</option>
+                    <option value="intergroup">Liên nhóm</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Format</span>
+                  <select
+                    value={editDraft.format}
+                    onChange={(event) => setEditDraft((current) => ({ ...current, format: event.target.value }))}
+                  >
+                    {ASSIGNMENT_FORMATS.map((format) => (
+                      <option value={format.value} key={format.value}>{format.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <div className="assignment-edit-actions">
+                  <button className="primary-action compact" type="button" onClick={saveAssignmentEdit}>Save</button>
+                  <button className="secondary-action compact" type="button" onClick={cancelEditingAssignment}>Cancel</button>
+                </div>
+              </div>
+              {editError && <p className="error-text">{editError}</p>}
+            </div>
+          ) : (
+            <p>{assignment.content}</p>
+          )}
           <div className="assignment-meta-row">
             <div className="assignment-format-row">
               <span>Format:</span>
@@ -6311,6 +6428,39 @@ function buildAutomaticGradebooks(course) {
   return normalizeAssignmentRatios(course.assignments || []).map((assignment) => buildAutomaticGradebook(course, assignment));
 }
 
+async function createGradebookPublishAnnouncement(course, user, gradebookTitle) {
+  const createdAtMillis = Date.now();
+  const announcement = {
+    id: crypto.randomUUID(),
+    author: user.email,
+    authorName: user.displayName || user.email,
+    authorPhotoURL: user.photoURL || "",
+    role: "admin",
+    content: gradebookPublishAnnouncementContent(gradebookTitle),
+    pinned: false,
+    attachments: [],
+    publishAsMaterial: false,
+    createdAt: formatDateTime24(createdAtMillis),
+    createdAtMillis,
+    publishAtMillis: createdAtMillis,
+    scheduledAt: "",
+    scheduledAtMillis: 0,
+    gradebookTitle: gradebookTitle || ""
+  };
+  return hasFirebaseConfig
+    ? saveAnnouncementToCloud(course.id, announcement)
+    : announcement;
+}
+
+function gradebookPublishAnnouncementContent(gradebookTitle) {
+  const title = String(gradebookTitle || "bảng điểm").trim();
+  if (title.toLowerCase().includes("tổng kết")) {
+    return `Giảng viên vừa công bố ${title}.`;
+  }
+  const scoreTitle = title.replace(/^điểm\s+/i, "").trim();
+  return `Giảng viên vừa công bố điểm ${scoreTitle || title}.`;
+}
+
 function upsertGradebookRecord(gradebooks, book, patch) {
   const records = gradebooks || [];
   const assignmentId = book.assignmentId || "";
@@ -6369,18 +6519,38 @@ function createGradebook(course, updateCourse, assignmentId, type) {
 
 function SummaryGradebookItem({ admin, user, course, updateCourse }) {
   const [open, setOpen] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState("");
   const allAssignments = normalizeAssignmentRatios(course.assignments || []);
   const assignments = admin ? allAssignments : allAssignments.filter((assignment) => findSummaryGradebook(course, assignment.id, admin));
   const rows = buildSummaryGradeRows(course, assignments, admin, user);
   const colSpan = assignments.length + 4;
   const published = course.summaryGradebookPublished === true;
 
-  function togglePublish() {
-    if (!admin || !updateCourse) return;
-    updateCourse((current) => ({
-      ...current,
-      summaryGradebookPublished: !published
-    }), { toast: published ? "Đã ẩn bảng điểm tổng kết." : "Đã publish bảng điểm tổng kết." });
+  async function togglePublish() {
+    if (!admin || !updateCourse || publishing) return;
+    setPublishError("");
+    if (published) {
+      updateCourse((current) => ({
+        ...current,
+        summaryGradebookPublished: false
+      }), { toast: "Đã ẩn bảng điểm tổng kết." });
+      return;
+    }
+    setPublishing(true);
+    try {
+      const savedAnnouncement = await createGradebookPublishAnnouncement(course, user, "Bảng điểm tổng kết");
+      await updateCourse((current) => ({
+        ...current,
+        summaryGradebookPublished: true,
+        announcements: [savedAnnouncement, ...(current.announcements || [])]
+      }), { toast: "Đã publish bảng điểm tổng kết và tạo thông báo." });
+    } catch (error) {
+      console.error(error);
+      setPublishError("Không thể publish bảng điểm tổng kết hoặc tạo thông báo. Vui lòng thử lại.");
+    } finally {
+      setPublishing(false);
+    }
   }
 
   return (
@@ -6401,11 +6571,13 @@ function SummaryGradebookItem({ admin, user, course, updateCourse }) {
             className={`join-action compact publish-score-button ${published ? "is-published" : ""}`}
             type="button"
             onClick={togglePublish}
+            disabled={publishing}
           >
-            {published ? "Unpublish" : "Publish"}
+            {publishing ? "Publishing" : (published ? "Unpublish" : "Publish")}
           </button>
         )}
       </div>
+      {publishError && <p className="error-text">{publishError}</p>}
       {open && (
         assignments.length === 0 ? (
           <div className="empty-state compact-empty">Chưa có bài tập để tính điểm tổng kết.</div>
@@ -6458,6 +6630,8 @@ function GradebookItem({ admin, user, book, course, updateCourse, onOpenExamGrad
   const [open, setOpen] = useState(false);
   const [draftRows, setDraftRows] = useState(book.rows || []);
   const [dirty, setDirty] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState("");
   const assignment = gradebookAssignment(course, book);
   const assignmentFormat = normalizeAssignmentFormat(book.assignmentFormat || assignment?.format);
   const examGradebook = isExamGradebook(book, assignment);
@@ -6508,24 +6682,37 @@ function GradebookItem({ admin, user, book, course, updateCourse, onOpenExamGrad
     setDirty(false);
   }
 
-  function publishScores() {
+  async function publishScores() {
+    if (publishing) return;
     const nextRows = examGradebook
       ? buildExamGradeRowsForSave(course, assignment, exam, draftRows)
       : buildGradebookRowsForSave(course, bookType, draftRows);
-    updateCourse((current) => ({
-      ...current,
-      gradebooks: upsertGradebookRecord(current.gradebooks || [], book, {
-        title: gradebookTitleWithRatio(book, current, bookType),
-        type: bookType,
-        assignmentFormat,
-        examId: assignment?.examId || book.examId || "",
-        examSnapshot: examGradebook ? exam : null,
-        rows: nextRows,
-        published: true
-      })
-    }), { toast: "Đã publish bảng điểm." });
-    setDraftRows(nextRows);
-    setDirty(false);
+    const gradebookTitle = gradebookTitleWithRatio(book, course, bookType);
+    setPublishing(true);
+    setPublishError("");
+    try {
+      const savedAnnouncement = await createGradebookPublishAnnouncement(course, user, gradebookTitle);
+      await updateCourse((current) => ({
+        ...current,
+        gradebooks: upsertGradebookRecord(current.gradebooks || [], book, {
+          title: gradebookTitleWithRatio(book, current, bookType),
+          type: bookType,
+          assignmentFormat,
+          examId: assignment?.examId || book.examId || "",
+          examSnapshot: examGradebook ? exam : null,
+          rows: nextRows,
+          published: true
+        }),
+        announcements: [savedAnnouncement, ...(current.announcements || [])]
+      }), { toast: "Đã publish bảng điểm và tạo thông báo." });
+      setDraftRows(nextRows);
+      setDirty(false);
+    } catch (error) {
+      console.error(error);
+      setPublishError("Không thể publish bảng điểm hoặc tạo thông báo. Vui lòng thử lại.");
+    } finally {
+      setPublishing(false);
+    }
   }
 
   function unpublishScores() {
@@ -6552,8 +6739,9 @@ function GradebookItem({ admin, user, book, course, updateCourse, onOpenExamGrad
           <button
             className={`join-action compact publish-score-button ${published ? "is-published" : ""}`}
             onClick={published ? unpublishScores : publishScores}
+            disabled={publishing}
           >
-            {published ? "Unpublish" : "Publish"}
+            {publishing ? "Publishing" : (published ? "Unpublish" : "Publish")}
           </button>
         )}
         {admin && !book.autoGenerated && <button className="icon-danger" onClick={() => requestConfirm({
@@ -6562,6 +6750,7 @@ function GradebookItem({ admin, user, book, course, updateCourse, onOpenExamGrad
           confirmLabel: "Xóa bảng điểm"
         }, () => updateCourse((current) => ({ ...current, gradebooks: (current.gradebooks || []).filter((item) => item.id !== book.id) })))}><Trash2 size={15} /></button>}
       </div>
+      {publishError && <p className="error-text">{publishError}</p>}
       {open && (
         examGradebook ? (
           <ExamGradebookPanel
