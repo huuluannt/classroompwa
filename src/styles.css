@@ -3399,6 +3399,51 @@ textarea { min-height: 88px; resize: vertical; }
 .exam-score-buttons button.active {
   background: #facc15;
 }
+.exam-scope-grade-list {
+  display: grid;
+  gap: 12px;
+}
+.exam-scope-grade-card .group-topic-header {
+  margin-bottom: 0;
+}
+.exam-scope-grade-card .group-topic-bar {
+  grid-template-columns: minmax(140px, max-content) minmax(220px, 1fr) auto;
+  align-items: start;
+}
+.exam-scope-answer-field,
+.exam-scope-score-field {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 800;
+}
+.exam-scope-score-field {
+  justify-items: end;
+}
+.exam-scope-representative {
+  display: block;
+  padding-top: 6px;
+  color: #475569;
+  font-weight: 800;
+}
+.exam-allocated-grade-card .group-topic-header {
+  margin-bottom: 0;
+}
+.exam-allocated-members-table th:last-child,
+.exam-allocated-members-table td:last-child {
+  width: 96px;
+  text-align: center;
+}
+@media (max-width: 760px) {
+  .exam-scope-grade-card .group-topic-bar {
+    grid-template-columns: 1fr;
+  }
+  .exam-scope-score-field {
+    justify-items: start;
+  }
+}
 .exam-total-grade-table th,
 .exam-total-grade-table td {
   text-align: center;
