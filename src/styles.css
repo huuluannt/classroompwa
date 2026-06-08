@@ -3407,6 +3407,10 @@ textarea { min-height: 88px; resize: vertical; }
 .exam-total-grade-table td:nth-child(3) {
   text-align: left;
 }
+.exam-grouped-grading {
+  display: grid;
+  gap: 12px;
+}
 .grade-members-table {
   table-layout: auto;
 }
