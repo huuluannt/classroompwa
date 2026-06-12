@@ -8156,17 +8156,191 @@ function updatePersonalTopic(course, updateCourse, email, topic) {
 }
 
 
+const PEER_REVIEW_SCORE_FORMATS = [
+  { value: "free", label: "Free" },
+  { value: "limit", label: "Limit" },
+  { value: "choice", label: "Choice" }
+];
+
+function defaultPeerReviewScoreConfig() {
+  return {
+    scoreFormat: "free",
+    limitMin: "",
+    limitMax: "",
+    choiceValuesText: ""
+  };
+}
+
+function peerReviewScoreConfig(review = {}) {
+  const scoreFormat = PEER_REVIEW_SCORE_FORMATS.some((item) => item.value === review.scoreFormat)
+    ? review.scoreFormat
+    : "free";
+  const choiceValues = Array.isArray(review.choiceValues)
+    ? review.choiceValues.map(Number).filter(Number.isFinite).map(formatScoreNumber)
+    : parsePeerReviewChoiceValues(review.choiceValues || "");
+  return {
+    scoreFormat,
+    limitMin: hasScoreValue(review.limitMin) ? String(review.limitMin) : "",
+    limitMax: hasScoreValue(review.limitMax) ? String(review.limitMax) : "",
+    choiceValues,
+    choiceValuesText: choiceValues.join(", ")
+  };
+}
+
+function parsePeerReviewChoiceValues(value) {
+  const seen = new Set();
+  return String(value || "")
+    .split(/[,;\n]/)
+    .map((item) => item.trim())
+    .filter((item) => item !== "")
+    .map((item) => Number(item))
+    .filter(Number.isFinite)
+    .map(formatScoreNumber)
+    .filter((item) => {
+      if (seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    });
+}
+
+function validatePeerReviewScoreConfig(draft) {
+  const scoreFormat = PEER_REVIEW_SCORE_FORMATS.some((item) => item.value === draft.scoreFormat)
+    ? draft.scoreFormat
+    : "free";
+  if (scoreFormat === "limit") {
+    if (!hasScoreValue(draft.limitMin) || !hasScoreValue(draft.limitMax)) {
+      return { valid: false, error: "Vui lòng nhập đủ điểm tối thiểu và tối đa." };
+    }
+    const limitMin = Number(draft.limitMin);
+    const limitMax = Number(draft.limitMax);
+    if (!Number.isFinite(limitMin) || !Number.isFinite(limitMax) || limitMin > limitMax) {
+      return { valid: false, error: "Giới hạn điểm không hợp lệ." };
+    }
+    return {
+      valid: true,
+      config: {
+        scoreFormat,
+        limitMin: formatScoreNumber(limitMin),
+        limitMax: formatScoreNumber(limitMax),
+        choiceValues: []
+      }
+    };
+  }
+  if (scoreFormat === "choice") {
+    const choiceValues = parsePeerReviewChoiceValues(draft.choiceValuesText);
+    if (choiceValues.length === 0) {
+      return { valid: false, error: "Vui lòng nhập ít nhất một giá trị điểm." };
+    }
+    return {
+      valid: true,
+      config: {
+        scoreFormat,
+        limitMin: "",
+        limitMax: "",
+        choiceValues
+      }
+    };
+  }
+  return {
+    valid: true,
+    config: {
+      scoreFormat: "free",
+      limitMin: "",
+      limitMax: "",
+      choiceValues: []
+    }
+  };
+}
+
+function validatePeerReviewScore(review, score) {
+  if (!hasScoreValue(score)) return { valid: false, error: "Vui lòng nhập điểm." };
+  const numericScore = Number(score);
+  if (!Number.isFinite(numericScore)) return { valid: false, error: "Điểm phải là một số hợp lệ." };
+  const config = peerReviewScoreConfig(review);
+  const normalizedScore = formatScoreNumber(numericScore);
+  if (config.scoreFormat === "limit") {
+    const limitMin = Number(config.limitMin);
+    const limitMax = Number(config.limitMax);
+    if (numericScore < limitMin || numericScore > limitMax) {
+      return { valid: false, error: `Điểm phải nằm trong khoảng ${config.limitMin} - ${config.limitMax}.` };
+    }
+  }
+  if (config.scoreFormat === "choice" && !config.choiceValues.includes(normalizedScore)) {
+    return { valid: false, error: "Vui lòng chọn một giá trị điểm hợp lệ." };
+  }
+  return { valid: true, score: normalizedScore };
+}
+
+function PeerReviewScoreConfigFields({ draft, onChange, compact = false }) {
+  return (
+    <div className={`peer-score-config-fields ${compact ? "is-compact" : ""}`}>
+      <div className="peer-score-format-control" role="group" aria-label="Format chấm điểm">
+        {PEER_REVIEW_SCORE_FORMATS.map((format) => (
+          <button
+            className={draft.scoreFormat === format.value ? "active" : ""}
+            type="button"
+            key={format.value}
+            onClick={() => onChange({ ...draft, scoreFormat: format.value })}
+          >
+            {format.label}
+          </button>
+        ))}
+      </div>
+      {draft.scoreFormat === "limit" && (
+        <div className="peer-score-limit-fields">
+          <label>
+            <span>Min</span>
+            <input
+              type="number"
+              step="any"
+              value={draft.limitMin}
+              onChange={(event) => onChange({ ...draft, limitMin: event.target.value })}
+            />
+          </label>
+          <span>–</span>
+          <label>
+            <span>Max</span>
+            <input
+              type="number"
+              step="any"
+              value={draft.limitMax}
+              onChange={(event) => onChange({ ...draft, limitMax: event.target.value })}
+            />
+          </label>
+        </div>
+      )}
+      {draft.scoreFormat === "choice" && (
+        <label className="peer-score-choice-field">
+          <span>Values</span>
+          <input
+            value={draft.choiceValuesText}
+            onChange={(event) => onChange({ ...draft, choiceValuesText: event.target.value })}
+            placeholder="5, 6, 7, 8, 9, 10"
+          />
+        </label>
+      )}
+    </div>
+  );
+}
+
 function PeerReviewCard({ admin, user, course, updateCourse }) {
   const addPopoverRef = useRef(null);
   const [addOpen, setAddOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [sourceType, setSourceType] = useState("group");
+  const [scoreConfigDraft, setScoreConfigDraft] = useState(defaultPeerReviewScoreConfig);
+  const [createError, setCreateError] = useState("");
   const options = peerReviewOptions(course, sourceType);
 
   useOutsideClick(addPopoverRef, addOpen, () => setAddOpen(false));
 
   function createReview() {
     if (!title || options.length === 0) return;
+    const validation = validatePeerReviewScoreConfig(scoreConfigDraft);
+    if (!validation.valid) {
+      setCreateError(validation.error);
+      return;
+    }
     updateCourse((current) => ({
       ...current,
       peerReviews: [
@@ -8176,11 +8350,14 @@ function PeerReviewCard({ admin, user, course, updateCourse }) {
           title,
           sourceType,
           options: peerReviewOptions(current, sourceType),
+          ...validation.config,
           responses: []
         }
       ]
     }));
     setTitle("");
+    setScoreConfigDraft(defaultPeerReviewScoreConfig());
+    setCreateError("");
     setAddOpen(false);
   }
 
@@ -8201,11 +8378,16 @@ function PeerReviewCard({ admin, user, course, updateCourse }) {
                   <option value="group">Nhóm</option>
                   <option value="intergroup">Liên nhóm</option>
                 </select>
+                <PeerReviewScoreConfigFields draft={scoreConfigDraft} onChange={(nextDraft) => {
+                  setScoreConfigDraft(nextDraft);
+                  setCreateError("");
+                }} compact />
                 <div className="material-upload-actions">
                   <button className="primary-action compact dark-action" type="button" onClick={createReview} disabled={!title || options.length === 0}>
                     <Plus size={14} /> Create
                   </button>
                 </div>
+                {createError && <p className="error-text">{createError}</p>}
               </div>
             )}
           </div>
@@ -8239,6 +8421,35 @@ function peerReviewOptions(course, sourceType) {
     .map((item) => `${item.name} - ${item.topic}`);
 }
 
+function PeerReviewScoreInput({ review, value, onChange, disabled }) {
+  const config = peerReviewScoreConfig(review);
+  if (config.scoreFormat === "choice") {
+    return (
+      <select className="peer-score-input peer-score-choice-select" value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled}>
+        <option value="">Điểm</option>
+        {config.choiceValues.map((option) => <option value={option} key={option}>{option}</option>)}
+      </select>
+    );
+  }
+
+  return (
+    <div className="peer-score-number-wrap">
+      <input
+        className="peer-score-input"
+        type="number"
+        step="any"
+        min={config.scoreFormat === "limit" ? config.limitMin : undefined}
+        max={config.scoreFormat === "limit" ? config.limitMax : undefined}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="Điểm"
+        disabled={disabled}
+      />
+      {config.scoreFormat === "limit" && <small>{config.limitMin} – {config.limitMax}</small>}
+    </div>
+  );
+}
+
 
 function PeerReviewItem({ admin, user, course, review, updateCourse }) {
   const requestConfirm = useConfirmAction();
@@ -8248,10 +8459,46 @@ function PeerReviewItem({ admin, user, course, review, updateCourse }) {
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);
+  const [configDraft, setConfigDraft] = useState(() => peerReviewScoreConfig(review));
+  const [configStatus, setConfigStatus] = useState("");
+  const [configError, setConfigError] = useState("");
+  const choiceValuesSignature = Array.isArray(review.choiceValues) ? review.choiceValues.join("|") : String(review.choiceValues || "");
   const visibleResponses = admin ? (review.responses || []) : (review.responses || []).filter((row) => row.email === user.email);
 
+  useEffect(() => {
+    setConfigDraft(peerReviewScoreConfig(review));
+    setScore("");
+  }, [review.id, review.scoreFormat, review.limitMin, review.limitMax, choiceValuesSignature]);
+
+  function saveScoreConfig() {
+    const validation = validatePeerReviewScoreConfig(configDraft);
+    setConfigStatus("");
+    setConfigError("");
+    if (!validation.valid) {
+      setConfigError(validation.error);
+      return;
+    }
+    updateCourse((current) => ({
+      ...current,
+      peerReviews: (current.peerReviews || []).map((item) => (
+        item.id === review.id ? { ...item, ...validation.config } : item
+      ))
+    }), { toast: "Đã cập nhật format chấm điểm." });
+    setConfigDraft((current) => ({
+      ...current,
+      ...validation.config,
+      choiceValuesText: validation.config.choiceValues.join(", ")
+    }));
+    setConfigStatus("Đã lưu format chấm điểm.");
+  }
+
   async function submitReviewScore() {
-    if (!score) return;
+    const validation = validatePeerReviewScore(review, score);
+    if (!validation.valid) {
+      setSubmitStatus("");
+      setSubmitError(validation.error);
+      return;
+    }
     setSubmitStatus("");
     setSubmitError("");
     setSubmitting(true);
@@ -8264,7 +8511,7 @@ function PeerReviewItem({ admin, user, course, review, updateCourse }) {
         name: learner?.name || user.displayName,
         studentId: learner?.studentId || "",
         topic,
-        score,
+        score: validation.score,
         submittedAt: new Date().toLocaleString("vi-VN"),
         submittedAtMillis: Date.now()
       };
@@ -8295,13 +8542,33 @@ function PeerReviewItem({ admin, user, course, review, updateCourse }) {
           confirmLabel: "Xóa thẻ"
         }, () => updateCourse((current) => ({ ...current, peerReviews: (current.peerReviews || []).filter((item) => item.id !== review.id) })))}><Trash2 size={15} /></button>}
       </div>
-      <div className="review-form">
-        <select value={topic} onChange={(event) => setTopic(event.target.value)}>
-          {review.options.map((option) => <option key={option}>{option}</option>)}
-        </select>
-        <input value={score} onChange={(event) => setScore(event.target.value)} placeholder="Điểm" />
-        <button onClick={submitReviewScore} disabled={!score || submitting}>{submitting ? "Đang lưu..." : "Submit"}</button>
-      </div>
+      {admin ? (
+        <div className="peer-score-admin-panel">
+          <div className="peer-score-admin-head">
+            <strong>Format chấm điểm</strong>
+            <button className="primary-action compact" type="button" onClick={saveScoreConfig}>Save</button>
+          </div>
+          <PeerReviewScoreConfigFields draft={configDraft} onChange={(nextDraft) => {
+            setConfigDraft(nextDraft);
+            setConfigStatus("");
+            setConfigError("");
+          }} />
+          {configStatus && <p className="success-text">{configStatus}</p>}
+          {configError && <p className="error-text">{configError}</p>}
+        </div>
+      ) : (
+        <div className="review-form">
+          <select value={topic} onChange={(event) => setTopic(event.target.value)}>
+            {review.options.map((option) => <option key={option}>{option}</option>)}
+          </select>
+          <PeerReviewScoreInput review={review} value={score} onChange={(value) => {
+            setScore(value);
+            setSubmitError("");
+            setSubmitStatus("");
+          }} disabled={submitting} />
+          <button onClick={submitReviewScore} disabled={!hasScoreValue(score) || submitting}>{submitting ? "Đang lưu..." : "Submit"}</button>
+        </div>
+      )}
       {submitStatus && <p className="success-text">{submitStatus}</p>}
       {submitError && <p className="error-text">{submitError}</p>}
       <button className="review-results-toggle" type="button" onClick={() => setResultsOpen((current) => !current)}>

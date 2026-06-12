@@ -2044,23 +2044,117 @@ textarea { min-height: 88px; resize: vertical; }
 }
 .peer { display: grid; gap: 10px; }
 .peer-add-popover {
-  width: min(360px, calc(100vw - 34px));
+  width: min(440px, calc(100vw - 34px));
+}
+.peer-score-config-fields {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.peer-score-config-fields.is-compact {
+  display: grid;
+  align-items: stretch;
+}
+.peer-score-format-control {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+.peer-score-format-control button {
+  min-width: 70px;
+  min-height: 34px;
+  border: 0;
+  border-right: 1px solid #cbd5e1;
+  border-radius: 0;
+  background: #fff;
+  color: #334155;
+  padding: 0 12px;
+  font-weight: 800;
+}
+.peer-score-format-control button:last-child {
+  border-right: 0;
+}
+.peer-score-format-control button.active {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.peer-score-limit-fields {
+  display: inline-flex;
+  align-items: end;
+  gap: 6px;
+}
+.peer-score-limit-fields label,
+.peer-score-choice-field {
+  display: grid;
+  gap: 4px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+.peer-score-limit-fields input {
+  width: 82px;
+  min-height: 34px;
+}
+.peer-score-choice-field {
+  min-width: min(260px, 100%);
+  flex: 1;
+}
+.peer-score-choice-field input {
+  width: 100%;
+  min-height: 34px;
+}
+.peer-score-admin-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 12px;
+}
+.peer-score-admin-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.peer-score-admin-head strong {
+  color: #334155;
+  font-size: 14px;
 }
 .review-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 68px auto;
+  grid-template-columns: minmax(0, 1fr) minmax(88px, 112px) auto;
   align-items: center;
   gap: 8px;
 }
 .review-form select { min-width: 0; }
-.review-form input {
-  width: 68px;
+.review-form .peer-score-input {
+  width: 100%;
   min-height: 34px;
   border: 1px solid #dce3ee;
   border-radius: 8px;
   background: #fff;
   padding-inline: 8px;
   text-align: center;
+}
+.peer-score-number-wrap {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.peer-score-number-wrap small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+}
+.review-form .peer-score-choice-select {
+  text-align: left;
 }
 .review-form button { min-width: 82px; }
 .review-results-toggle {
@@ -4471,6 +4565,32 @@ textarea {
   }
   .grade-topic-bar, .intergroup-grade-bar, .intergroup-topic-bar { grid-template-columns: 1fr; }
   .intergroup-toolbar { grid-template-columns: 1fr; }
+  .review-form {
+    grid-template-columns: 1fr;
+  }
+  .review-form button {
+    width: 100%;
+    justify-content: center;
+  }
+  .peer-score-config-fields,
+  .peer-score-limit-fields {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .peer-score-format-control {
+    width: 100%;
+  }
+  .peer-score-format-control button {
+    flex: 1;
+    min-width: 0;
+  }
+  .peer-score-limit-fields > span {
+    display: none;
+  }
+  .peer-score-limit-fields input,
+  .peer-score-choice-field {
+    width: 100%;
+  }
   .data-table { display: block; overflow-x: auto; white-space: nowrap; }
   .login-card { padding: 24px; }
 }
