@@ -1658,9 +1658,18 @@ textarea { min-height: 88px; resize: vertical; }
 }
 .assignment-edit-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(120px, 180px)) auto;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   align-items: end;
   gap: 10px;
+}
+.assignment-edit-ratio-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.assignment-edit-ratio-field small {
+  color: #64748b;
+  font-weight: 800;
 }
 .assignment-edit-actions {
   display: inline-flex;

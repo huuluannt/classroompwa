@@ -1874,7 +1874,7 @@ function CardNavItem({ admin, card, active, pinned, draggable, dragging, dragOve
 
 function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditMembers, canEditTopics, user, course, examFormTemplates, setExamFormTemplates, selectedCard, setSelectedCard, reviewerOpenRequest, onOpenAssignmentReviewer, onReviewerOpenConsumed, updateCourse }) {
   if (selectedCard === "members") return <MembersCard admin={admin} canManageCourseLecturers={canManageCourseLecturers} classLeader={classLeader} canEditMembers={canEditMembers} user={user} course={course} updateCourse={updateCourse} />;
-  if (selectedCard === "announcements") return <AnnouncementsCard admin={admin} classLeader={classLeader} user={user} course={course} updateCourse={updateCourse} onOpenAssignments={() => setSelectedCard("assignments")} onOpenAssignmentReviewer={onOpenAssignmentReviewer} />;
+  if (selectedCard === "announcements") return <AnnouncementsCard admin={admin} classLeader={classLeader} user={user} course={course} updateCourse={updateCourse} onOpenAssignments={() => setSelectedCard("assignments")} onOpenGrades={() => setSelectedCard("grades")} onOpenAssignmentReviewer={onOpenAssignmentReviewer} />;
   if (selectedCard === "info") return <InfoCard admin={admin} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "schedule") return <ScheduleCard admin={admin} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "groupTopic") return <GroupTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
@@ -2453,7 +2453,7 @@ function MemberNumberInput({ className, value, onCommit }) {
 }
 
 
-function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onOpenAssignments, onOpenAssignmentReviewer }) {
+function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onOpenAssignments, onOpenGrades, onOpenAssignmentReviewer }) {
   const requestConfirm = useConfirmAction();
   const [content, setContent] = useState("");
   const [files, setFiles] = useState([]);
@@ -2732,8 +2732,10 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onO
       )}
       {!canPost && postError && <p className="error-text">{postError}</p>}
       <div className="feed">
-        {posts.map((item) => (
-          <article className={`feed-item ${item.role === "admin" ? "admin-post" : ""} ${item.pinned ? "pinned-post" : ""}`} key={item.id}>
+        {posts.map((item) => {
+          const gradebookPublishPost = isGradebookPublishAnnouncement(item);
+          return (
+            <article className={`feed-item ${item.role === "admin" ? "admin-post" : ""} ${item.pinned ? "pinned-post" : ""}`} key={item.id}>
             <div className="post-head">
               <PostAuthor post={item} currentUser={user} />
               {isAnnouncementScheduledForFuture(item, nowMillis) && (
@@ -2762,6 +2764,11 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onO
                   Xem
                 </button>
               )}
+              {gradebookPublishPost && (
+                <button className="join-action compact announcement-view-assignment" type="button" onClick={onOpenGrades}>
+                  Xem
+                </button>
+              )}
             </div>
             <div className="link-list">{extractUrls(announcementDisplayContent(item)).map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}</div>
             {item.attachments?.length > 0 && (
@@ -2786,8 +2793,9 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onO
                 })}
               </div>
             )}
-          </article>
-        ))}
+            </article>
+          );
+        })}
       </div>
     </>
   );
@@ -4191,7 +4199,7 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
   return (
     <div className="exam-builder">
       <div className="exam-panel-head">
-        <h3>Đề thi</h3>
+        <h3>Đề thi (only Lecturer)</h3>
         <div className="exam-head-actions">
           <ExamDropdown
             exams={draftExams}
@@ -5458,7 +5466,9 @@ function assignmentEditDraft(assignment) {
     content: assignment?.content || "",
     type: normalizeGradebookType(assignment?.type, "personal"),
     format: normalizeAssignmentFormat(assignment?.format),
-    reviewerType: normalizeAssignmentReviewerType(assignment?.reviewerType)
+    reviewerType: normalizeAssignmentReviewerType(assignment?.reviewerType),
+    dueAt: assignmentDateTimeLocalValue(assignment),
+    ratio: cleanRatioInput(assignment?.ratio || "")
   };
 }
 
@@ -5468,7 +5478,6 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
   const [editing, setEditing] = useState(false);
   const [editDraft, setEditDraft] = useState(() => assignmentEditDraft(assignment));
   const [editError, setEditError] = useState("");
-  const [fileName, setFileName] = useState("");
   const [file, setFile] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -5511,7 +5520,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
 
   useEffect(() => {
     if (!editing) setEditDraft(assignmentEditDraft(assignment));
-  }, [assignment.id, assignment.title, assignment.content, assignment.type, assignment.format, assignment.reviewerType, editing]);
+  }, [assignment.id, assignment.title, assignment.content, assignment.type, assignment.format, assignment.reviewerType, assignment.dueAt, assignment.dueAtMillis, assignment.ratio, editing]);
 
   useEffect(() => {
     if (assignmentFormat !== "exam") {
@@ -5524,14 +5533,12 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
   }, [reviewerEnabled]);
 
   async function submitAssignment() {
-    if (submitting || (!fileName && !file)) return;
+    if (submitting || !file) return;
     setSubmitting(true);
     setSubmitError("");
     try {
       const submittedAtMillis = Date.now();
-      const uploaded = file
-        ? await uploadClassFile(course, `submissions/${assignment.id}/${user.email}`, file, { readerEmails: adminWriterEmails(), writerEmails: adminWriterEmails() })
-        : { fileName, url: "" };
+      const uploaded = await uploadClassFile(course, `submissions/${assignment.id}/${user.email}`, file, { readerEmails: adminWriterEmails(), writerEmails: adminWriterEmails() });
       const submitter = assignmentSubmissionIdentity(course, { email: user.email }, user);
       const submission = {
         email: submitter.email || user.email,
@@ -5549,7 +5556,6 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
           ? { ...item, submissions: mergeAssignmentSubmissionList(item.submissions || [], [savedSubmission]) }
           : item)
       }), { sync: false });
-      setFileName("");
       setFile(null);
       setSubmitted(true);
     } catch (error) {
@@ -5583,6 +5589,10 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
     const nextType = normalizeGradebookType(editDraft.type, "personal");
     const nextFormat = normalizeAssignmentFormat(editDraft.format);
     const nextReviewerType = normalizeAssignmentReviewerType(editDraft.reviewerType);
+    const nextDueAt = editDraft.dueAt || "";
+    const parsedDueAtMillis = nextDueAt ? new Date(nextDueAt).getTime() : 0;
+    const nextDueAtMillis = Number.isFinite(parsedDueAtMillis) && parsedDueAtMillis > 0 ? parsedDueAtMillis : "";
+    const nextRatio = cleanRatioInput(editDraft.ratio || "");
     updateCourse((current) => ({
       ...current,
       assignments: normalizeAssignmentRatios((current.assignments || []).map((item) => {
@@ -5594,6 +5604,9 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
           type: nextType,
           format: nextFormat,
           reviewerType: nextReviewerType,
+          dueAt: nextDueAt,
+          dueAtMillis: nextDueAtMillis,
+          ratio: lastAssignment ? item.ratio : nextRatio,
           examId: nextFormat === "exam" ? (item.examId || "") : "",
           examSnapshot: nextFormat === "exam" ? (item.examSnapshot || null) : null
         };
@@ -5682,6 +5695,28 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                     ))}
                   </select>
                 </label>
+                <label>
+                  <span>Hạn nộp</span>
+                  <input
+                    type="datetime-local"
+                    value={editDraft.dueAt}
+                    onChange={(event) => setEditDraft((current) => ({ ...current, dueAt: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>Tỉ lệ</span>
+                  <div className="assignment-edit-ratio-field">
+                    <input
+                      className="ratio-input"
+                      inputMode="decimal"
+                      disabled={lastAssignment}
+                      value={lastAssignment ? (assignment.ratio || "0") : editDraft.ratio}
+                      onChange={(event) => setEditDraft((current) => ({ ...current, ratio: cleanRatioInput(event.target.value) }))}
+                    />
+                    <strong>%</strong>
+                    {lastAssignment && <small>Tự động</small>}
+                  </div>
+                </label>
                 <div className="assignment-edit-actions">
                   <button className="primary-action compact" type="button" onClick={saveAssignmentEdit}>Save</button>
                   <button className="secondary-action compact" type="button" onClick={cancelEditingAssignment}>Cancel</button>
@@ -5694,6 +5729,10 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
           )}
           <div className="assignment-meta-row">
             <div className="assignment-format-row">
+              <span>Assignee:</span>
+              <strong>{gradebookTypeLabels[assignmentType]}</strong>
+            </div>
+            <div className="assignment-format-row">
               <span>Format:</span>
               <strong>{assignmentFormatLabel(assignmentFormat)}</strong>
             </div>
@@ -5705,29 +5744,16 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
             )}
             <div className="assignment-deadline-row">
               <span>Hạn nộp:</span>
-              {admin ? (
-                <input
-                  type="datetime-local"
-                  value={assignmentDateTimeLocalValue(assignment)}
-                  onChange={(event) => updateAssignmentDeadline(updateCourse, assignment.id, event.target.value)}
-                />
-              ) : (
-                <strong>{assignmentDeadlineLabel(assignment) || "Không giới hạn"}</strong>
-              )}
+              <strong>{assignmentDeadlineLabel(assignment) || "Không giới hạn"}</strong>
             </div>
             <div className="assignment-ratio-row">
               <span>Tỉ lệ:</span>
-              {admin && !lastAssignment ? (
-                <AssignmentRatioInput value={assignment.ratio || ""} onCommit={(value) => updateAssignmentRatio(updateCourse, assignment.id, value)} />
-              ) : (
-                <input className="ratio-input" value={assignment.ratio || "0"} disabled readOnly />
-              )}
+              <input className="ratio-input" value={assignment.ratio || "0"} disabled readOnly />
               <strong>%</strong>
-              {admin && lastAssignment && <small>Tự động tính phần còn lại</small>}
             </div>
-            {canHaveSubmissions && (
+            {admin && canHaveSubmissions && (
               <button className="join-action compact assignment-results-toggle" onClick={() => setShowResults(!showResults)}>
-                {admin ? "Xem kết quả nộp bài" : "Xem bài đã nộp"}
+                Xem kết quả nộp bài
               </button>
             )}
             {reviewerEnabled && (
@@ -5791,19 +5817,18 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
           {assignmentFormat === "uploadFile" && !admin && (
             <>
               <div className={`upload-row ${submitting ? "is-uploading" : ""}`}>
-                <input disabled={submitting} value={fileName} onChange={(event) => setFileName(event.target.value)} placeholder="Tên file bài tập" />
                 <input disabled={submitting} type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} />
-                <button onClick={submitAssignment} disabled={submitting || (!fileName && !file)}>
+                <button onClick={submitAssignment} disabled={submitting || !file}>
                   {submitting ? <span className="button-spinner" /> : <Upload size={15} />}
                   {submitting ? "Đang upload" : "Submit"}
                 </button>
               </div>
-              {submitting && <UploadStatus label={file ? "Đang upload file và nộp bài..." : "Đang lưu bài nộp..."} />}
+              {submitting && <UploadStatus label="Đang upload file và nộp bài..." />}
               {(submitted || userSubmissions.length > 0) && <p className="success-text">Bạn đã nộp bài thành công.</p>}
               {submitError && <p className="error-text">{submitError}</p>}
             </>
           )}
-          {canHaveSubmissions && showResults && (
+          {canHaveSubmissions && (admin ? showResults : true) && (
             <table className="data-table compact-table assignment-submissions-table">
               <thead><tr><th>Họ tên</th><th>File</th><th>Thời gian</th><th>Email</th></tr></thead>
               <tbody>
@@ -6899,33 +6924,6 @@ function examQuestionResponseKey(part, question) {
   return `${part?.id || "part"}:${question?.id || "question"}`;
 }
 
-function AssignmentRatioInput({ value, onCommit }) {
-  const [draft, setDraft] = useState(String(value ?? ""));
-
-  useEffect(() => {
-    setDraft(String(value ?? ""));
-  }, [value]);
-
-  function commit() {
-    const nextValue = cleanRatioInput(draft);
-    setDraft(nextValue);
-    onCommit(nextValue);
-  }
-
-  return (
-    <input
-      className="ratio-input"
-      inputMode="decimal"
-      value={draft}
-      onChange={(event) => setDraft(cleanRatioInput(event.target.value))}
-      onBlur={commit}
-      onKeyDown={(event) => {
-        if (event.key === "Enter") event.currentTarget.blur();
-      }}
-    />
-  );
-}
-
 function assignmentTitleWithRatio(assignment) {
   return `${assignment?.title || "Bài tập"} (Tỉ lệ ${assignment?.ratio || "0"}%)`;
 }
@@ -6978,6 +6976,13 @@ function announcementDisplayContent(announcement) {
   return content
     .replace(/^Tiêu đề bài tập:/gm, "Bài tập:")
     .replace(/^Nội dung giao bài:/gm, "Nội dung:");
+}
+
+function isGradebookPublishAnnouncement(announcement) {
+  const content = String(announcement?.content || "").trim();
+  return announcement?.announcementType === "gradebookPublish"
+    || Boolean(announcement?.gradebookTitle)
+    || content.toLowerCase().startsWith("giảng viên vừa công bố");
 }
 
 function assignmentDateTimeLocalValue(assignment) {
@@ -7039,26 +7044,6 @@ function assignmentSubmissionIdentity(course, submission, currentUser) {
       || "",
     email: fallbackEmail
   };
-}
-
-function updateAssignmentDeadline(updateCourse, assignmentId, dueAt) {
-  updateCourse((current) => ({
-    ...current,
-    assignments: normalizeAssignmentRatios((current.assignments || []).map((item) => (
-      item.id === assignmentId
-        ? { ...item, dueAt, dueAtMillis: dueAt ? new Date(dueAt).getTime() : "" }
-        : item
-    )))
-  }));
-}
-
-function updateAssignmentRatio(updateCourse, assignmentId, ratio) {
-  updateCourse((current) => ({
-    ...current,
-    assignments: normalizeAssignmentRatios((current.assignments || []).map((item) => (
-      item.id === assignmentId ? { ...item, ratio: cleanRatioInput(ratio) } : item
-    )))
-  }));
 }
 
 function normalizeAssignmentRatios(assignments) {
@@ -7165,6 +7150,7 @@ async function createGradebookPublishAnnouncement(course, user, gradebookTitle) 
     publishAtMillis: createdAtMillis,
     scheduledAt: "",
     scheduledAtMillis: 0,
+    announcementType: "gradebookPublish",
     gradebookTitle: gradebookTitle || ""
   };
   return hasFirebaseConfig
