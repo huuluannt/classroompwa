@@ -855,6 +855,9 @@ textarea { min-height: 88px; resize: vertical; }
   overflow: auto;
   padding: 10px;
 }
+.detail-panel:has(.assignment-reviewer-workspace) {
+  overflow: hidden;
+}
 .panel-title {
   position: relative;
   justify-content: space-between;
@@ -1790,8 +1793,8 @@ textarea { min-height: 88px; resize: vertical; }
   font-weight: 800;
 }
 .assignment-reviewer-workspace {
-  height: calc(100dvh - 132px);
-  min-height: 520px;
+  height: 100%;
+  min-height: 0;
   margin-top: 0;
   border: 1px solid #d8e1ee;
   border-radius: 8px;
@@ -1805,7 +1808,7 @@ textarea { min-height: 88px; resize: vertical; }
   top: 0;
   z-index: 3;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
@@ -1825,6 +1828,19 @@ textarea { min-height: 88px; resize: vertical; }
 .assignment-reviewer-sticky-head small {
   color: #64748b;
   font-weight: 800;
+}
+.assignment-reviewer-head-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.assignment-reviewer-head-actions .icon-soft {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  display: grid;
+  place-items: center;
 }
 .assignment-reviewer-scroll {
   min-height: 0;
@@ -1893,7 +1909,6 @@ textarea { min-height: 88px; resize: vertical; }
 }
 .assignment-reviewer-question.answered p {
   color: #64748b;
-  text-decoration: line-through;
 }
 .assignment-reviewer-input-row {
   display: grid;
@@ -1915,6 +1930,62 @@ textarea { min-height: 88px; resize: vertical; }
 }
 .assignment-reviewer-input-row .error-text {
   grid-column: 1 / -1;
+}
+.assignment-reviewer-input-row .success-text {
+  grid-column: 1 / -1;
+}
+.assignment-reviewer-stats-modal {
+  width: min(780px, calc(100vw - 34px));
+}
+.reviewer-stats-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.reviewer-stats-summary > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.reviewer-stats-summary span,
+.reviewer-stats-group-head span {
+  color: #64748b;
+  font-weight: 800;
+}
+.reviewer-stats-summary strong {
+  color: #0f172a;
+  font-size: 20px;
+}
+.reviewer-stats-groups {
+  display: grid;
+  gap: 12px;
+  max-height: min(56vh, 520px);
+  overflow-y: auto;
+}
+.reviewer-stats-group {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #e1e7ef;
+  border-radius: 8px;
+  background: #fff;
+}
+.reviewer-stats-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.reviewer-stats-table th:nth-child(3),
+.reviewer-stats-table th:nth-child(4),
+.reviewer-stats-table td:nth-child(3),
+.reviewer-stats-table td:nth-child(4) {
+  text-align: center;
+  width: 94px;
 }
 .assignment-exam-picker-row {
   display: flex;
@@ -4748,15 +4819,21 @@ textarea {
     flex-wrap: wrap;
   }
   .assignment-reviewer-workspace {
-    height: calc(100dvh - 112px);
-    min-height: 500px;
+    height: 100%;
+    min-height: 0;
   }
   .assignment-reviewer-sticky-head,
   .assignment-reviewer-input-row {
     grid-template-columns: 1fr;
   }
+  .assignment-reviewer-head-actions {
+    justify-content: flex-start;
+  }
   .assignment-reviewer-input-row .primary-action {
     justify-self: stretch;
+  }
+  .reviewer-stats-summary {
+    grid-template-columns: 1fr;
   }
   .assignment-create-popover-row,
   .grade-add-row {

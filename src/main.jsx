@@ -3,9 +3,11 @@ import { createRoot } from "react-dom/client";
 import {
   Archive,
   ArchiveRestore,
+  BellRing,
   BookOpen,
   Bell,
   BellDot,
+  ChartColumn,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -386,6 +388,7 @@ function App() {
   const [loginError, setLoginError] = useState("");
   const [selectedClassId, setSelectedClassId] = useState(classes[0]?.id);
   const [selectedCard, setSelectedCard] = useState("announcements");
+  const [reviewerOpenRequest, setReviewerOpenRequest] = useState(null);
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -701,6 +704,18 @@ function App() {
     setAnnouncementSeenAt(nextSeenAt);
   }
 
+  function openAssignmentReviewerFromAnnouncement(announcement) {
+    if (!announcement?.assignmentId || !announcement?.reviewerQuestionTargetKey) return;
+    setReviewerOpenRequest({
+      id: crypto.randomUUID(),
+      courseId: announcement.classId || selectedClass?.id || "",
+      assignmentId: announcement.assignmentId,
+      targetKey: announcement.reviewerQuestionTargetKey
+    });
+    setSelectedCard("assignments");
+    navigateMobileView(MOBILE_VIEWS.detail);
+  }
+
   function handleNotificationSelect(item) {
     if (!item?.courseId) return;
     const targetCourse = classes.find((course) => course.id === item.courseId);
@@ -835,9 +850,16 @@ function App() {
           setSelectedCard={setSelectedCard}
           isMobile={isMobile}
           mobileView={mobileView}
+          reviewerOpenRequest={reviewerOpenRequest}
           onMobileBackToClasses={() => stepBackMobileView(MOBILE_VIEWS.classes)}
           onMobileBackToCards={() => stepBackMobileView(MOBILE_VIEWS.cards)}
           onMobileOpenCard={() => navigateMobileView(MOBILE_VIEWS.detail)}
+          onOpenAssignmentReviewer={openAssignmentReviewerFromAnnouncement}
+          onReviewerOpenConsumed={(requestId) => {
+            setReviewerOpenRequest((current) => (
+              current?.id === requestId ? null : current
+            ));
+          }}
           updateCourse={(updater, options) => updateClass(selectedClass.id, updater, options)}
         />
         )
@@ -1489,9 +1511,12 @@ function ClassPane({
   setSelectedCard,
   isMobile,
   mobileView,
+  reviewerOpenRequest,
   onMobileBackToClasses,
   onMobileBackToCards,
   onMobileOpenCard,
+  onOpenAssignmentReviewer,
+  onReviewerOpenConsumed,
   updateCourse
 }) {
   const requestConfirm = useConfirmAction();
@@ -1681,6 +1706,9 @@ function ClassPane({
             setExamFormTemplates={setExamFormTemplates}
             selectedCard={selectedCard}
             setSelectedCard={setSelectedCard}
+            reviewerOpenRequest={reviewerOpenRequest}
+            onOpenAssignmentReviewer={onOpenAssignmentReviewer}
+            onReviewerOpenConsumed={onReviewerOpenConsumed}
             updateCourse={updateCourse}
           />
         </section>
@@ -1844,15 +1872,15 @@ function CardNavItem({ admin, card, active, pinned, draggable, dragging, dragOve
   );
 }
 
-function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditMembers, canEditTopics, user, course, examFormTemplates, setExamFormTemplates, selectedCard, setSelectedCard, updateCourse }) {
+function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditMembers, canEditTopics, user, course, examFormTemplates, setExamFormTemplates, selectedCard, setSelectedCard, reviewerOpenRequest, onOpenAssignmentReviewer, onReviewerOpenConsumed, updateCourse }) {
   if (selectedCard === "members") return <MembersCard admin={admin} canManageCourseLecturers={canManageCourseLecturers} classLeader={classLeader} canEditMembers={canEditMembers} user={user} course={course} updateCourse={updateCourse} />;
-  if (selectedCard === "announcements") return <AnnouncementsCard admin={admin} classLeader={classLeader} user={user} course={course} updateCourse={updateCourse} onOpenAssignments={() => setSelectedCard("assignments")} />;
+  if (selectedCard === "announcements") return <AnnouncementsCard admin={admin} classLeader={classLeader} user={user} course={course} updateCourse={updateCourse} onOpenAssignments={() => setSelectedCard("assignments")} onOpenAssignmentReviewer={onOpenAssignmentReviewer} />;
   if (selectedCard === "info") return <InfoCard admin={admin} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "schedule") return <ScheduleCard admin={admin} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "groupTopic") return <GroupTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "intergroupTopic") return <IntergroupTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "materials") return <MaterialsCard admin={admin} user={user} course={course} updateCourse={updateCourse} />;
-  if (selectedCard === "assignments") return <AssignmentsCard admin={admin} user={user} course={course} updateCourse={updateCourse} />;
+  if (selectedCard === "assignments") return <AssignmentsCard admin={admin} user={user} course={course} reviewerOpenRequest={reviewerOpenRequest} onReviewerOpenConsumed={onReviewerOpenConsumed} updateCourse={updateCourse} />;
   if (selectedCard === "exams") return admin ? <ExamsCard user={user} course={course} examFormTemplates={examFormTemplates} setExamFormTemplates={setExamFormTemplates} updateCourse={updateCourse} /> : null;
   if (selectedCard === "grades") return <GradesCard admin={admin} user={user} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "personalTopic") return <PersonalTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
@@ -2425,7 +2453,7 @@ function MemberNumberInput({ className, value, onCommit }) {
 }
 
 
-function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onOpenAssignments }) {
+function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onOpenAssignments, onOpenAssignmentReviewer }) {
   const requestConfirm = useConfirmAction();
   const [content, setContent] = useState("");
   const [files, setFiles] = useState([]);
@@ -2724,7 +2752,12 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onO
             </div>
             <div className="announcement-content">
               <p>{announcementDisplayContent(item)}</p>
-              {item.assignmentId && (
+              {item.reviewerQuestionTargetKey && item.assignmentId && (
+                <button className="join-action compact announcement-view-assignment" type="button" onClick={() => onOpenAssignmentReviewer?.(item)}>
+                  Đặt câu hỏi
+                </button>
+              )}
+              {!item.reviewerQuestionTargetKey && item.assignmentId && (
                 <button className="join-action compact announcement-view-assignment" type="button" onClick={onOpenAssignments}>
                   Xem
                 </button>
@@ -4969,7 +5002,7 @@ const ASSIGNMENT_REVIEWER_OPTIONS = [
 ];
 const ASSIGNMENT_EXAM_SESSION_PREFIX = "classroompwa-active-exam-session:";
 
-function AssignmentsCard({ admin, user, course, updateCourse }) {
+function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerOpenConsumed, updateCourse }) {
   const requestConfirm = useConfirmAction();
   const addPopoverRef = useRef(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -5037,6 +5070,20 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
     if (!reviewerWorkspace) return;
     if (!reviewerWorkspaceAssignment || !reviewerWorkspaceTarget) setReviewerWorkspace(null);
   }, [reviewerWorkspace, reviewerWorkspaceAssignment, reviewerWorkspaceTarget]);
+
+  useEffect(() => {
+    if (!reviewerOpenRequest || (reviewerOpenRequest.courseId && reviewerOpenRequest.courseId !== course.id)) return;
+    const requestedAssignment = assignments.find((item) => item.id === reviewerOpenRequest.assignmentId);
+    const requestedTarget = requestedAssignment
+      ? buildAssignmentReviewerTargets(course, requestedAssignment).find((target) => target.key === reviewerOpenRequest.targetKey)
+      : null;
+    if (!requestedAssignment || !requestedTarget) return;
+    setReviewerWorkspace({
+      assignmentId: requestedAssignment.id,
+      targetKey: requestedTarget.key
+    });
+    onReviewerOpenConsumed?.(reviewerOpenRequest.id);
+  }, [assignments, course, course.id, onReviewerOpenConsumed, reviewerOpenRequest]);
 
   async function startAssignmentExam(assignment, exam) {
     if (!assignment || !exam) return;
@@ -5289,6 +5336,7 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
   if (reviewerWorkspaceAssignment && reviewerWorkspaceTarget) {
     return (
       <AssignmentReviewerWorkspace
+        admin={admin}
         course={course}
         user={user}
         assignment={reviewerWorkspaceAssignment}
@@ -5884,10 +5932,13 @@ function AssignmentExamLearnerPanel({
   );
 }
 
-function AssignmentReviewerWorkspace({ course, user, assignment, target, updateCourse, onBack }) {
+function AssignmentReviewerWorkspace({ admin, course, user, assignment, target, updateCourse, onBack }) {
   const reviewerType = normalizeAssignmentReviewerType(assignment.reviewerType);
   const [questionDraft, setQuestionDraft] = useState("");
   const [sendingQuestion, setSendingQuestion] = useState(false);
+  const [postingPrompt, setPostingPrompt] = useState(false);
+  const [promptNotice, setPromptNotice] = useState("");
+  const [showStats, setShowStats] = useState(false);
   const [questionError, setQuestionError] = useState("");
   const questions = useMemo(() => (
     cleanAssignmentReviewerQuestions(assignment.reviewerQuestions || [])
@@ -5898,6 +5949,48 @@ function AssignmentReviewerWorkspace({ course, user, assignment, target, updateC
     () => buildReviewerQuestionScope(course, reviewerType, user),
     [course.members, course.groupTopics, course.intergroupTopics, reviewerType, user?.email]
   );
+
+  async function postReviewerQuestionPrompt() {
+    if (!admin || postingPrompt || !user?.email) return;
+    setPostingPrompt(true);
+    setQuestionError("");
+    setPromptNotice("");
+    try {
+      const createdAtMillis = Date.now();
+      const announcement = createReviewerQuestionPromptAnnouncement({
+        assignment,
+        target,
+        reviewerType,
+        user,
+        createdAtMillis
+      });
+      const savedAnnouncement = hasFirebaseConfig
+        ? await saveAnnouncementToCloud(course.id, announcement)
+        : announcement;
+      updateCourse((current) => ({
+        ...current,
+        announcements: [savedAnnouncement, ...(current.announcements || [])]
+      }), { sync: false });
+      if (hasFirebaseConfig && course.announcementEmailEnabled) {
+        try {
+          const emailResult = await notifyAnnouncementEmail(course.id, savedAnnouncement.id);
+          setPromptNotice(emailResult.sentCount > 0
+            ? `Đã đăng thông báo và gửi email đến ${emailResult.sentCount} thành viên.`
+            : "Đã đăng thông báo.");
+        } catch (error) {
+          console.error(error);
+          setPromptNotice("Đã đăng thông báo, nhưng chưa gửi được email.");
+        }
+      } else {
+        setPromptNotice("Đã đăng thông báo.");
+      }
+    } catch (error) {
+      console.error(error);
+      setQuestionError("Không thể đăng thông báo đặt câu hỏi.");
+    } finally {
+      setPostingPrompt(false);
+    }
+  }
 
   async function sendReviewerQuestion(event) {
     event.preventDefault();
@@ -5981,6 +6074,29 @@ function AssignmentReviewerWorkspace({ course, user, assignment, target, updateC
           <strong>{target.topic}</strong>
           <small>{gradebookTypeLabels[target.targetType] || "Cá nhân"} · {target.label} · Reviewer: {assignmentReviewerLabel(reviewerType)}</small>
         </div>
+        {admin && (
+          <div className="assignment-reviewer-head-actions">
+            <button
+              className="icon-soft"
+              type="button"
+              title="Đăng thông báo đặt câu hỏi"
+              aria-label="Đăng thông báo đặt câu hỏi"
+              disabled={postingPrompt}
+              onClick={postReviewerQuestionPrompt}
+            >
+              {postingPrompt ? <span className="button-spinner" /> : <BellRing size={18} />}
+            </button>
+            <button
+              className="icon-soft"
+              type="button"
+              title="Thống kê câu hỏi"
+              aria-label="Thống kê câu hỏi"
+              onClick={() => setShowStats(true)}
+            >
+              <ChartColumn size={18} />
+            </button>
+          </div>
+        )}
       </div>
       <div className="assignment-reviewer-scroll">
         {groupedQuestions.length === 0 ? (
@@ -6025,9 +6141,76 @@ function AssignmentReviewerWorkspace({ course, user, assignment, target, updateC
           {sendingQuestion ? <span className="button-spinner" /> : <Send size={15} />}
           Send
         </button>
+        {promptNotice && <p className="success-text">{promptNotice}</p>}
         {questionError && <p className="error-text">{questionError}</p>}
       </form>
+      {showStats && (
+        <AssignmentReviewerStatsModal
+          questions={questions}
+          reviewerType={reviewerType}
+          onClose={() => setShowStats(false)}
+        />
+      )}
     </div>
+  );
+}
+
+function AssignmentReviewerStatsModal({ questions, reviewerType, onClose }) {
+  const statsGroups = useMemo(() => buildReviewerQuestionStats(questions), [questions]);
+  const totalQuestions = questions.length;
+  const answeredQuestions = questions.filter((question) => question.answered).length;
+
+  return (
+    <Modal title="Thống kê câu hỏi" onClose={onClose} className="assignment-reviewer-stats-modal">
+      <div className="reviewer-stats-summary">
+        <div>
+          <span>Tổng câu hỏi</span>
+          <strong>{totalQuestions}</strong>
+        </div>
+        <div>
+          <span>Đã trả lời</span>
+          <strong>{answeredQuestions}</strong>
+        </div>
+        <div>
+          <span>Reviewer</span>
+          <strong>{assignmentReviewerLabel(reviewerType)}</strong>
+        </div>
+      </div>
+      {statsGroups.length === 0 ? (
+        <div className="empty-state compact-empty">Chưa có câu hỏi để thống kê.</div>
+      ) : (
+        <div className="reviewer-stats-groups">
+          {statsGroups.map((group) => (
+            <section className="reviewer-stats-group" key={group.key}>
+              <div className="reviewer-stats-group-head">
+                <strong>{group.label}</strong>
+                <span>{group.total} câu</span>
+              </div>
+              <table className="data-table reviewer-stats-table">
+                <thead>
+                  <tr>
+                    <th>Người đặt câu hỏi</th>
+                    <th>Email</th>
+                    <th>Câu hỏi</th>
+                    <th>Đã trả lời</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.askers.map((asker) => (
+                    <tr key={asker.key}>
+                      <td>{asker.name}</td>
+                      <td>{asker.email || "-"}</td>
+                      <td>{asker.total}</td>
+                      <td>{asker.answered}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          ))}
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -6492,7 +6675,7 @@ function buildReviewerQuestionScope(course, reviewerType, user) {
   if (!member) {
     return {
       key: `lecturer:${normalizedEmail || "unknown"}`,
-      label: user?.displayName || user?.email || "Giảng viên"
+      label: "Lecturer"
     };
   }
   if (reviewerType === "group") {
@@ -6552,7 +6735,9 @@ function groupAssignmentReviewerQuestions(questions = []) {
     if (!groups.has(key)) {
       groups.set(key, {
         key,
-        label: question.questionScopeLabel || question.name || question.email || "Câu hỏi",
+        label: key.startsWith("lecturer:")
+          ? "Lecturer"
+          : (question.questionScopeLabel || question.name || question.email || "Câu hỏi"),
         questions: []
       });
     }
@@ -6561,6 +6746,36 @@ function groupAssignmentReviewerQuestions(questions = []) {
   return [...groups.values()].sort((first, second) => (
     String(first.label || "").localeCompare(String(second.label || ""), "vi", { numeric: true, sensitivity: "base" })
   ));
+}
+
+function buildReviewerQuestionStats(questions = []) {
+  return groupAssignmentReviewerQuestions(questions).map((group) => {
+    const askers = new Map();
+    group.questions.forEach((question) => {
+      const key = normalizeEmail(question.email || "") || question.name || "unknown";
+      if (!askers.has(key)) {
+        askers.set(key, {
+          key,
+          name: question.name || question.email || "Người đặt câu hỏi",
+          email: normalizeEmail(question.email || ""),
+          total: 0,
+          answered: 0
+        });
+      }
+      const asker = askers.get(key);
+      asker.total += 1;
+      if (question.answered) asker.answered += 1;
+    });
+    return {
+      key: group.key,
+      label: group.label,
+      total: group.questions.length,
+      askers: [...askers.values()].sort((first, second) => (
+        second.total - first.total
+        || String(first.name || "").localeCompare(String(second.name || ""), "vi", { numeric: true, sensitivity: "base" })
+      ))
+    };
+  });
 }
 
 function updateReviewerQuestionLocal(updateCourse, assignmentId, question, patch) {
@@ -6722,6 +6937,39 @@ function assignmentAnnouncementContent(assignment) {
   const dueAtMillis = assignmentDeadlineMillis(assignment);
   if (dueAtMillis) lines.push(`Deadline: ${formatDateTime24(dueAtMillis)}`);
   return lines.join("\n");
+}
+
+function createReviewerQuestionPromptAnnouncement({ assignment, target, reviewerType, user, createdAtMillis }) {
+  return {
+    id: crypto.randomUUID(),
+    author: user.email,
+    authorName: user.displayName || user.email,
+    authorPhotoURL: user.photoURL || "",
+    role: "admin",
+    content: reviewerQuestionPromptContent({ target, reviewerType }),
+    pinned: false,
+    attachments: [],
+    publishAsMaterial: false,
+    createdAt: formatDateTime24(createdAtMillis),
+    createdAtMillis,
+    publishAtMillis: createdAtMillis,
+    scheduledAt: "",
+    scheduledAtMillis: 0,
+    assignmentId: assignment.id,
+    reviewerQuestionTargetKey: target.key,
+    reviewerQuestionTargetLabel: target.label,
+    reviewerQuestionTargetTopic: target.topic,
+    reviewerQuestionType: reviewerType,
+    announcementType: "reviewerQuestionPrompt"
+  };
+}
+
+function reviewerQuestionPromptContent({ target, reviewerType }) {
+  return [
+    `Hãy đặt câu hỏi cho Topic "${target.topic}".`,
+    `${gradebookTypeLabels[target.targetType] || "Assignee"}: ${target.label}`,
+    `Reviewer: ${assignmentReviewerLabel(reviewerType)}`
+  ].join("\n");
 }
 
 function announcementDisplayContent(announcement) {
