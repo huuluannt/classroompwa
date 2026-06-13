@@ -1180,6 +1180,16 @@ function withCourseDefaults(course) {
     lecturerMap.set(email, { email, name: email, photoURL: "", role: email === ownerEmail ? "owner" : "assistant" });
   });
   const lecturers = [...lecturerMap.values()];
+  const info = {
+    title: course.name || "",
+    size: 0,
+    time: "",
+    room: "",
+    description: course.description || "",
+    rules: "",
+    zaloGroupUrl: "",
+    ...(course.info || {})
+  };
 
   return {
     pinned: false,
@@ -1189,7 +1199,7 @@ function withCourseDefaults(course) {
     lecturerEmails: lecturers.map((lecturer) => lecturer.email),
     announcementPostPermission: "everyone",
     announcementEmailEnabled: false,
-    info: { title: course.name || "", size: 0, time: "", room: "", description: course.description || "", rules: "" },
+    info,
     scheduleRows: [],
     announcements: [],
     groupTopics: [],
@@ -1208,6 +1218,7 @@ function withCourseDefaults(course) {
     profiles: {},
     members: [],
     ...course,
+    info,
     ownerEmail,
     ownerName,
     lecturers,

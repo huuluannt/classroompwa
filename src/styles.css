@@ -965,6 +965,43 @@ textarea { min-height: 88px; resize: vertical; }
 .lecturer-invite-popover .material-upload-actions {
   justify-content: flex-end;
 }
+.virtual-member-wrap {
+  flex: 0 0 auto;
+}
+.virtual-add-button {
+  min-width: 88px;
+}
+.virtual-member-popover {
+  width: min(390px, calc(100vw - 34px));
+}
+.virtual-member-summary strong,
+.virtual-member-summary small {
+  display: block;
+}
+.virtual-member-summary small {
+  margin-top: 3px;
+  color: #64748b;
+  font-weight: 700;
+}
+.virtual-member-field {
+  display: grid;
+  gap: 6px;
+  color: #42526b;
+  font-size: 13px;
+  font-weight: 800;
+}
+.virtual-count-input {
+  width: 58px;
+  padding: 6px 8px;
+  text-align: center;
+}
+.virtual-member-popover-actions {
+  justify-content: flex-end;
+  gap: 8px;
+}
+.virtual-remove-button {
+  color: #b91c1c;
+}
 .lecturer-list {
   display: grid;
   gap: 8px;
@@ -1085,6 +1122,26 @@ textarea { min-height: 88px; resize: vertical; }
   display: inline-grid;
   gap: 4px;
   min-width: max-content;
+}
+.member-name-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.virtual-member-badge {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
 }
 .leader-badge,
 .permission-chip {
@@ -1502,6 +1559,13 @@ textarea { min-height: 88px; resize: vertical; }
 .info-grid .wide-field { grid-column: 1 / -1; }
 .info-grid .wide-field textarea { min-height: 110px; }
 .info-grid .wide-field p { margin: 0; white-space: pre-wrap; color: #42526b; }
+.info-link {
+  width: fit-content;
+  max-width: 100%;
+  color: #047857;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
 .info-grid span {
   font-weight: 800;
   color: #64748b;
@@ -2552,6 +2616,19 @@ textarea { min-height: 88px; resize: vertical; }
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+.zalo-share-button {
+  min-height: 32px;
+  border: 1px solid #d7f5df;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 10px;
+  background: #ecfdf5;
+  color: #047857;
+  font-weight: 800;
 }
 .file-picker {
   min-height: 32px;
@@ -4213,6 +4290,8 @@ textarea {
 }
 .lecturer-add-form { margin-bottom: 8px; }
 .lecturer-add-button { min-width: 76px; }
+.virtual-add-button { min-width: 76px; }
+.virtual-member-popover-actions { gap: 6px; }
 .student-list-toolbar {
   margin-bottom: 6px;
   padding: 6px 8px;
@@ -4285,6 +4364,7 @@ textarea {
 }
 .group-input { width: 48px; }
 .leader-badge,
+.virtual-member-badge,
 .permission-chip {
   padding: 3px 7px;
   font-size: 10px;

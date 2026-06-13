@@ -83,6 +83,23 @@ function isClassLeaderMember(member) {
   return member?.classLeader === true || member?.role === "classLeader";
 }
 
+function isVirtualMember(member) {
+  return member?.isVirtual === true || String(member?.email || "").endsWith(`@${VIRTUAL_MEMBER_DOMAIN}`);
+}
+
+function virtualVietnameseName(serial, usedNames = new Set()) {
+  const index = Math.max(0, Number(serial || 1) - 1);
+  for (let offset = 0; offset < VIRTUAL_VIETNAMESE_NAMES.length; offset += 1) {
+    const name = VIRTUAL_VIETNAMESE_NAMES[(index + offset) % VIRTUAL_VIETNAMESE_NAMES.length];
+    if (!usedNames.has(name)) return name;
+  }
+  return `Học viên ảo ${String(serial || 1).padStart(3, "0")}`;
+}
+
+function virtualMemberClassKey(courseId) {
+  return String(courseId || "class").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || "class";
+}
+
 function isClassLeaderForCourse(course, user) {
   if (!course || !user?.email) return false;
   return (course.members || []).some((member) => (
@@ -114,6 +131,110 @@ const ANNOUNCEMENT_SEEN_PREFIX = "classroompwa-announcement-seen:";
 const ConfirmContext = React.createContext((options, onConfirm) => onConfirm?.());
 const LECTURER_ONLY_CARD_IDS = new Set(["exams"]);
 const MAX_INLINE_EXAM_TEMPLATE_BYTES = 850 * 1024;
+const MAX_VIRTUAL_MEMBERS = 100;
+const VIRTUAL_MEMBER_DOMAIN = "classroom.local";
+const VIRTUAL_VIETNAMESE_NAMES = [
+  "Nguyễn An Nhiên",
+  "Trần Gia Hân",
+  "Lê Minh Khang",
+  "Phạm Thanh Trúc",
+  "Hoàng Bảo Ngọc",
+  "Huỳnh Quốc Anh",
+  "Phan Khánh Linh",
+  "Vũ Nhật Minh",
+  "Võ Phương Thảo",
+  "Đặng Tuấn Kiệt",
+  "Bùi Hải Đăng",
+  "Đỗ Ngọc Mai",
+  "Hồ Anh Thư",
+  "Ngô Đức Huy",
+  "Dương Kim Ngân",
+  "Lý Hoài Nam",
+  "Mai Thùy Dương",
+  "Đinh Gia Bảo",
+  "Tạ Minh Châu",
+  "Trịnh Yến Nhi",
+  "Nguyễn Quang Huy",
+  "Trần Mỹ Linh",
+  "Lê Hoàng Long",
+  "Phạm Ngọc Hân",
+  "Hoàng Minh Quân",
+  "Huỳnh Bảo Châu",
+  "Phan Gia Khánh",
+  "Vũ Thanh Tâm",
+  "Võ Nhật Linh",
+  "Đặng Phúc An",
+  "Bùi Anh Khoa",
+  "Đỗ Khánh Vy",
+  "Hồ Minh Tuệ",
+  "Ngô Gia Huy",
+  "Dương Thanh Hà",
+  "Lý Nhật Anh",
+  "Mai Quỳnh Như",
+  "Đinh Bảo Long",
+  "Tạ Thảo Vy",
+  "Trịnh Minh Đức",
+  "Nguyễn Hải Yến",
+  "Trần Đức Anh",
+  "Lê Thu Trang",
+  "Phạm Quang Minh",
+  "Hoàng Gia Linh",
+  "Huỳnh Như Ý",
+  "Phan Tuấn Anh",
+  "Vũ Bảo Trâm",
+  "Võ Minh Nhật",
+  "Đặng Thanh Bình",
+  "Bùi Gia Phúc",
+  "Đỗ Hoài Anh",
+  "Hồ Khánh Ngân",
+  "Ngô Nhật Nam",
+  "Dương Minh Tâm",
+  "Lý Bảo Anh",
+  "Mai Phương Nhi",
+  "Đinh Quốc Bảo",
+  "Tạ Gia Minh",
+  "Trịnh Ngọc Lan",
+  "Nguyễn Thảo Nguyên",
+  "Trần Quang Vinh",
+  "Lê Kim Chi",
+  "Phạm Hải Nam",
+  "Hoàng Bảo Anh",
+  "Huỳnh Gia Tuệ",
+  "Phan Minh Triết",
+  "Vũ Ngọc Diệp",
+  "Võ Khánh An",
+  "Đặng Nhật Hạ",
+  "Bùi Thanh Sơn",
+  "Đỗ Minh Hoàng",
+  "Hồ Gia Nghi",
+  "Ngô Bảo Vy",
+  "Dương Tuấn Minh",
+  "Lý Khánh Hòa",
+  "Mai Nhật Quỳnh",
+  "Đinh Anh Duy",
+  "Tạ Phương Linh",
+  "Trịnh Hải Hà",
+  "Nguyễn Minh Thư",
+  "Trần Bảo Khanh",
+  "Lê Gia Hưng",
+  "Phạm Ngọc Bích",
+  "Hoàng Quang Khải",
+  "Huỳnh Thanh Tú",
+  "Phan Nhật Vy",
+  "Vũ Minh Kiên",
+  "Võ Hoài Thương",
+  "Đặng Gia An",
+  "Bùi Quốc Huy",
+  "Đỗ Thùy Linh",
+  "Hồ Nhật Phúc",
+  "Ngô Minh Anh",
+  "Dương Bảo Hân",
+  "Lý Quang Anh",
+  "Mai Gia Hân",
+  "Đinh Minh Khoa",
+  "Tạ Ngọc Trâm",
+  "Trịnh Bảo Minh"
+];
 
 function useConfirmAction() {
   return React.useContext(ConfirmContext);
@@ -350,6 +471,68 @@ function classJoinUrl(code) {
   const url = new URL(window.location.origin);
   url.searchParams.set("join", String(code || "").trim().toUpperCase());
   return url.toString();
+}
+
+function appHomeUrl() {
+  return typeof window === "undefined" ? "" : window.location.origin;
+}
+
+function normalizeExternalUrl(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  const withProtocol = /^[a-z][a-z0-9+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(withProtocol);
+    return ["http:", "https:", "zalo:", "zaloapp:"].includes(url.protocol) ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+function openExternalUrl(url) {
+  if (typeof window === "undefined" || !url) return;
+  const opened = window.open(url, "_blank");
+  if (opened) {
+    opened.opener = null;
+    return;
+  }
+  window.location.assign(url);
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("Copy failed.");
+}
+
+function buildZaloAnnouncementMessage(course, announcement) {
+  const className = course?.info?.title || course?.name || "Lớp học";
+  const classCode = course?.code ? ` - ${course.code}` : "";
+  const author = announcement?.authorName || announcement?.author || "Người đăng";
+  const createdAt = announcement?.scheduledAt || announcement?.createdAt || "";
+  const content = announcementDisplayContent(announcement).trim();
+  const attachmentCount = Array.isArray(announcement?.attachments) ? announcement.attachments.length : 0;
+  return [
+    `[${className}${classCode}] Có thông báo mới`,
+    `Người đăng: ${author}`,
+    createdAt ? `Thời gian: ${createdAt}` : null,
+    "",
+    content || "Vui lòng xem chi tiết trong app.",
+    attachmentCount ? `File đính kèm: ${attachmentCount} file` : null,
+    appHomeUrl() ? `Mở app: ${appHomeUrl()}` : null
+  ].filter((line) => line !== null).join("\n").trim();
 }
 
 function ProfileAvatar({ user, label, small = false }) {
@@ -860,6 +1043,7 @@ function App() {
               current?.id === requestId ? null : current
             ));
           }}
+          showToast={showSaveToast}
           updateCourse={(updater, options) => updateClass(selectedClass.id, updater, options)}
         />
         )
@@ -1517,6 +1701,7 @@ function ClassPane({
   onMobileOpenCard,
   onOpenAssignmentReviewer,
   onReviewerOpenConsumed,
+  showToast,
   updateCourse
 }) {
   const requestConfirm = useConfirmAction();
@@ -1709,6 +1894,7 @@ function ClassPane({
             reviewerOpenRequest={reviewerOpenRequest}
             onOpenAssignmentReviewer={onOpenAssignmentReviewer}
             onReviewerOpenConsumed={onReviewerOpenConsumed}
+            showToast={showToast}
             updateCourse={updateCourse}
           />
         </section>
@@ -1872,9 +2058,9 @@ function CardNavItem({ admin, card, active, pinned, draggable, dragging, dragOve
   );
 }
 
-function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditMembers, canEditTopics, user, course, examFormTemplates, setExamFormTemplates, selectedCard, setSelectedCard, reviewerOpenRequest, onOpenAssignmentReviewer, onReviewerOpenConsumed, updateCourse }) {
+function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditMembers, canEditTopics, user, course, examFormTemplates, setExamFormTemplates, selectedCard, setSelectedCard, reviewerOpenRequest, onOpenAssignmentReviewer, onReviewerOpenConsumed, showToast, updateCourse }) {
   if (selectedCard === "members") return <MembersCard admin={admin} canManageCourseLecturers={canManageCourseLecturers} classLeader={classLeader} canEditMembers={canEditMembers} user={user} course={course} updateCourse={updateCourse} />;
-  if (selectedCard === "announcements") return <AnnouncementsCard admin={admin} classLeader={classLeader} user={user} course={course} updateCourse={updateCourse} onOpenAssignments={() => setSelectedCard("assignments")} onOpenGrades={() => setSelectedCard("grades")} onOpenAssignmentReviewer={onOpenAssignmentReviewer} />;
+  if (selectedCard === "announcements") return <AnnouncementsCard admin={admin} classLeader={classLeader} user={user} course={course} showToast={showToast} updateCourse={updateCourse} onOpenAssignments={() => setSelectedCard("assignments")} onOpenGrades={() => setSelectedCard("grades")} onOpenAssignmentReviewer={onOpenAssignmentReviewer} />;
   if (selectedCard === "info") return <InfoCard admin={admin} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "schedule") return <ScheduleCard admin={admin} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "groupTopic") return <GroupTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
@@ -1903,9 +2089,14 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
   const [viewMode, setViewMode] = useState("personal");
   const [lecturerDraft, setLecturerDraft] = useState({ email: "", name: "" });
   const [lecturerAddOpen, setLecturerAddOpen] = useState(false);
+  const [virtualAddOpen, setVirtualAddOpen] = useState(false);
+  const [virtualCountDraft, setVirtualCountDraft] = useState("10");
   const lecturerAddRef = useRef(null);
+  const virtualAddRef = useRef(null);
   const accepted = course.members.filter((member) => member.status === "accepted");
   const pending = course.members.filter((member) => member.status === "pending");
+  const virtualMembers = (course.members || []).filter(isVirtualMember);
+  const virtualRemaining = Math.max(0, MAX_VIRTUAL_MEMBERS - virtualMembers.length);
   const courseLecturers = buildCourseLecturers(course);
   const memberDraftSignature = accepted.map((member) => `${member.email}:${member.order || ""}:${member.group || ""}:${isClassLeaderMember(member) ? "1" : "0"}`).join("|");
   const [memberDrafts, setMemberDrafts] = useState({});
@@ -1913,6 +2104,7 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
   const groupedMembers = groupMembersByGroup(accepted);
 
   useOutsideClick(lecturerAddRef, lecturerAddOpen, () => setLecturerAddOpen(false));
+  useOutsideClick(virtualAddRef, virtualAddOpen, () => setVirtualAddOpen(false));
 
   useEffect(() => {
     setMemberDrafts(Object.fromEntries(accepted.map((member) => [member.email, {
@@ -1930,6 +2122,57 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
         [field]: value.replace(/\D/g, "")
       }
     }));
+  }
+
+  function updateVirtualCountDraft(value) {
+    const cleaned = cleanNumberText(value).slice(0, 3);
+    setVirtualCountDraft(cleaned);
+  }
+
+  function addVirtualMembers() {
+    if (!admin || virtualRemaining <= 0) return;
+    const requested = Number(cleanNumberText(virtualCountDraft));
+    if (!Number.isFinite(requested) || requested <= 0) return;
+    const count = Math.min(requested, virtualRemaining);
+    const nextVirtualMembers = createVirtualMembers(course, count);
+    if (nextVirtualMembers.length === 0) return;
+    updateCourse((current) => ({
+      ...current,
+      members: [...(current.members || []), ...nextVirtualMembers]
+    }), {
+      toast: `Đã thêm ${nextVirtualMembers.length} học viên ảo.`,
+      writeClassDoc: false,
+      writeSummary: false,
+      writeMembers: true
+    });
+    setVirtualAddOpen(false);
+  }
+
+  async function removeVirtualMembers() {
+    const virtualEmails = new Set((course.members || []).filter(isVirtualMember).map((member) => normalizeEmail(member.email)));
+    if (virtualEmails.size === 0) return;
+    try {
+      await updateCourse((current) => {
+        const currentVirtualEmails = new Set((current.members || []).filter(isVirtualMember).map((member) => normalizeEmail(member.email)));
+        return {
+          ...current,
+          members: (current.members || []).filter((member) => !currentVirtualEmails.has(normalizeEmail(member.email))),
+          groupTopics: removeVirtualEmailsFromTopics(current.groupTopics || [], currentVirtualEmails),
+          intergroupTopics: removeVirtualEmailsFromTopics(current.intergroupTopics || [], currentVirtualEmails),
+          personalTopics: (current.personalTopics || []).filter((item) => !currentVirtualEmails.has(normalizeEmail(item.email)))
+        };
+      }, {
+        toast: "Đã remove học viên ảo. Topic vẫn được giữ lại.",
+        writeMembers: false,
+        writeSummary: false,
+        classFields: ["groupTopics", "intergroupTopics", "personalTopics"],
+        throwOnError: true
+      });
+      await Promise.all([...virtualEmails].map((email) => deleteMemberFromCloud(course.id, email)));
+      setVirtualAddOpen(false);
+    } catch (error) {
+      console.error(error);
+    }
   }
 
   function saveMembers() {
@@ -2132,6 +2375,46 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
             Danh sách người học <span className="student-list-count">({accepted.length})</span>
           </strong>
           <div className="student-list-actions">
+            {admin && (
+              <div className="material-add-wrap virtual-member-wrap" ref={virtualAddRef}>
+                <button className="material-add-button virtual-add-button" type="button" onClick={() => setVirtualAddOpen((current) => !current)}>
+                  <Plus size={14} /> Add
+                </button>
+                {virtualAddOpen && (
+                  <div className="material-add-popover virtual-member-popover">
+                    <div className="virtual-member-summary">
+                      <strong>Học viên ảo</strong>
+                      <small>{virtualMembers.length}/{MAX_VIRTUAL_MEMBERS} học viên ảo trong lớp</small>
+                    </div>
+                    <label className="virtual-member-field">
+                      <span>Số lượng</span>
+                      <input
+                        className="virtual-count-input"
+                        inputMode="numeric"
+                        value={virtualCountDraft}
+                        onChange={(event) => updateVirtualCountDraft(event.target.value)}
+                        disabled={virtualRemaining <= 0}
+                        aria-label="Số lượng học viên ảo muốn thêm"
+                      />
+                    </label>
+                    <div className="material-upload-actions virtual-member-popover-actions">
+                      <button className="primary-action compact" type="button" onClick={addVirtualMembers} disabled={virtualRemaining <= 0 || !Number(cleanNumberText(virtualCountDraft))}>
+                        <Plus size={14} /> Thêm học viên ảo
+                      </button>
+                      {virtualMembers.length > 0 && (
+                        <button className="secondary-action compact virtual-remove-button" type="button" onClick={() => requestConfirm({
+                          title: "Remove học viên ảo?",
+                          message: `Bạn có chắc muốn remove ${virtualMembers.length} học viên ảo khỏi lớp không? Các topic nhóm vẫn được giữ lại, chỉ bỏ học viên ảo khỏi danh sách thành viên của topic.`,
+                          confirmLabel: "Remove học viên ảo"
+                        }, removeVirtualMembers)}>
+                          <Trash2 size={14} /> Remove học viên ảo
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="member-view-toggle" aria-label="Chế độ xem thành viên">
               <button type="button" className={viewMode === "personal" ? "active" : ""} onClick={() => setViewMode("personal")}>Cá nhân</button>
               <button type="button" className={viewMode === "group" ? "active" : ""} onClick={() => setViewMode("group")}>Nhóm</button>
@@ -2168,7 +2451,10 @@ function MembersTable({ admin, canManageCourseLecturers, canEditMembers, course,
             <td><ProfileAvatar user={{ ...member, photoURL: member.photoURL || course.profiles?.[member.email]?.photoURL || "" }} label={member.name || member.email} small /></td>
             <td>
               <span className="member-name-cell">
-                <span>{member.name}</span>
+                <span className="member-name-line">
+                  <span>{member.name}</span>
+                  {isVirtualMember(member) && <VirtualMemberBadge />}
+                </span>
                 {isClassLeaderMember(member) && <span className="leader-badge"><Crown size={12} /> Lớp trưởng</span>}
               </span>
             </td>
@@ -2279,6 +2565,68 @@ function MemberRoleMenu({ member, canPromoteToLecturer, onToggleClassLeader, onP
         </div>
       )}
     </div>
+  );
+}
+
+function createVirtualMembers(course, count) {
+  const existingMembers = course.members || [];
+  const existingEmails = new Set(existingMembers.map((member) => normalizeEmail(member.email)));
+  const usedNames = new Set(existingMembers.filter(isVirtualMember).map((member) => String(member.name || "").trim()).filter(Boolean));
+  const nextMembers = [];
+  const classKey = virtualMemberClassKey(course.id || course.code || course.name);
+  const createdAtMillis = Date.now();
+  let serial = nextVirtualMemberSerial(existingMembers);
+  let nextOrder = Number(nextNumericText(existingMembers.map((member) => member.order)));
+
+  while (nextMembers.length < count && nextMembers.length + existingMembers.filter(isVirtualMember).length < MAX_VIRTUAL_MEMBERS) {
+    const serialText = String(serial).padStart(3, "0");
+    const email = normalizeEmail(`virtual-${classKey}-${serialText}@${VIRTUAL_MEMBER_DOMAIN}`);
+    serial += 1;
+    if (existingEmails.has(email)) continue;
+    existingEmails.add(email);
+    const name = virtualVietnameseName(serial - 1, usedNames);
+    usedNames.add(name);
+    nextMembers.push({
+      order: String(nextOrder),
+      name,
+      email,
+      studentId: `VIRTUAL-${serialText}`,
+      group: "",
+      status: "accepted",
+      isVirtual: true,
+      virtualCreatedAtMillis: createdAtMillis
+    });
+    nextOrder += 1;
+  }
+
+  return nextMembers;
+}
+
+function nextVirtualMemberSerial(members = []) {
+  const serials = members
+    .filter(isVirtualMember)
+    .map((member) => {
+      const studentIdMatch = String(member.studentId || "").match(/(\d+)$/);
+      if (studentIdMatch) return Number(studentIdMatch[1]);
+      const emailMatch = String(member.email || "").match(/-(\d+)@/);
+      return emailMatch ? Number(emailMatch[1]) : 0;
+    })
+    .filter(Number.isFinite);
+  return (serials.length ? Math.max(...serials) : 0) + 1;
+}
+
+function removeVirtualEmailsFromTopics(topics = [], virtualEmails) {
+  return (topics || []).map((topic) => ({
+    ...topic,
+    memberEmails: (topic.memberEmails || []).filter((email) => !virtualEmails.has(normalizeEmail(email)))
+  }));
+}
+
+function VirtualMemberBadge() {
+  return (
+    <span className="virtual-member-badge" title="Học viên ảo">
+      <UserRound size={11} /> Ảo
+    </span>
   );
 }
 
@@ -2453,7 +2801,7 @@ function MemberNumberInput({ className, value, onCommit }) {
 }
 
 
-function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onOpenAssignments, onOpenGrades, onOpenAssignmentReviewer }) {
+function AnnouncementsCard({ admin, classLeader, user, course, showToast, updateCourse, onOpenAssignments, onOpenGrades, onOpenAssignmentReviewer }) {
   const requestConfirm = useConfirmAction();
   const [content, setContent] = useState("");
   const [files, setFiles] = useState([]);
@@ -2621,6 +2969,23 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onO
     }
   }
 
+  async function sharePostToZalo(item) {
+    const zaloGroupUrl = normalizeExternalUrl(course.info?.zaloGroupUrl);
+    if (!zaloGroupUrl) {
+      setPostError("Chưa có link nhóm Zalo. Vào card Thông tin lớp học để nhập link nhóm trước.");
+      return;
+    }
+    try {
+      await copyTextToClipboard(buildZaloAnnouncementMessage(course, item));
+      setPostError("");
+      showToast?.("Đã copy nội dung. Zalo đang mở group lớp; chỉ cần dán và bấm Gửi là xong.");
+      openExternalUrl(zaloGroupUrl);
+    } catch (error) {
+      console.error(error);
+      setPostError("Không thể copy nội dung để gửi Zalo. Vui lòng thử lại hoặc copy thủ công.");
+    }
+  }
+
   return (
     <>
       <PanelTitle
@@ -2743,6 +3108,12 @@ function AnnouncementsCard({ admin, classLeader, user, course, updateCourse, onO
               )}
               {(admin || item.author === user.email) && (
                 <div className="post-actions">
+                  {admin && (
+                    <button className="zalo-share-button compact" type="button" onClick={() => sharePostToZalo(item)}>
+                      <Send size={14} />
+                      Gửi Zalo
+                    </button>
+                  )}
                   <button className="pin-button icon-only" title={item.pinned ? "Unpin" : "Pin"} aria-label={item.pinned ? "Unpin" : "Pin"} onClick={() => togglePostPin(item)}>{item.pinned ? <PinOff size={16} /> : <Pin size={16} />}</button>
                   <button className="icon-danger" title="Xóa bài đăng" aria-label="Xóa bài đăng" onClick={() => requestConfirm({
                     title: "Xóa bài đăng?",
@@ -2853,11 +3224,30 @@ function materialTitleFromAnnouncement(content, materials) {
 
 
 function InfoCard({ admin, course, updateCourse }) {
-  const [draft, setDraft] = useState({ rules: "", ...course.info });
+  const infoSignature = JSON.stringify(course.info || {});
+  const [draft, setDraft] = useState(() => ({ rules: "", zaloGroupUrl: "", ...course.info }));
   const fields = [["title", "Title"], ["size", "Sĩ số"], ["time", "Thời gian"], ["room", "Phòng học"]];
+  const zaloGroupUrl = normalizeExternalUrl(course.info?.zaloGroupUrl);
+
+  useEffect(() => {
+    setDraft({ rules: "", zaloGroupUrl: "", ...course.info });
+  }, [course.id, infoSignature]);
+
+  function saveInfo() {
+    updateCourse((current) => ({
+      ...current,
+      info: { rules: "", zaloGroupUrl: "", ...draft }
+    }), {
+      toast: true,
+      writeMembers: false,
+      writeSummary: false,
+      classFields: ["info"]
+    });
+  }
+
   return (
     <>
-      <PanelTitle title="Thông tin lớp học" action={admin && <button className="primary-action compact" onClick={() => updateCourse((current) => ({ ...current, info: draft }), { toast: true })}>Save</button>} />
+      <PanelTitle title="Thông tin lớp học" action={admin && <button className="primary-action compact" onClick={saveInfo}>Save</button>} />
       <div className="info-grid">
         {fields.map(([key, label]) => (
           <label key={key}>
@@ -2865,6 +3255,21 @@ function InfoCard({ admin, course, updateCourse }) {
             {admin ? <input value={draft[key] || ""} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} /> : <strong>{course.info[key]}</strong>}
           </label>
         ))}
+        <label className="wide-field">
+          <span>Link nhóm Zalo</span>
+          {admin ? (
+            <input
+              type="url"
+              value={draft.zaloGroupUrl || ""}
+              onChange={(event) => setDraft({ ...draft, zaloGroupUrl: event.target.value })}
+              placeholder="https://zalo.me/g/..."
+            />
+          ) : zaloGroupUrl ? (
+            <a className="info-link" href={zaloGroupUrl} target="_blank" rel="noreferrer">{course.info.zaloGroupUrl}</a>
+          ) : (
+            <p>Chưa có link nhóm Zalo.</p>
+          )}
+        </label>
         <label className="wide-field">
           <span>Mô tả</span>
           {admin ? <textarea value={draft.description || ""} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /> : <p>{course.info.description}</p>}
@@ -3389,7 +3794,12 @@ function TopicMembersTable({ members, course }) {
           <tr key={member.email}>
             <td>{member.order}</td>
             <td><ProfileAvatar user={{ ...member, photoURL: member.photoURL || course.profiles?.[member.email]?.photoURL || "" }} label={member.name || member.email} small /></td>
-            <td>{member.name}</td>
+            <td>
+              <span className="member-name-line">
+                <span>{member.name}</span>
+                {isVirtualMember(member) && <VirtualMemberBadge />}
+              </span>
+            </td>
             <td>{member.email}</td>
             <td>{member.studentId}</td>
           </tr>
@@ -9450,7 +9860,7 @@ function prepareCourseForSave(course, user) {
 }
 
 function NewClassModal({ existing, user, onClose, onSave }) {
-  const [form, setForm] = useState(() => existing || { id: crypto.randomUUID(), name: "", description: "", code: "", pinned: false, announcementPostPermission: ANNOUNCEMENT_POST_PERMISSIONS.everyone, info: { title: "", size: 0, time: "", room: "", description: "", rules: "" }, scheduleRows: defaultScheduleRows(), members: [], announcements: [], groupTopics: [], intergroupTopics: [], personalTopics: [], materials: [], assignments: [], gradebooks: [], peerReviews: [], extraCards: [], hiddenCards: [], pinnedCards: [], cardOrder: [] });
+  const [form, setForm] = useState(() => existing || { id: crypto.randomUUID(), name: "", description: "", code: "", pinned: false, announcementPostPermission: ANNOUNCEMENT_POST_PERMISSIONS.everyone, info: { title: "", size: 0, time: "", room: "", description: "", rules: "", zaloGroupUrl: "" }, scheduleRows: defaultScheduleRows(), members: [], announcements: [], groupTopics: [], intergroupTopics: [], personalTopics: [], materials: [], assignments: [], gradebooks: [], peerReviews: [], extraCards: [], hiddenCards: [], pinnedCards: [], cardOrder: [] });
   return (
     <Modal title={existing ? "Chỉnh sửa lớp học" : "Thêm lớp học mới"} onClose={onClose}>
       <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value, info: { ...form.info, title: event.target.value } })} placeholder="Tên lớp mới" />
