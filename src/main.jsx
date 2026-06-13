@@ -20,6 +20,7 @@ import {
   LogOut,
   Menu,
   MoreVertical,
+  MessageCircleQuestion,
   Paperclip,
   Pencil,
   Pin,
@@ -61,11 +62,13 @@ import {
   subscribeLecturers,
   subscribeClasses,
   subscribeExamFormTemplates,
+  submitAssignmentReviewerQuestionToCloud,
   subscribePrivateClassArchives,
   subscribePrivateClassPins,
   submitAssignmentToCloud,
   submitPeerReviewResponseToCloud,
   syncUserProfile,
+  updateAssignmentReviewerQuestionToCloud,
   uploadClassFile
 } from "./classroomRepository";
 import "./styles.css";
@@ -4958,24 +4961,37 @@ const ASSIGNMENT_FORMATS = [
   { value: "exam", label: "Exam" },
   { value: "simple", label: "Simple" }
 ];
+const ASSIGNMENT_REVIEWER_OPTIONS = [
+  { value: "none", label: "Không sử dụng" },
+  { value: "personal", label: "Cá nhân" },
+  { value: "group", label: "Nhóm" },
+  { value: "intergroup", label: "Liên nhóm" }
+];
 const ASSIGNMENT_EXAM_SESSION_PREFIX = "classroompwa-active-exam-session:";
 
 function AssignmentsCard({ admin, user, course, updateCourse }) {
   const requestConfirm = useConfirmAction();
   const addPopoverRef = useRef(null);
   const [addOpen, setAddOpen] = useState(false);
-  const [draft, setDraft] = useState({ title: "", content: "", type: "personal", format: "uploadFile" });
+  const [draft, setDraft] = useState({ title: "", content: "", type: "personal", format: "uploadFile", reviewerType: "none" });
   const [creatingAssignment, setCreatingAssignment] = useState(false);
   const [assignmentCreateError, setAssignmentCreateError] = useState("");
   const [assignmentCreateNotice, setAssignmentCreateNotice] = useState("");
   const [activeExamState, setActiveExamState] = useState(() => loadLocalAssignmentExamSession(course.id, user?.email));
   const [activeExamSubmitting, setActiveExamSubmitting] = useState(false);
   const [activeExamError, setActiveExamError] = useState("");
+  const [reviewerWorkspace, setReviewerWorkspace] = useState(null);
   const assignments = normalizeAssignmentRatios(course.assignments || []);
   const activeExamAssignment = activeExamState
     ? assignments.find((assignment) => assignment.id === activeExamState.assignmentId)
     : null;
   const activeExam = activeExamAssignment ? assignmentExamSnapshot(activeExamAssignment) : null;
+  const reviewerWorkspaceAssignment = reviewerWorkspace
+    ? assignments.find((assignment) => assignment.id === reviewerWorkspace.assignmentId)
+    : null;
+  const reviewerWorkspaceTarget = reviewerWorkspaceAssignment
+    ? buildAssignmentReviewerTargets(course, reviewerWorkspaceAssignment).find((target) => target.key === reviewerWorkspace.targetKey)
+    : null;
 
   useOutsideClick(addPopoverRef, addOpen, () => {
     if (!creatingAssignment) setAddOpen(false);
@@ -5016,6 +5032,11 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
     setActiveExamState(null);
     setActiveExamError(examScopeSubmittedMessage(scope, submission, user.email));
   }, [admin, activeExamAssignment, activeExamState, course, user?.email]);
+
+  useEffect(() => {
+    if (!reviewerWorkspace) return;
+    if (!reviewerWorkspaceAssignment || !reviewerWorkspaceTarget) setReviewerWorkspace(null);
+  }, [reviewerWorkspace, reviewerWorkspaceAssignment, reviewerWorkspaceTarget]);
 
   async function startAssignmentExam(assignment, exam) {
     if (!assignment || !exam) return;
@@ -5174,18 +5195,21 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
     try {
       const assignmentType = normalizeGradebookType(draft.type, "personal");
       const assignmentFormat = normalizeAssignmentFormat(draft.format);
+      const assignmentReviewerType = normalizeAssignmentReviewerType(draft.reviewerType);
       const assignment = {
         id: crypto.randomUUID(),
         title,
         content: draft.content.trim(),
         type: assignmentType,
         format: assignmentFormat,
+        reviewerType: assignmentReviewerType,
         examId: "",
         examSnapshot: null,
         dueAt: "",
         dueAtMillis: "",
         ratio: "0",
-        submissions: []
+        submissions: [],
+        reviewerQuestions: []
       };
       const createdAtMillis = Date.now();
       const announcement = {
@@ -5218,7 +5242,7 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
         };
       }, { sync: true });
 
-      setDraft({ title: "", content: "", type: "personal", format: "uploadFile" });
+      setDraft({ title: "", content: "", type: "personal", format: "uploadFile", reviewerType: "none" });
       setAddOpen(false);
       if (hasFirebaseConfig && course.announcementEmailEnabled) {
         try {
@@ -5262,6 +5286,19 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
     );
   }
 
+  if (reviewerWorkspaceAssignment && reviewerWorkspaceTarget) {
+    return (
+      <AssignmentReviewerWorkspace
+        course={course}
+        user={user}
+        assignment={reviewerWorkspaceAssignment}
+        target={reviewerWorkspaceTarget}
+        updateCourse={updateCourse}
+        onBack={() => setReviewerWorkspace(null)}
+      />
+    );
+  }
+
   return (
     <>
       <PanelTitle
@@ -5286,31 +5323,50 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
                   onChange={(event) => setDraft({ ...draft, content: event.target.value })}
                 />
                 <div className="assignment-create-popover-row">
-                  <label htmlFor="assignment-type">Type:</label>
-                  <select
-                    id="assignment-type"
-                    aria-label="Loại bài tập"
-                    disabled={creatingAssignment}
-                    value={draft.type}
-                    onChange={(event) => setDraft({ ...draft, type: event.target.value })}
-                  >
-                    <option value="personal">Cá nhân</option>
-                    <option value="group">Nhóm</option>
-                    <option value="intergroup">Liên nhóm</option>
-                  </select>
-                  <label htmlFor="assignment-format">Format:</label>
-                  <select
-                    id="assignment-format"
-                    className="assignment-format-select"
-                    aria-label="Format bài tập"
-                    disabled={creatingAssignment}
-                    value={draft.format}
-                    onChange={(event) => setDraft({ ...draft, format: event.target.value })}
-                  >
-                    {ASSIGNMENT_FORMATS.map((format) => (
-                      <option value={format.value} key={format.value}>{format.label}</option>
-                    ))}
-                  </select>
+                  <label className="assignment-create-field" htmlFor="assignment-type">
+                    <span>Assignee:</span>
+                    <select
+                      id="assignment-type"
+                      aria-label="Loại bài tập"
+                      disabled={creatingAssignment}
+                      value={draft.type}
+                      onChange={(event) => setDraft({ ...draft, type: event.target.value })}
+                    >
+                      <option value="personal">Cá nhân</option>
+                      <option value="group">Nhóm</option>
+                      <option value="intergroup">Liên nhóm</option>
+                    </select>
+                  </label>
+                  <label className="assignment-create-field" htmlFor="assignment-format">
+                    <span>Format:</span>
+                    <select
+                      id="assignment-format"
+                      className="assignment-format-select"
+                      aria-label="Format bài tập"
+                      disabled={creatingAssignment}
+                      value={draft.format}
+                      onChange={(event) => setDraft({ ...draft, format: event.target.value })}
+                    >
+                      {ASSIGNMENT_FORMATS.map((format) => (
+                        <option value={format.value} key={format.value}>{format.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="assignment-create-field" htmlFor="assignment-reviewer">
+                    <span>Reviewer:</span>
+                    <select
+                      id="assignment-reviewer"
+                      className="assignment-reviewer-select"
+                      aria-label="Reviewer bài tập"
+                      disabled={creatingAssignment}
+                      value={draft.reviewerType}
+                      onChange={(event) => setDraft({ ...draft, reviewerType: event.target.value })}
+                    >
+                      {ASSIGNMENT_REVIEWER_OPTIONS.map((option) => (
+                        <option value={option.value} key={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
                   <button className="primary-action compact dark-action" type="button" onClick={createAssignmentCard} disabled={creatingAssignment || !draft.title.trim()}>
                     {creatingAssignment ? <span className="button-spinner" /> : <FilePlus2 size={14} />}
                     {creatingAssignment ? "Creating" : "Create"}
@@ -5340,6 +5396,7 @@ function AssignmentsCard({ admin, user, course, updateCourse }) {
             activeExamState={activeExamState}
             onStartExam={startAssignmentExam}
             onShowExam={showActiveExam}
+            onOpenReviewer={(assignmentId, targetKey) => setReviewerWorkspace({ assignmentId, targetKey })}
           />
         ))}
       </div>
@@ -5352,11 +5409,12 @@ function assignmentEditDraft(assignment) {
     title: assignment?.title || "",
     content: assignment?.content || "",
     type: normalizeGradebookType(assignment?.type, "personal"),
-    format: normalizeAssignmentFormat(assignment?.format)
+    format: normalizeAssignmentFormat(assignment?.format),
+    reviewerType: normalizeAssignmentReviewerType(assignment?.reviewerType)
   };
 }
 
-function AssignmentItem({ admin, course, assignment, assignmentIndex, assignmentCount, user, updateCourse, activeExamState, onStartExam, onShowExam }) {
+function AssignmentItem({ admin, course, assignment, assignmentIndex, assignmentCount, user, updateCourse, activeExamState, onStartExam, onShowExam, onOpenReviewer }) {
   const requestConfirm = useConfirmAction();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -5369,10 +5427,17 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
   const [submitError, setSubmitError] = useState("");
   const [showResults, setShowResults] = useState(false);
   const [startExamOpen, setStartExamOpen] = useState(false);
+  const [reviewerTopicsOpen, setReviewerTopicsOpen] = useState(false);
   const [reviewSubmission, setReviewSubmission] = useState(null);
   const lastAssignment = assignmentIndex === assignmentCount - 1;
   const assignmentFormat = normalizeAssignmentFormat(assignment.format);
   const assignmentType = normalizeGradebookType(assignment.type, "personal");
+  const reviewerType = normalizeAssignmentReviewerType(assignment.reviewerType);
+  const reviewerTargets = useMemo(
+    () => buildAssignmentReviewerTargets(course, assignment),
+    [assignment.id, assignment.type, assignment.reviewerType, course.members, course.personalTopics, course.groupTopics, course.intergroupTopics]
+  );
+  const reviewerEnabled = reviewerType !== "none" && reviewerTargets.length > 0;
   const canHaveSubmissions = assignmentFormat !== "simple";
   const availableExams = useMemo(() => (
     Array.isArray(course.exams) && course.exams.length > 0 ? normalizeExams(course.exams) : []
@@ -5398,13 +5463,17 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
 
   useEffect(() => {
     if (!editing) setEditDraft(assignmentEditDraft(assignment));
-  }, [assignment.id, assignment.title, assignment.content, assignment.type, assignment.format, editing]);
+  }, [assignment.id, assignment.title, assignment.content, assignment.type, assignment.format, assignment.reviewerType, editing]);
 
   useEffect(() => {
     if (assignmentFormat !== "exam") {
       setStartExamOpen(false);
     }
   }, [assignmentFormat]);
+
+  useEffect(() => {
+    if (!reviewerEnabled) setReviewerTopicsOpen(false);
+  }, [reviewerEnabled]);
 
   async function submitAssignment() {
     if (submitting || (!fileName && !file)) return;
@@ -5465,6 +5534,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
     }
     const nextType = normalizeGradebookType(editDraft.type, "personal");
     const nextFormat = normalizeAssignmentFormat(editDraft.format);
+    const nextReviewerType = normalizeAssignmentReviewerType(editDraft.reviewerType);
     updateCourse((current) => ({
       ...current,
       assignments: normalizeAssignmentRatios((current.assignments || []).map((item) => {
@@ -5475,6 +5545,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
           content: editDraft.content.trim(),
           type: nextType,
           format: nextFormat,
+          reviewerType: nextReviewerType,
           examId: nextFormat === "exam" ? (item.examId || "") : "",
           examSnapshot: nextFormat === "exam" ? (item.examSnapshot || null) : null
         };
@@ -5531,7 +5602,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
               </label>
               <div className="assignment-edit-grid">
                 <label>
-                  <span>Type</span>
+                  <span>Assignee</span>
                   <select
                     value={editDraft.type}
                     onChange={(event) => setEditDraft((current) => ({ ...current, type: event.target.value }))}
@@ -5552,6 +5623,17 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                     ))}
                   </select>
                 </label>
+                <label>
+                  <span>Reviewer</span>
+                  <select
+                    value={editDraft.reviewerType}
+                    onChange={(event) => setEditDraft((current) => ({ ...current, reviewerType: event.target.value }))}
+                  >
+                    {ASSIGNMENT_REVIEWER_OPTIONS.map((option) => (
+                      <option value={option.value} key={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
                 <div className="assignment-edit-actions">
                   <button className="primary-action compact" type="button" onClick={saveAssignmentEdit}>Save</button>
                   <button className="secondary-action compact" type="button" onClick={cancelEditingAssignment}>Cancel</button>
@@ -5567,6 +5649,12 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
               <span>Format:</span>
               <strong>{assignmentFormatLabel(assignmentFormat)}</strong>
             </div>
+            {reviewerType !== "none" && (
+              <div className="assignment-format-row">
+                <span>Reviewer:</span>
+                <strong>{assignmentReviewerLabel(reviewerType)}</strong>
+              </div>
+            )}
             <div className="assignment-deadline-row">
               <span>Hạn nộp:</span>
               {admin ? (
@@ -5594,7 +5682,32 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                 {admin ? "Xem kết quả nộp bài" : "Xem bài đã nộp"}
               </button>
             )}
+            {reviewerEnabled && (
+              <button className="join-action compact assignment-reviewer-toggle" type="button" onClick={() => setReviewerTopicsOpen((current) => !current)}>
+                <MessageCircleQuestion size={15} /> Reviewer
+              </button>
+            )}
           </div>
+          {reviewerEnabled && reviewerTopicsOpen && (
+            <div className="assignment-reviewer-panel">
+              <div className="assignment-reviewer-panel-head">
+                <strong>Topic</strong>
+                <span>Assignee: {gradebookTypeLabels[assignmentType]}</span>
+              </div>
+              <div className="assignment-reviewer-topic-list">
+                {reviewerTargets.map((target) => (
+                  <button
+                    type="button"
+                    key={target.key}
+                    onClick={() => onOpenReviewer?.(assignment.id, target.key)}
+                  >
+                    <strong>{target.topic}</strong>
+                    <small>{target.label}</small>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {assignmentFormat === "exam" && admin && (
             <div className="assignment-exam-picker-row">
               <label htmlFor={`assignment-exam-${assignment.id}`}>Đề thi:</label>
@@ -5767,6 +5880,153 @@ function AssignmentExamLearnerPanel({
         <p className="success-text">Bạn đã submit bài thi thành công.</p>
       )}
       {submitError && <p className="error-text">{submitError}</p>}
+    </div>
+  );
+}
+
+function AssignmentReviewerWorkspace({ course, user, assignment, target, updateCourse, onBack }) {
+  const reviewerType = normalizeAssignmentReviewerType(assignment.reviewerType);
+  const [questionDraft, setQuestionDraft] = useState("");
+  const [sendingQuestion, setSendingQuestion] = useState(false);
+  const [questionError, setQuestionError] = useState("");
+  const questions = useMemo(() => (
+    cleanAssignmentReviewerQuestions(assignment.reviewerQuestions || [])
+      .filter((question) => question.targetKey === target.key)
+  ), [assignment.reviewerQuestions, target.key]);
+  const groupedQuestions = useMemo(() => groupAssignmentReviewerQuestions(questions), [questions]);
+  const questionScope = useMemo(
+    () => buildReviewerQuestionScope(course, reviewerType, user),
+    [course.members, course.groupTopics, course.intergroupTopics, reviewerType, user?.email]
+  );
+
+  async function sendReviewerQuestion(event) {
+    event.preventDefault();
+    const text = questionDraft.trim();
+    if (!text || sendingQuestion || !user?.email) return;
+    setSendingQuestion(true);
+    setQuestionError("");
+    try {
+      const createdAtMillis = Date.now();
+      const member = findCourseMember(course, user.email);
+      const question = {
+        id: crypto.randomUUID(),
+        assignmentId: assignment.id,
+        reviewerType,
+        targetKey: target.key,
+        targetLabel: target.label,
+        targetTopic: target.topic,
+        questionScopeKey: questionScope.key,
+        questionScopeLabel: questionScope.label,
+        email: normalizeEmail(user.email),
+        name: member?.name || user.displayName || user.email,
+        photoURL: member?.photoURL || user.photoURL || "",
+        text,
+        answered: false,
+        createdAt: formatDateTime24(createdAtMillis),
+        createdAtMillis,
+        updatedAtMillis: createdAtMillis
+      };
+      const savedQuestion = await submitAssignmentReviewerQuestionToCloud(course.id, assignment.id, question);
+      updateCourse((current) => ({
+        ...current,
+        assignments: (current.assignments || []).map((item) => (
+          item.id === assignment.id
+            ? {
+              ...item,
+              reviewerQuestions: mergeAssignmentReviewerQuestionList(item.reviewerQuestions || [], [savedQuestion])
+            }
+            : item
+        ))
+      }), { sync: false });
+      setQuestionDraft("");
+    } catch (error) {
+      console.error(error);
+      setQuestionError("Không thể gửi câu hỏi. Vui lòng thử lại.");
+    } finally {
+      setSendingQuestion(false);
+    }
+  }
+
+  async function toggleReviewerQuestion(question) {
+    const nextAnswered = !question.answered;
+    const updatedAtMillis = Date.now();
+    const patch = {
+      answered: nextAnswered,
+      answeredAtMillis: nextAnswered ? updatedAtMillis : 0,
+      answeredBy: nextAnswered ? normalizeEmail(user?.email || "") : "",
+      updatedAtMillis
+    };
+    updateReviewerQuestionLocal(updateCourse, assignment.id, question, patch);
+    try {
+      await updateAssignmentReviewerQuestionToCloud(course.id, question.id, patch);
+    } catch (error) {
+      console.error(error);
+      updateReviewerQuestionLocal(updateCourse, assignment.id, question, {
+        answered: question.answered,
+        answeredAtMillis: question.answeredAtMillis || 0,
+        answeredBy: question.answeredBy || "",
+        updatedAtMillis: question.updatedAtMillis || question.createdAtMillis || updatedAtMillis
+      });
+      setQuestionError("Không thể cập nhật trạng thái câu hỏi.");
+    }
+  }
+
+  return (
+    <div className="assignment-reviewer-workspace">
+      <div className="assignment-reviewer-sticky-head">
+        <button className="secondary-action compact" type="button" onClick={onBack}>
+          <ChevronLeft size={18} /> Back
+        </button>
+        <div>
+          <strong>{target.topic}</strong>
+          <small>{gradebookTypeLabels[target.targetType] || "Cá nhân"} · {target.label} · Reviewer: {assignmentReviewerLabel(reviewerType)}</small>
+        </div>
+      </div>
+      <div className="assignment-reviewer-scroll">
+        {groupedQuestions.length === 0 ? (
+          <div className="empty-state compact-empty">Chưa có câu hỏi.</div>
+        ) : (
+          <div className="assignment-reviewer-question-groups">
+            {groupedQuestions.map((group) => (
+              <section className="assignment-reviewer-question-group" key={group.key}>
+                <h4>{group.label}</h4>
+                <div className="assignment-reviewer-question-list">
+                  {group.questions.map((question) => (
+                    <label className={`assignment-reviewer-question ${question.answered ? "answered" : ""}`} key={reviewerQuestionMergeKey(question)}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(question.answered)}
+                        onChange={() => toggleReviewerQuestion(question)}
+                      />
+                      <div>
+                        <div className="assignment-reviewer-question-author">
+                          <ProfileAvatar user={{ photoURL: question.photoURL, email: question.email }} label={question.name || question.email} small />
+                          <strong>{question.name || question.email}</strong>
+                          <small>{question.createdAt || formatDateTime24(question.createdAtMillis)}</small>
+                        </div>
+                        <p>{question.text}</p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+      </div>
+      <form className="assignment-reviewer-input-row" onSubmit={sendReviewerQuestion}>
+        <textarea
+          value={questionDraft}
+          onChange={(event) => setQuestionDraft(event.target.value)}
+          placeholder="Nhập câu hỏi..."
+          disabled={sendingQuestion}
+        />
+        <button className="primary-action compact" type="submit" disabled={sendingQuestion || !questionDraft.trim()}>
+          {sendingQuestion ? <span className="button-spinner" /> : <Send size={15} />}
+          Send
+        </button>
+        {questionError && <p className="error-text">{questionError}</p>}
+      </form>
     </div>
   );
 }
@@ -6151,6 +6411,173 @@ function normalizeAssignmentFormat(format) {
 
 function assignmentFormatLabel(format) {
   return ASSIGNMENT_FORMATS.find((item) => item.value === normalizeAssignmentFormat(format))?.label || "Upload file";
+}
+
+function normalizeAssignmentReviewerType(value) {
+  return ASSIGNMENT_REVIEWER_OPTIONS.some((item) => item.value === value) ? value : "none";
+}
+
+function assignmentReviewerLabel(value) {
+  return ASSIGNMENT_REVIEWER_OPTIONS.find((item) => item.value === normalizeAssignmentReviewerType(value))?.label || "Không sử dụng";
+}
+
+function findCourseMember(course, email) {
+  const normalizedEmail = normalizeEmail(email);
+  return (course?.members || []).find((member) => normalizeEmail(member.email) === normalizedEmail) || null;
+}
+
+function buildAssignmentReviewerTargets(course, assignment) {
+  const reviewerType = normalizeAssignmentReviewerType(assignment?.reviewerType);
+  if (reviewerType === "none") return [];
+  const targetType = normalizeGradebookType(assignment?.type, "personal");
+  const membersByEmail = new Map(
+    (course.members || [])
+      .filter((member) => member.status === "accepted")
+      .map((member) => [normalizeEmail(member.email), member])
+  );
+
+  if (targetType === "personal") {
+    return (course.personalTopics || [])
+      .map((item) => {
+        const email = normalizeEmail(item.email);
+        const member = membersByEmail.get(email);
+        return {
+          key: `personal:${email}`,
+          targetType,
+          label: member?.name || item.name || item.email || "Cá nhân",
+          topic: String(item.topic || "").trim(),
+          memberEmails: email ? [email] : []
+        };
+      })
+      .filter((target) => target.topic)
+      .sort(compareAssignmentReviewerTargets);
+  }
+
+  if (targetType === "intergroup") {
+    return buildIntergroupTopicCards(course, buildGroupTopicCards(course))
+      .map((link) => ({
+        key: `intergroup:${link.rawIntergroup || link.key}`,
+        targetType,
+        label: link.label,
+        topic: String(link.topic?.topic || "").trim(),
+        rawIntergroup: link.rawIntergroup,
+        memberEmails: uniqueValues(link.groups.flatMap((group) => group.members.map((member) => normalizeEmail(member.email))))
+      }))
+      .filter((target) => target.topic)
+      .sort(compareAssignmentReviewerTargets);
+  }
+
+  return buildGroupTopicCards(course)
+    .map((group) => ({
+      key: `group:${group.rawGroup || group.key}`,
+      targetType,
+      label: group.label,
+      topic: String(group.topic?.topic || "").trim(),
+      rawGroup: group.rawGroup,
+      memberEmails: group.members.map((member) => normalizeEmail(member.email))
+    }))
+    .filter((target) => target.topic)
+    .sort(compareAssignmentReviewerTargets);
+}
+
+function compareAssignmentReviewerTargets(first, second) {
+  return compareNumericText(first.rawGroup ?? first.rawIntergroup, second.rawGroup ?? second.rawIntergroup)
+    || String(first.label || "").localeCompare(String(second.label || ""), "vi", { numeric: true, sensitivity: "base" })
+    || String(first.topic || "").localeCompare(String(second.topic || ""), "vi", { numeric: true, sensitivity: "base" });
+}
+
+function buildReviewerQuestionScope(course, reviewerType, user) {
+  const normalizedEmail = normalizeEmail(user?.email || "");
+  const member = findCourseMember(course, normalizedEmail);
+  if (!member) {
+    return {
+      key: `lecturer:${normalizedEmail || "unknown"}`,
+      label: user?.displayName || user?.email || "Giảng viên"
+    };
+  }
+  if (reviewerType === "group") {
+    const rawGroup = String(member?.group ?? "").trim();
+    return {
+      key: rawGroup ? `group:${rawGroup}` : `group:none:${normalizedEmail}`,
+      label: rawGroup ? groupTopicLabel(rawGroup) : "Chưa có nhóm"
+    };
+  }
+
+  if (reviewerType === "intergroup") {
+    const groupCards = buildGroupTopicCards(course);
+    const intergroupCard = buildIntergroupTopicCards(course, groupCards).find((link) => (
+      link.groups.some((group) => group.members.some((item) => normalizeEmail(item.email) === normalizedEmail))
+    ));
+    const rawIntergroup = String(intergroupCard?.rawIntergroup || "").trim();
+    return {
+      key: rawIntergroup ? `intergroup:${rawIntergroup}` : `intergroup:none:${normalizedEmail}`,
+      label: rawIntergroup ? `Liên nhóm ${rawIntergroup}` : "Chưa có liên nhóm"
+    };
+  }
+
+  return {
+    key: `personal:${normalizedEmail}`,
+    label: member?.name || user?.displayName || user?.email || "Cá nhân"
+  };
+}
+
+function mergeAssignmentReviewerQuestionList(primary = [], secondary = []) {
+  const byKey = new Map();
+  [...primary, ...secondary].filter(Boolean).forEach((question) => {
+    byKey.set(reviewerQuestionMergeKey(question), question);
+  });
+  return cleanAssignmentReviewerQuestions([...byKey.values()]);
+}
+
+function cleanAssignmentReviewerQuestions(questions = []) {
+  return questions
+    .filter((question) => question?.text || question?.id)
+    .map((question) => ({
+      ...question,
+      answered: Boolean(question.answered),
+      createdAtMillis: Number(question.createdAtMillis || 0)
+    }))
+    .sort((first, second) => Number(first.createdAtMillis || 0) - Number(second.createdAtMillis || 0));
+}
+
+function reviewerQuestionMergeKey(question) {
+  return question?.id
+    || `${question?.assignmentId || ""}-${question?.targetKey || ""}-${question?.questionScopeKey || ""}-${question?.email || ""}-${question?.createdAtMillis || ""}-${question?.text || ""}`;
+}
+
+function groupAssignmentReviewerQuestions(questions = []) {
+  const groups = new Map();
+  questions.forEach((question) => {
+    const key = question.questionScopeKey || `personal:${normalizeEmail(question.email || "")}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        label: question.questionScopeLabel || question.name || question.email || "Câu hỏi",
+        questions: []
+      });
+    }
+    groups.get(key).questions.push(question);
+  });
+  return [...groups.values()].sort((first, second) => (
+    String(first.label || "").localeCompare(String(second.label || ""), "vi", { numeric: true, sensitivity: "base" })
+  ));
+}
+
+function updateReviewerQuestionLocal(updateCourse, assignmentId, question, patch) {
+  updateCourse((current) => ({
+    ...current,
+    assignments: (current.assignments || []).map((item) => {
+      if (item.id !== assignmentId) return item;
+      return {
+        ...item,
+        reviewerQuestions: cleanAssignmentReviewerQuestions((item.reviewerQuestions || []).map((candidate) => (
+          reviewerQuestionMergeKey(candidate) === reviewerQuestionMergeKey(question)
+            ? { ...candidate, ...patch }
+            : candidate
+        )))
+      };
+    })
+  }), { sync: false });
 }
 
 function findAssignmentExam(assignment, exams = []) {

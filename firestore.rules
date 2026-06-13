@@ -217,6 +217,30 @@ service cloud.firestore {
         allow update, delete: if isCourseLecturer(classId);
       }
 
+      match /reviewerQuestions/{questionId} {
+        allow read: if isCourseLecturer(classId) || isAcceptedMember(classId);
+
+        allow create: if (isCourseLecturer(classId)
+          || (
+            isAcceptedMember(classId)
+            && request.resource.data.email == request.auth.token.email
+          ))
+          && request.resource.data.assignmentId is string
+          && request.resource.data.targetKey is string
+          && request.resource.data.questionScopeKey is string;
+
+        allow update: if isCourseLecturer(classId)
+          || (
+            isAcceptedMember(classId)
+            && request.resource.data.assignmentId == resource.data.assignmentId
+            && request.resource.data.targetKey == resource.data.targetKey
+            && request.resource.data.questionScopeKey == resource.data.questionScopeKey
+            && request.resource.data.email == resource.data.email
+          );
+
+        allow delete: if isCourseLecturer(classId);
+      }
+
       match /exams/{examId} {
         allow read, create, update, delete: if isCourseLecturer(classId);
       }

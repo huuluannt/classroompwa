@@ -265,9 +265,11 @@ export function subscribeClasses(user, accessOrOnClasses, maybeOnClasses, maybeO
     let announcementUnsubscribes = [];
     let memberUnsubscribes = [];
     let peerReviewResponseUnsubscribes = [];
+    let reviewerQuestionUnsubscribes = [];
     let activeAnnouncementClasses = "";
     let activeMemberClasses = "";
     let activePeerReviewResponseClasses = "";
+    let activeReviewerQuestionClasses = "";
     const announcementCache = new Map();
 
     function syncAnnouncementSubscriptions(classIds) {
@@ -300,6 +302,16 @@ export function subscribeClasses(user, accessOrOnClasses, maybeOnClasses, maybeO
       peerReviewResponseUnsubscribes.forEach((unsubscribe) => unsubscribe());
       peerReviewResponseUnsubscribes = classIds.map((classId) => (
         onSnapshot(collection(db, "classes", classId, "peerReviewResponses"), emitLecturerClasses, onError)
+      ));
+    }
+
+    function syncReviewerQuestionSubscriptions(classIds) {
+      const key = [...classIds].sort().join("|");
+      if (key === activeReviewerQuestionClasses) return;
+      activeReviewerQuestionClasses = key;
+      reviewerQuestionUnsubscribes.forEach((unsubscribe) => unsubscribe());
+      reviewerQuestionUnsubscribes = classIds.map((classId) => (
+        onSnapshot(collection(db, "classes", classId, "reviewerQuestions"), emitLecturerClasses, onError)
       ));
     }
 
@@ -337,9 +349,11 @@ export function subscribeClasses(user, accessOrOnClasses, maybeOnClasses, maybeO
         membershipCourses.filter(Boolean).forEach((course) => courseMap.set(course.id, course));
 
         onClasses([...courseMap.values()]);
-        syncAnnouncementSubscriptions([...new Set([...classIds, ...acceptedMembershipClassIds])]);
+        const realtimeClassIds = [...new Set([...classIds, ...acceptedMembershipClassIds])];
+        syncAnnouncementSubscriptions(realtimeClassIds);
         syncMemberSubscriptions(classIds);
         syncPeerReviewResponseSubscriptions(classIds);
+        syncReviewerQuestionSubscriptions(realtimeClassIds);
       } catch (error) {
         onError(error);
       }
@@ -377,6 +391,7 @@ export function subscribeClasses(user, accessOrOnClasses, maybeOnClasses, maybeO
       announcementUnsubscribes.forEach((unsubscribe) => unsubscribe());
       memberUnsubscribes.forEach((unsubscribe) => unsubscribe());
       peerReviewResponseUnsubscribes.forEach((unsubscribe) => unsubscribe());
+      reviewerQuestionUnsubscribes.forEach((unsubscribe) => unsubscribe());
     };
   }
 
@@ -387,9 +402,11 @@ export function subscribeClasses(user, accessOrOnClasses, maybeOnClasses, maybeO
   let announcementUnsubscribes = [];
   let memberUnsubscribes = [];
   let peerReviewResponseUnsubscribes = [];
+  let reviewerQuestionUnsubscribes = [];
   let activeAnnouncementClasses = "";
   let activeMemberClasses = "";
   let activePeerReviewResponseClasses = "";
+  let activeReviewerQuestionClasses = "";
   const announcementCache = new Map();
 
   function syncAnnouncementSubscriptions(classIds) {
@@ -436,6 +453,16 @@ export function subscribeClasses(user, accessOrOnClasses, maybeOnClasses, maybeO
     ));
   }
 
+  function syncReviewerQuestionSubscriptions(classIds) {
+    const key = [...classIds].sort().join("|");
+    if (key === activeReviewerQuestionClasses) return;
+    activeReviewerQuestionClasses = key;
+    reviewerQuestionUnsubscribes.forEach((unsubscribe) => unsubscribe());
+    reviewerQuestionUnsubscribes = classIds.map((classId) => (
+      onSnapshot(collection(db, "classes", classId, "reviewerQuestions"), emitLearnerClasses, () => {})
+    ));
+  }
+
   async function emitLearnerClasses() {
     if (!latestMembershipDocs && !latestAssistantLecturerDocs) return;
     try {
@@ -472,6 +499,7 @@ export function subscribeClasses(user, accessOrOnClasses, maybeOnClasses, maybeO
       syncAnnouncementSubscriptions(realtimeClassIds);
       syncMemberSubscriptions(realtimeClassIds);
       syncPeerReviewResponseSubscriptions(acceptedClassIds, assistantLecturerClassIds);
+      syncReviewerQuestionSubscriptions(realtimeClassIds);
     } catch (error) {
       onError(error);
     }
@@ -504,6 +532,7 @@ export function subscribeClasses(user, accessOrOnClasses, maybeOnClasses, maybeO
     announcementUnsubscribes.forEach((unsubscribe) => unsubscribe());
     memberUnsubscribes.forEach((unsubscribe) => unsubscribe());
     peerReviewResponseUnsubscribes.forEach((unsubscribe) => unsubscribe());
+    reviewerQuestionUnsubscribes.forEach((unsubscribe) => unsubscribe());
   };
 }
 
@@ -758,6 +787,49 @@ export async function submitAssignmentToCloud(courseId, assignmentId, submission
   return { id: submissionRef.id, ...clientSubmission };
 }
 
+export async function submitAssignmentReviewerQuestionToCloud(courseId, assignmentId, question) {
+  const createdAtMillis = Number(question.createdAtMillis || Date.now());
+  const savedQuestion = {
+    assignmentId,
+    reviewerType: question.reviewerType || "none",
+    targetKey: question.targetKey || "",
+    targetLabel: question.targetLabel || "",
+    targetTopic: question.targetTopic || "",
+    questionScopeKey: question.questionScopeKey || "",
+    questionScopeLabel: question.questionScopeLabel || "",
+    email: normalizeEmail(question.email || ""),
+    name: question.name || "",
+    photoURL: question.photoURL || "",
+    text: question.text || "",
+    answered: Boolean(question.answered),
+    createdAt: question.createdAt || formatDateTime24(createdAtMillis),
+    createdAtMillis,
+    updatedAtMillis: Number(question.updatedAtMillis || createdAtMillis)
+  };
+  if (!hasFirebaseConfig) {
+    return { ...savedQuestion, id: question.id || crypto.randomUUID() };
+  }
+  const questionRef = question.id
+    ? doc(db, "classes", courseId, "reviewerQuestions", question.id)
+    : doc(collection(db, "classes", courseId, "reviewerQuestions"));
+  await setDoc(questionRef, {
+    ...savedQuestion,
+    id: questionRef.id,
+    createdAtServer: question.createdAtServer || serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+  return { ...savedQuestion, id: questionRef.id };
+}
+
+export async function updateAssignmentReviewerQuestionToCloud(courseId, questionId, patch) {
+  if (!hasFirebaseConfig || !courseId || !questionId) return;
+  await setDoc(doc(db, "classes", courseId, "reviewerQuestions", questionId), {
+    ...patch,
+    updatedAtMillis: Number(patch.updatedAtMillis || Date.now()),
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+}
+
 export async function saveAnnouncementToCloud(courseId, announcement) {
   if (!hasFirebaseConfig) return { id: crypto.randomUUID(), ...announcement };
   const announcementRef = announcement.id
@@ -863,10 +935,11 @@ function readFileAsDataUrl(file) {
 }
 
 async function hydrateCourse(id, data, includeAllMembers, user, announcementItems) {
-  const [membersSnapshot, submissions, peerReviewResponses, cloudAnnouncements, exams] = await Promise.all([
+  const [membersSnapshot, submissions, peerReviewResponses, reviewerQuestions, cloudAnnouncements, exams] = await Promise.all([
     getDocs(collection(db, "classes", id, "members")),
     loadSubmissions(id, includeAllMembers, user),
     loadPeerReviewResponses(id, includeAllMembers, user),
+    loadReviewerQuestions(id),
     announcementItems ? Promise.resolve(announcementItems) : loadAnnouncements(id),
     includeAllMembers ? loadExams(id) : Promise.resolve([])
   ]);
@@ -888,6 +961,10 @@ async function hydrateCourse(id, data, includeAllMembers, user, announcementItem
       submissions: mergeSubmissions(
         assignment.submissions || [],
         submissions.filter((submission) => submission.assignmentId === assignment.id)
+      ),
+      reviewerQuestions: mergeReviewerQuestions(
+        assignment.reviewerQuestions || [],
+        reviewerQuestions.filter((question) => question.assignmentId === assignment.id)
       )
     })),
     peerReviews: mergePeerReviewResponses(course.peerReviews || [], peerReviewResponses)
@@ -948,6 +1025,15 @@ async function loadPeerReviewResponses(classId, includeAllMembers, user) {
   }
 }
 
+async function loadReviewerQuestions(classId) {
+  try {
+    const snapshot = await getDocs(collection(db, "classes", classId, "reviewerQuestions"));
+    return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+  } catch {
+    return [];
+  }
+}
+
 function mergeSubmissions(primary, secondary) {
   const byKey = new Map();
   [...primary, ...secondary].filter(Boolean).forEach((submission) => {
@@ -984,6 +1070,19 @@ function examAttemptSignature(submission) {
     submission?.examId || "",
     startedAt
   ].join("|");
+}
+
+function mergeReviewerQuestions(primary, secondary) {
+  const seen = new Set();
+  return [...secondary, ...primary]
+    .filter((question) => {
+      const key = question.id
+        || `${question.assignmentId}-${question.targetKey}-${question.questionScopeKey}-${question.email}-${question.createdAtMillis}-${question.text}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((first, second) => Number(first.createdAtMillis || 0) - Number(second.createdAtMillis || 0));
 }
 
 function mergePeerReviewResponses(peerReviews, cloudResponses) {
