@@ -91,7 +91,7 @@ export const seedClasses = [
         responses: [{ email: "quocbao@student.edu.vn", name: "Le Quoc Bao", studentId: "22110002", topic: "Nhóm 1 - AI tutor", score: 9 }]
       }
     ],
-    extraCards: ["peerReview", "personalTopic"]
+    extraCards: ["personalTopic"]
   },
   {
     id: "ds-lab",
@@ -133,6 +133,5 @@ export const baseCards = [
 export const extraCardLabels = {
   exams: "Đề thi (only Lecturer)",
   intergroupTopic: "Topic Liên nhóm",
-  peerReview: "Người học chấm điểm",
   personalTopic: "Topic Cá nhân"
 };

@@ -792,6 +792,8 @@ export async function submitAssignmentReviewerQuestionToCloud(courseId, assignme
   const savedQuestion = {
     assignmentId,
     reviewerType: question.reviewerType || "none",
+    topicType: question.topicType || question.reviewerType || "none",
+    assigneeType: question.assigneeType || "",
     targetKey: question.targetKey || "",
     targetLabel: question.targetLabel || "",
     targetTopic: question.targetTopic || "",
@@ -912,9 +914,11 @@ export async function submitPeerReviewResponseToCloud(courseId, reviewId, respon
   const responseRef = doc(collection(db, "classes", courseId, "peerReviewResponses"));
   const savedResponse = {
     reviewId,
+    assignmentId: response.assignmentId || "",
     email: response.email,
     name: response.name || "",
     studentId: response.studentId || "",
+    topicKey: response.topicKey || "",
     topic: response.topic || "",
     score: response.score || "",
     submittedAt: response.submittedAt || new Date().toLocaleString("vi-VN"),
@@ -965,6 +969,10 @@ async function hydrateCourse(id, data, includeAllMembers, user, announcementItem
       reviewerQuestions: mergeReviewerQuestions(
         assignment.reviewerQuestions || [],
         reviewerQuestions.filter((question) => question.assignmentId === assignment.id)
+      ),
+      peerScoreResponses: mergeReviewResponses(
+        assignment.peerScoreResponses || [],
+        peerReviewResponses.filter((response) => response.reviewId === assignment.id || response.assignmentId === assignment.id)
       )
     })),
     peerReviews: mergePeerReviewResponses(course.peerReviews || [], peerReviewResponses)

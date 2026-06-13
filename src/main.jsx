@@ -22,7 +22,6 @@ import {
   LogOut,
   Menu,
   MoreVertical,
-  MessageCircleQuestion,
   Paperclip,
   Pencil,
   Pin,
@@ -1716,7 +1715,7 @@ function ClassPane({
   const canEditTopics = admin || classLeader;
   const hiddenCards = course.hiddenCards || [];
   const pinnedCards = course.pinnedCards || [];
-  const extraCards = course.extraCards || [];
+  const extraCards = (course.extraCards || []).filter((id) => extraCardLabels[id]);
   const visibleBaseCards = baseCards.filter((card) => admin || !LECTURER_ONLY_CARD_IDS.has(card.id));
   const cardLabels = new Map([...baseCards.map((card) => [card.id, card.label]), ...Object.entries(extraCardLabels)]);
   const cards = orderCards(
@@ -2002,7 +2001,7 @@ function orderCards(cards, cardOrder, pinnedCards) {
 
 function visibleCardIds(course) {
   const hiddenCards = course.hiddenCards || [];
-  const extraCards = course.extraCards || [];
+  const extraCards = (course.extraCards || []).filter((id) => extraCardLabels[id]);
   return [...baseCards.map((card) => card.id), ...extraCards].filter((id) => !hiddenCards.includes(id));
 }
 
@@ -2070,7 +2069,7 @@ function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditM
   if (selectedCard === "exams") return admin ? <ExamsCard user={user} course={course} examFormTemplates={examFormTemplates} setExamFormTemplates={setExamFormTemplates} updateCourse={updateCourse} /> : null;
   if (selectedCard === "grades") return <GradesCard admin={admin} user={user} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "personalTopic") return <PersonalTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
-  if (selectedCard === "peerReview") return <PeerReviewCard admin={admin} user={user} course={course} updateCourse={updateCourse} />;
+  if (selectedCard === "peerReview") return null;
   return null;
 }
 
@@ -2432,6 +2431,11 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
                 <MembersTable admin={admin} canManageCourseLecturers={canManageCourseLecturers} canEditMembers={canEditMembers} course={course} members={group.members} memberDrafts={memberDrafts} onDraftChange={updateMemberDraft} onPromoteToLecturer={promoteMemberToLecturer} updateCourse={updateCourse} />
               </section>
             ))}
+          </div>
+        )}
+        {canEditMembers && (
+          <div className="bottom-save-row">
+            <button className="primary-action compact" type="button" onClick={saveMembers}>Save</button>
           </div>
         )}
       </div>
@@ -3686,6 +3690,11 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
           ))}
         </div>
       )}
+      {canEdit && (
+        <div className="bottom-save-row">
+          <button className="primary-action compact" type="button" onClick={saveTopics}>Save</button>
+        </div>
+      )}
     </>
   );
 }
@@ -3996,6 +4005,11 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
               </div>
             </section>
           ))}
+        </div>
+      )}
+      {canEdit && (
+        <div className="bottom-save-row">
+          <button className="primary-action compact" type="button" onClick={saveIntergroupTopics}>Save</button>
         </div>
       )}
     </>
@@ -5410,6 +5424,8 @@ function stripListPrefix(text = "") {
 const ASSIGNMENT_FORMATS = [
   { value: "uploadFile", label: "Upload file" },
   { value: "exam", label: "Exam" },
+  { value: "reviewerDiscussion", label: "Reviewer: Discussion" },
+  { value: "reviewerScore", label: "Reviewer: Score" },
   { value: "simple", label: "Simple" }
 ];
 const ASSIGNMENT_REVIEWER_OPTIONS = [
@@ -5418,6 +5434,7 @@ const ASSIGNMENT_REVIEWER_OPTIONS = [
   { value: "group", label: "Nhóm" },
   { value: "intergroup", label: "Liên nhóm" }
 ];
+const ASSIGNMENT_DISCUSSION_TOPIC_OPTIONS = ASSIGNMENT_REVIEWER_OPTIONS.filter((option) => option.value !== "none");
 const ASSIGNMENT_EXAM_SESSION_PREFIX = "classroompwa-active-exam-session:";
 
 function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerOpenConsumed, updateCourse }) {
@@ -5432,6 +5449,7 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
   const [activeExamSubmitting, setActiveExamSubmitting] = useState(false);
   const [activeExamError, setActiveExamError] = useState("");
   const [reviewerWorkspace, setReviewerWorkspace] = useState(null);
+  const [scoreStatsWorkspace, setScoreStatsWorkspace] = useState(null);
   const assignments = normalizeAssignmentRatios(course.assignments || []);
   const activeExamAssignment = activeExamState
     ? assignments.find((assignment) => assignment.id === activeExamState.assignmentId)
@@ -5442,6 +5460,9 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
     : null;
   const reviewerWorkspaceTarget = reviewerWorkspaceAssignment
     ? buildAssignmentReviewerTargets(course, reviewerWorkspaceAssignment).find((target) => target.key === reviewerWorkspace.targetKey)
+    : null;
+  const scoreStatsWorkspaceAssignment = scoreStatsWorkspace
+    ? assignments.find((assignment) => assignment.id === scoreStatsWorkspace.assignmentId)
     : null;
 
   useOutsideClick(addPopoverRef, addOpen, () => {
@@ -5488,6 +5509,13 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
     if (!reviewerWorkspace) return;
     if (!reviewerWorkspaceAssignment || !reviewerWorkspaceTarget) setReviewerWorkspace(null);
   }, [reviewerWorkspace, reviewerWorkspaceAssignment, reviewerWorkspaceTarget]);
+
+  useEffect(() => {
+    if (!scoreStatsWorkspace) return;
+    if (!scoreStatsWorkspaceAssignment || !isReviewerScoreFormat(scoreStatsWorkspaceAssignment.format)) {
+      setScoreStatsWorkspace(null);
+    }
+  }, [scoreStatsWorkspace, scoreStatsWorkspaceAssignment]);
 
   useEffect(() => {
     if (!reviewerOpenRequest || (reviewerOpenRequest.courseId && reviewerOpenRequest.courseId !== course.id)) return;
@@ -5660,7 +5688,7 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
     try {
       const assignmentType = normalizeGradebookType(draft.type, "personal");
       const assignmentFormat = normalizeAssignmentFormat(draft.format);
-      const assignmentReviewerType = normalizeAssignmentReviewerType(draft.reviewerType);
+      const assignmentReviewerType = normalizeDiscussionTopicType(draft.reviewerType, assignmentFormat);
       const assignment = {
         id: crypto.randomUUID(),
         title,
@@ -5674,7 +5702,12 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
         dueAtMillis: "",
         ratio: "0",
         submissions: [],
-        reviewerQuestions: []
+        reviewerQuestions: [],
+        scoreFormat: "free",
+        limitMin: "",
+        limitMax: "",
+        choiceValues: [],
+        peerScoreResponses: []
       };
       const createdAtMillis = Date.now();
       const announcement = {
@@ -5765,6 +5798,18 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
     );
   }
 
+  if (scoreStatsWorkspaceAssignment && isReviewerScoreFormat(scoreStatsWorkspaceAssignment.format)) {
+    return (
+      <AssignmentReviewerScoreStatsWorkspace
+        course={course}
+        assignment={scoreStatsWorkspaceAssignment}
+        targets={buildAssignmentReviewerTargets(course, scoreStatsWorkspaceAssignment)}
+        responses={mergePeerReviewResponseRows([], scoreStatsWorkspaceAssignment.peerScoreResponses || [])}
+        onBack={() => setScoreStatsWorkspace(null)}
+      />
+    );
+  }
+
   return (
     <>
       <PanelTitle
@@ -5811,28 +5856,30 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
                       aria-label="Format bài tập"
                       disabled={creatingAssignment}
                       value={draft.format}
-                      onChange={(event) => setDraft({ ...draft, format: event.target.value })}
+                      onChange={(event) => setDraft((current) => updateAssignmentDraftFormat(current, event.target.value))}
                     >
                       {ASSIGNMENT_FORMATS.map((format) => (
                         <option value={format.value} key={format.value}>{format.label}</option>
                       ))}
                     </select>
                   </label>
-                  <label className="assignment-create-field" htmlFor="assignment-reviewer">
-                    <span>Reviewer:</span>
-                    <select
-                      id="assignment-reviewer"
-                      className="assignment-reviewer-select"
-                      aria-label="Reviewer bài tập"
-                      disabled={creatingAssignment}
-                      value={draft.reviewerType}
-                      onChange={(event) => setDraft({ ...draft, reviewerType: event.target.value })}
-                    >
-                      {ASSIGNMENT_REVIEWER_OPTIONS.map((option) => (
-                        <option value={option.value} key={option.value}>{option.label}</option>
-                      ))}
-                    </select>
-                  </label>
+                  {isReviewerTopicFormat(draft.format) && (
+                    <label className="assignment-create-field" htmlFor="assignment-topic">
+                      <span>Topic:</span>
+                      <select
+                        id="assignment-topic"
+                        className="assignment-reviewer-select"
+                        aria-label="Topic cho thảo luận"
+                        disabled={creatingAssignment}
+                        value={normalizeDiscussionTopicType(draft.reviewerType, draft.format)}
+                        onChange={(event) => setDraft({ ...draft, reviewerType: event.target.value })}
+                      >
+                        {ASSIGNMENT_DISCUSSION_TOPIC_OPTIONS.map((option) => (
+                          <option value={option.value} key={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   <button className="primary-action compact dark-action" type="button" onClick={createAssignmentCard} disabled={creatingAssignment || !draft.title.trim()}>
                     {creatingAssignment ? <span className="button-spinner" /> : <FilePlus2 size={14} />}
                     {creatingAssignment ? "Creating" : "Create"}
@@ -5863,6 +5910,7 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
             onStartExam={startAssignmentExam}
             onShowExam={showActiveExam}
             onOpenReviewer={(assignmentId, targetKey) => setReviewerWorkspace({ assignmentId, targetKey })}
+            onOpenScoreStats={(assignmentId) => setScoreStatsWorkspace({ assignmentId })}
           />
         ))}
       </div>
@@ -5871,18 +5919,19 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
 }
 
 function assignmentEditDraft(assignment) {
+  const format = normalizeAssignmentFormat(assignment?.format);
   return {
     title: assignment?.title || "",
     content: assignment?.content || "",
     type: normalizeGradebookType(assignment?.type, "personal"),
-    format: normalizeAssignmentFormat(assignment?.format),
-    reviewerType: normalizeAssignmentReviewerType(assignment?.reviewerType),
+    format,
+    reviewerType: normalizeDiscussionTopicType(assignment?.reviewerType, format),
     dueAt: assignmentDateTimeLocalValue(assignment),
     ratio: cleanRatioInput(assignment?.ratio || "")
   };
 }
 
-function AssignmentItem({ admin, course, assignment, assignmentIndex, assignmentCount, user, updateCourse, activeExamState, onStartExam, onShowExam, onOpenReviewer }) {
+function AssignmentItem({ admin, course, assignment, assignmentIndex, assignmentCount, user, updateCourse, activeExamState, onStartExam, onShowExam, onOpenReviewer, onOpenScoreStats }) {
   const requestConfirm = useConfirmAction();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -5894,18 +5943,18 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
   const [submitError, setSubmitError] = useState("");
   const [showResults, setShowResults] = useState(false);
   const [startExamOpen, setStartExamOpen] = useState(false);
-  const [reviewerTopicsOpen, setReviewerTopicsOpen] = useState(false);
   const [reviewSubmission, setReviewSubmission] = useState(null);
   const lastAssignment = assignmentIndex === assignmentCount - 1;
   const assignmentFormat = normalizeAssignmentFormat(assignment.format);
   const assignmentType = normalizeGradebookType(assignment.type, "personal");
-  const reviewerType = normalizeAssignmentReviewerType(assignment.reviewerType);
+  const reviewerType = normalizeDiscussionTopicType(assignment.reviewerType, assignmentFormat);
   const reviewerTargets = useMemo(
     () => buildAssignmentReviewerTargets(course, assignment),
-    [assignment.id, assignment.type, assignment.reviewerType, course.members, course.personalTopics, course.groupTopics, course.intergroupTopics]
+    [assignment.id, assignment.format, assignment.reviewerType, course.members, course.personalTopics, course.groupTopics, course.intergroupTopics]
   );
-  const reviewerEnabled = reviewerType !== "none" && reviewerTargets.length > 0;
-  const canHaveSubmissions = assignmentFormat !== "simple";
+  const reviewerEnabled = isReviewerDiscussionFormat(assignmentFormat) && reviewerType !== "none" && reviewerTargets.length > 0;
+  const scoreReviewEnabled = isReviewerScoreFormat(assignmentFormat) && reviewerType !== "none";
+  const canHaveSubmissions = assignmentFormat === "uploadFile" || assignmentFormat === "exam";
   const availableExams = useMemo(() => (
     Array.isArray(course.exams) && course.exams.length > 0 ? normalizeExams(course.exams) : []
   ), [course.exams]);
@@ -5937,10 +5986,6 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
       setStartExamOpen(false);
     }
   }, [assignmentFormat]);
-
-  useEffect(() => {
-    if (!reviewerEnabled) setReviewerTopicsOpen(false);
-  }, [reviewerEnabled]);
 
   async function submitAssignment() {
     if (submitting || !file) return;
@@ -5998,7 +6043,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
     }
     const nextType = normalizeGradebookType(editDraft.type, "personal");
     const nextFormat = normalizeAssignmentFormat(editDraft.format);
-    const nextReviewerType = normalizeAssignmentReviewerType(editDraft.reviewerType);
+    const nextReviewerType = normalizeDiscussionTopicType(editDraft.reviewerType, nextFormat);
     const nextDueAt = editDraft.dueAt || "";
     const parsedDueAtMillis = nextDueAt ? new Date(nextDueAt).getTime() : 0;
     const nextDueAtMillis = Number.isFinite(parsedDueAtMillis) && parsedDueAtMillis > 0 ? parsedDueAtMillis : "";
@@ -6087,24 +6132,26 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                   <span>Format</span>
                   <select
                     value={editDraft.format}
-                    onChange={(event) => setEditDraft((current) => ({ ...current, format: event.target.value }))}
+                    onChange={(event) => setEditDraft((current) => updateAssignmentDraftFormat(current, event.target.value))}
                   >
                     {ASSIGNMENT_FORMATS.map((format) => (
                       <option value={format.value} key={format.value}>{format.label}</option>
                     ))}
                   </select>
                 </label>
-                <label>
-                  <span>Reviewer</span>
-                  <select
-                    value={editDraft.reviewerType}
-                    onChange={(event) => setEditDraft((current) => ({ ...current, reviewerType: event.target.value }))}
-                  >
-                    {ASSIGNMENT_REVIEWER_OPTIONS.map((option) => (
-                      <option value={option.value} key={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
+                {isReviewerTopicFormat(editDraft.format) && (
+                  <label>
+                    <span>Topic</span>
+                    <select
+                      value={normalizeDiscussionTopicType(editDraft.reviewerType, editDraft.format)}
+                      onChange={(event) => setEditDraft((current) => ({ ...current, reviewerType: event.target.value }))}
+                    >
+                      {ASSIGNMENT_DISCUSSION_TOPIC_OPTIONS.map((option) => (
+                        <option value={option.value} key={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label>
                   <span>Hạn nộp</span>
                   <input
@@ -6146,9 +6193,9 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
               <span>Format:</span>
               <strong>{assignmentFormatLabel(assignmentFormat)}</strong>
             </div>
-            {reviewerType !== "none" && (
+            {isReviewerTopicFormat(assignmentFormat) && reviewerType !== "none" && (
               <div className="assignment-format-row">
-                <span>Reviewer:</span>
+                <span>Topic:</span>
                 <strong>{assignmentReviewerLabel(reviewerType)}</strong>
               </div>
             )}
@@ -6166,13 +6213,8 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                 Xem kết quả nộp bài
               </button>
             )}
-            {reviewerEnabled && (
-              <button className="join-action compact assignment-reviewer-toggle" type="button" onClick={() => setReviewerTopicsOpen((current) => !current)}>
-                <MessageCircleQuestion size={15} /> Reviewer
-              </button>
-            )}
           </div>
-          {reviewerEnabled && reviewerTopicsOpen && (
+          {reviewerEnabled && (
             <div className="assignment-reviewer-panel">
               <div className="assignment-reviewer-panel-head">
                 <strong>Topic</strong>
@@ -6191,6 +6233,17 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                 ))}
               </div>
             </div>
+          )}
+          {scoreReviewEnabled && (
+            <AssignmentReviewerScorePanel
+              admin={admin}
+              user={user}
+              course={course}
+              assignment={assignment}
+              targets={reviewerTargets}
+              updateCourse={updateCourse}
+              onOpenStats={() => onOpenScoreStats?.(assignment.id)}
+            />
           )}
           {assignmentFormat === "exam" && admin && (
             <div className="assignment-exam-picker-row">
@@ -6315,6 +6368,326 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
   );
 }
 
+function AssignmentReviewerScorePanel({ admin, user, course, assignment, targets, updateCourse, onOpenStats }) {
+  const targetOptions = useMemo(() => targets.map((target) => ({
+    key: target.key,
+    label: formatAssignmentScoreTarget(target)
+  })), [targets]);
+  const responseRows = useMemo(
+    () => mergePeerReviewResponseRows([], assignment.peerScoreResponses || []),
+    [assignment.peerScoreResponses]
+  );
+  const [topicKey, setTopicKey] = useState(targetOptions[0]?.key || "");
+  const [score, setScore] = useState("");
+  const [submitStatus, setSubmitStatus] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [resultsOpen, setResultsOpen] = useState(() => admin);
+  const [configDraft, setConfigDraft] = useState(() => peerReviewScoreConfig(assignment));
+  const [configStatus, setConfigStatus] = useState("");
+  const [configError, setConfigError] = useState("");
+  const choiceValuesSignature = Array.isArray(assignment.choiceValues) ? assignment.choiceValues.join("|") : String(assignment.choiceValues || "");
+  const normalizedUserEmail = normalizeEmail(user?.email || "");
+  const visibleResponses = admin
+    ? responseRows
+    : responseRows.filter((row) => normalizeEmail(row.email || "") === normalizedUserEmail);
+  const resultsVisible = admin ? resultsOpen : true;
+  const scoreReview = {
+    ...assignment,
+    id: assignment.id,
+    title: assignment.title || "Reviewer: Score",
+    responses: responseRows
+  };
+  const selectedTarget = targetOptions.find((target) => target.key === topicKey) || targetOptions[0] || null;
+
+  useEffect(() => {
+    if (!targetOptions.length) {
+      setTopicKey("");
+      return;
+    }
+    if (!targetOptions.some((target) => target.key === topicKey)) {
+      setTopicKey(targetOptions[0].key);
+    }
+  }, [targetOptions, topicKey]);
+
+  useEffect(() => {
+    setConfigDraft(peerReviewScoreConfig(assignment));
+    setScore("");
+  }, [assignment.id, assignment.scoreFormat, assignment.limitMin, assignment.limitMax, choiceValuesSignature]);
+
+  function saveScoreConfig() {
+    const validation = validatePeerReviewScoreConfig(configDraft);
+    setConfigStatus("");
+    setConfigError("");
+    if (!validation.valid) {
+      setConfigError(validation.error);
+      return;
+    }
+    updateCourse((current) => ({
+      ...current,
+      assignments: normalizeAssignmentRatios((current.assignments || []).map((item) => (
+        item.id === assignment.id ? { ...item, ...validation.config } : item
+      )))
+    }), { toast: "Đã cập nhật format chấm điểm." });
+    setConfigDraft((current) => ({
+      ...current,
+      ...validation.config,
+      choiceValuesText: validation.config.choiceValues.join(", ")
+    }));
+    setConfigStatus("Đã lưu format chấm điểm.");
+  }
+
+  async function submitReviewScore() {
+    if (!selectedTarget) {
+      setSubmitStatus("");
+      setSubmitError("Chưa có Topic để chấm điểm.");
+      return;
+    }
+    const validation = validatePeerReviewScore(scoreReview, score);
+    if (!validation.valid) {
+      setSubmitStatus("");
+      setSubmitError(validation.error);
+      return;
+    }
+    setSubmitStatus("");
+    setSubmitError("");
+    setSubmitting(true);
+    try {
+      const learner = findCourseMember(course, user.email);
+      const submittedAtMillis = Date.now();
+      const response = {
+        id: crypto.randomUUID(),
+        reviewId: assignment.id,
+        assignmentId: assignment.id,
+        email: normalizedUserEmail || user.email,
+        name: learner?.name || user.displayName || user.email,
+        studentId: learner?.studentId || "",
+        topicKey: selectedTarget.key,
+        topic: selectedTarget.label,
+        score: validation.score,
+        submittedAt: formatDateTime24(submittedAtMillis),
+        submittedAtMillis
+      };
+      const savedResponse = await submitPeerReviewResponseToCloud(course.id, assignment.id, response);
+      updateCourse((current) => ({
+        ...current,
+        assignments: (current.assignments || []).map((item) => (
+          item.id === assignment.id
+            ? { ...item, peerScoreResponses: mergePeerReviewResponseRows(item.peerScoreResponses || [], [savedResponse]) }
+            : item
+        ))
+      }), { sync: false });
+      setScore("");
+      setSubmitStatus("Đã chấm điểm thành công.");
+    } catch (error) {
+      console.error(error);
+      setSubmitError("Không thể lưu điểm chấm. Vui lòng thử lại hoặc báo giảng viên kiểm tra quyền Firestore.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="assignment-peer-score-panel">
+      {admin ? (
+        <div className="peer-score-admin-panel">
+          <div className="peer-score-admin-head">
+            <strong>Format chấm điểm</strong>
+            <div className="peer-score-admin-actions">
+              <button
+                className="icon-soft"
+                type="button"
+                title="Thống kê điểm reviewer"
+                aria-label="Thống kê điểm reviewer"
+                onClick={onOpenStats}
+              >
+                <ChartColumn size={17} />
+              </button>
+              <button className="primary-action compact" type="button" onClick={saveScoreConfig}>Save</button>
+            </div>
+          </div>
+          <PeerReviewScoreConfigFields draft={configDraft} onChange={(nextDraft) => {
+            setConfigDraft(nextDraft);
+            setConfigStatus("");
+            setConfigError("");
+          }} />
+          {configStatus && <p className="success-text">{configStatus}</p>}
+          {configError && <p className="error-text">{configError}</p>}
+        </div>
+      ) : (
+        <div className="review-form">
+          <select value={topicKey} onChange={(event) => setTopicKey(event.target.value)} disabled={!targetOptions.length || submitting}>
+            {targetOptions.length === 0 ? (
+              <option value="">Chưa có Topic</option>
+            ) : targetOptions.map((target) => (
+              <option value={target.key} key={target.key}>{target.label}</option>
+            ))}
+          </select>
+          <PeerReviewScoreInput review={scoreReview} value={score} onChange={(value) => {
+            setScore(value);
+            setSubmitError("");
+            setSubmitStatus("");
+          }} disabled={submitting || !targetOptions.length} />
+          <button onClick={submitReviewScore} disabled={!targetOptions.length || !hasScoreValue(score) || submitting}>{submitting ? "Đang lưu..." : "Submit"}</button>
+        </div>
+      )}
+      {submitStatus && <p className="success-text">{submitStatus}</p>}
+      {submitError && <p className="error-text">{submitError}</p>}
+      {admin && (
+        <button className="review-results-toggle" type="button" onClick={() => setResultsOpen((current) => !current)}>
+        {resultsOpen ? "Ẩn điểm người học chấm" : "Xem điểm người học chấm"}
+        </button>
+      )}
+      {resultsVisible && (
+        <>
+          <div className="review-results-head">
+            <strong>{admin ? "Tất cả điểm đã chấm" : "Điểm bạn đã chấm"}</strong>
+            {admin && <button className="export-button" onClick={() => exportReview({ ...scoreReview, responses: visibleResponses })}>Export Excel</button>}
+          </div>
+          <table className="data-table compact-table review-results-table">
+            <thead><tr><th>STT</th><th>Họ và tên</th><th>Topic</th><th>Điểm chấm</th><th>Thời gian</th><th>Mã số</th><th>Email</th></tr></thead>
+            <tbody>
+              {visibleResponses.length === 0 ? (
+                <tr><td colSpan="7">{admin ? "Chưa có người học chấm điểm." : "Bạn chưa chấm điểm trong bài tập này."}</td></tr>
+              ) : visibleResponses.map((row, index) => (
+                <tr key={row.id || `${row.email}-${row.topicKey || row.topic}-${row.score}-${index}`}>
+                  <td>{index + 1}</td>
+                  <td>{row.name}</td>
+                  <td>{row.topic}</td>
+                  <td>{row.score}</td>
+                  <td>{row.submittedAt || ""}</td>
+                  <td>{row.studentId}</td>
+                  <td>{row.email}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </div>
+  );
+}
+
+function formatAssignmentScoreTarget(target) {
+  return `${target.label} - ${target.topic}`;
+}
+
+function responseMatchesScoreTarget(response, target) {
+  if (response.topicKey) return response.topicKey === target.key;
+  return response.topic === target.label;
+}
+
+function buildAssignmentReviewerScoreStats(course, targets, responses) {
+  const acceptedMembers = (course.members || [])
+    .filter((member) => member.status === "accepted")
+    .sort(compareMemberOrder);
+  const topicRows = targets.map((target, index) => {
+    const targetResponses = responses.filter((response) => responseMatchesScoreTarget(response, target));
+    const scores = targetResponses
+      .map((response) => Number(String(response.score ?? "").replace(",", ".")))
+      .filter(Number.isFinite);
+    const average = scores.length
+      ? formatScoreNumber(scores.reduce((total, value) => total + value, 0) / scores.length)
+      : "";
+    return {
+      index: index + 1,
+      topic: target.label,
+      count: targetResponses.length,
+      average
+    };
+  });
+  const completionRows = acceptedMembers.map((member, index) => {
+    const email = normalizeEmail(member.email || "");
+    const memberResponses = responses.filter((response) => normalizeEmail(response.email || "") === email);
+    const reviewedKeys = new Set();
+    memberResponses.forEach((response) => {
+      const matchedTarget = targets.find((target) => responseMatchesScoreTarget(response, target));
+      if (matchedTarget) reviewedKeys.add(matchedTarget.key);
+    });
+    const missingTopics = targets
+      .filter((target) => !reviewedKeys.has(target.key))
+      .map((target) => target.label);
+    return {
+      index: index + 1,
+      name: member.name || member.email,
+      studentId: member.studentId || "",
+      email: member.email || "",
+      progress: `${reviewedKeys.size}/${targets.length}`,
+      missing: missingTopics.join(", ")
+    };
+  });
+  return { topicRows, completionRows };
+}
+
+function AssignmentReviewerScoreStatsWorkspace({ course, assignment, targets, responses, onBack }) {
+  const targetOptions = useMemo(() => targets.map((target) => ({
+    key: target.key,
+    label: formatAssignmentScoreTarget(target)
+  })), [targets]);
+  const stats = useMemo(
+    () => buildAssignmentReviewerScoreStats(course, targetOptions, responses),
+    [course.members, targetOptions, responses]
+  );
+
+  return (
+    <div className="assignment-reviewer-workspace reviewer-score-workspace">
+      <div className="assignment-reviewer-sticky-head">
+        <button className="secondary-action compact" type="button" onClick={onBack}>
+          <ChevronLeft size={18} /> Back
+        </button>
+        <div>
+        <strong>Thống kê Reviewer: Score</strong>
+          <small>{assignment.title || "Reviewer: Score"} · {targetOptions.length} Topic</small>
+        </div>
+      </div>
+      <div className="assignment-reviewer-scroll reviewer-score-stats-scroll">
+        <div className="reviewer-score-stats-section">
+          <h4>Điểm trung bình theo Topic</h4>
+          <div className="reviewer-score-table-wrap">
+            <table className="data-table compact-table reviewer-score-stats-table">
+              <thead><tr><th>STT</th><th>Topic</th><th>Số lượt chấm</th><th>Điểm trung bình</th></tr></thead>
+              <tbody>
+                {stats.topicRows.length === 0 ? (
+                  <tr><td colSpan="4">Chưa có Topic.</td></tr>
+                ) : stats.topicRows.map((row) => (
+                  <tr key={row.topic}>
+                    <td>{row.index}</td>
+                    <td>{row.topic}</td>
+                    <td>{row.count}</td>
+                    <td>{row.average}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div className="reviewer-score-stats-section">
+          <h4>Tiến độ người học chấm điểm</h4>
+          <div className="reviewer-score-table-wrap">
+            <table className="data-table compact-table reviewer-score-completion-table">
+              <thead><tr><th>STT</th><th>Họ và tên</th><th>Mã số</th><th>Email</th><th>Đã chấm</th><th>Còn thiếu</th></tr></thead>
+              <tbody>
+                {stats.completionRows.length === 0 ? (
+                  <tr><td colSpan="6">Chưa có người học.</td></tr>
+                ) : stats.completionRows.map((row) => (
+                  <tr key={row.email || row.index}>
+                    <td>{row.index}</td>
+                    <td>{row.name}</td>
+                    <td>{row.studentId}</td>
+                    <td>{row.email}</td>
+                    <td>{row.progress}</td>
+                    <td>{row.missing}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AssignmentExamStartModal({ exam, onCancel, onStart }) {
   return (
     <Modal title="Bắt đầu làm bài" onClose={onCancel}>
@@ -6368,7 +6741,8 @@ function AssignmentExamLearnerPanel({
 }
 
 function AssignmentReviewerWorkspace({ admin, course, user, assignment, target, updateCourse, onBack }) {
-  const reviewerType = normalizeAssignmentReviewerType(assignment.reviewerType);
+  const topicType = normalizeDiscussionTopicType(assignment.reviewerType, assignment.format);
+  const assigneeType = normalizeGradebookType(assignment.type, "personal");
   const [questionDraft, setQuestionDraft] = useState("");
   const [sendingQuestion, setSendingQuestion] = useState(false);
   const [postingPrompt, setPostingPrompt] = useState(false);
@@ -6381,8 +6755,8 @@ function AssignmentReviewerWorkspace({ admin, course, user, assignment, target, 
   ), [assignment.reviewerQuestions, target.key]);
   const groupedQuestions = useMemo(() => groupAssignmentReviewerQuestions(questions), [questions]);
   const questionScope = useMemo(
-    () => buildReviewerQuestionScope(course, reviewerType, user),
-    [course.members, course.groupTopics, course.intergroupTopics, reviewerType, user?.email]
+    () => buildReviewerQuestionScope(course, assigneeType, user),
+    [course.members, course.groupTopics, course.intergroupTopics, assigneeType, user?.email]
   );
 
   async function postReviewerQuestionPrompt() {
@@ -6395,7 +6769,8 @@ function AssignmentReviewerWorkspace({ admin, course, user, assignment, target, 
       const announcement = createReviewerQuestionPromptAnnouncement({
         assignment,
         target,
-        reviewerType,
+        topicType,
+        assigneeType,
         user,
         createdAtMillis
       });
@@ -6439,7 +6814,9 @@ function AssignmentReviewerWorkspace({ admin, course, user, assignment, target, 
       const question = {
         id: crypto.randomUUID(),
         assignmentId: assignment.id,
-        reviewerType,
+        reviewerType: topicType,
+        topicType,
+        assigneeType,
         targetKey: target.key,
         targetLabel: target.label,
         targetTopic: target.topic,
@@ -6507,7 +6884,7 @@ function AssignmentReviewerWorkspace({ admin, course, user, assignment, target, 
         </button>
         <div>
           <strong>{target.topic}</strong>
-          <small>{gradebookTypeLabels[target.targetType] || "Cá nhân"} · {target.label} · Reviewer: {assignmentReviewerLabel(reviewerType)}</small>
+          <small>{gradebookTypeLabels[target.targetType] || "Cá nhân"} · {target.label} · Assignee: {gradebookTypeLabels[assigneeType]}</small>
         </div>
         {admin && (
           <div className="assignment-reviewer-head-actions">
@@ -6582,7 +6959,8 @@ function AssignmentReviewerWorkspace({ admin, course, user, assignment, target, 
       {showStats && (
         <AssignmentReviewerStatsModal
           questions={questions}
-          reviewerType={reviewerType}
+          topicType={topicType}
+          assigneeType={assigneeType}
           onClose={() => setShowStats(false)}
         />
       )}
@@ -6590,7 +6968,7 @@ function AssignmentReviewerWorkspace({ admin, course, user, assignment, target, 
   );
 }
 
-function AssignmentReviewerStatsModal({ questions, reviewerType, onClose }) {
+function AssignmentReviewerStatsModal({ questions, topicType, assigneeType, onClose }) {
   const statsGroups = useMemo(() => buildReviewerQuestionStats(questions), [questions]);
   const totalQuestions = questions.length;
   const answeredQuestions = questions.filter((question) => question.answered).length;
@@ -6607,8 +6985,12 @@ function AssignmentReviewerStatsModal({ questions, reviewerType, onClose }) {
           <strong>{answeredQuestions}</strong>
         </div>
         <div>
-          <span>Reviewer</span>
-          <strong>{assignmentReviewerLabel(reviewerType)}</strong>
+          <span>Topic</span>
+          <strong>{assignmentReviewerLabel(topicType)}</strong>
+        </div>
+        <div>
+          <span>Assignee</span>
+          <strong>{gradebookTypeLabels[assigneeType]}</strong>
         </div>
       </div>
       {statsGroups.length === 0 ? (
@@ -7027,12 +7409,41 @@ function normalizeAssignmentFormat(format) {
   return ASSIGNMENT_FORMATS.some((item) => item.value === format) ? format : "uploadFile";
 }
 
+function isReviewerDiscussionFormat(format) {
+  return normalizeAssignmentFormat(format) === "reviewerDiscussion";
+}
+
+function isReviewerScoreFormat(format) {
+  return normalizeAssignmentFormat(format) === "reviewerScore";
+}
+
+function isReviewerTopicFormat(format) {
+  return isReviewerDiscussionFormat(format) || isReviewerScoreFormat(format);
+}
+
 function assignmentFormatLabel(format) {
   return ASSIGNMENT_FORMATS.find((item) => item.value === normalizeAssignmentFormat(format))?.label || "Upload file";
 }
 
 function normalizeAssignmentReviewerType(value) {
   return ASSIGNMENT_REVIEWER_OPTIONS.some((item) => item.value === value) ? value : "none";
+}
+
+function normalizeDiscussionTopicType(value, format = "reviewerDiscussion") {
+  if (!isReviewerTopicFormat(format)) return "none";
+  const normalized = normalizeAssignmentReviewerType(value);
+  return normalized === "none" ? "group" : normalized;
+}
+
+function updateAssignmentDraftFormat(draft, format) {
+  const nextFormat = normalizeAssignmentFormat(format);
+  return {
+    ...draft,
+    format: nextFormat,
+    reviewerType: isReviewerTopicFormat(nextFormat)
+      ? normalizeDiscussionTopicType(draft.reviewerType, nextFormat)
+      : "none"
+  };
 }
 
 function assignmentReviewerLabel(value) {
@@ -7045,9 +7456,8 @@ function findCourseMember(course, email) {
 }
 
 function buildAssignmentReviewerTargets(course, assignment) {
-  const reviewerType = normalizeAssignmentReviewerType(assignment?.reviewerType);
-  if (reviewerType === "none") return [];
-  const targetType = normalizeGradebookType(assignment?.type, "personal");
+  const targetType = normalizeDiscussionTopicType(assignment?.reviewerType, assignment?.format);
+  if (targetType === "none") return [];
   const membersByEmail = new Map(
     (course.members || [])
       .filter((member) => member.status === "accepted")
@@ -7347,14 +7757,14 @@ function assignmentAnnouncementContent(assignment) {
   return lines.join("\n");
 }
 
-function createReviewerQuestionPromptAnnouncement({ assignment, target, reviewerType, user, createdAtMillis }) {
+function createReviewerQuestionPromptAnnouncement({ assignment, target, topicType, assigneeType, user, createdAtMillis }) {
   return {
     id: crypto.randomUUID(),
     author: user.email,
     authorName: user.displayName || user.email,
     authorPhotoURL: user.photoURL || "",
     role: "admin",
-    content: reviewerQuestionPromptContent({ target, reviewerType }),
+    content: reviewerQuestionPromptContent({ target, topicType, assigneeType }),
     pinned: false,
     attachments: [],
     publishAsMaterial: false,
@@ -7367,16 +7777,18 @@ function createReviewerQuestionPromptAnnouncement({ assignment, target, reviewer
     reviewerQuestionTargetKey: target.key,
     reviewerQuestionTargetLabel: target.label,
     reviewerQuestionTargetTopic: target.topic,
-    reviewerQuestionType: reviewerType,
+    reviewerQuestionType: topicType,
+    reviewerQuestionAssigneeType: assigneeType,
     announcementType: "reviewerQuestionPrompt"
   };
 }
 
-function reviewerQuestionPromptContent({ target, reviewerType }) {
+function reviewerQuestionPromptContent({ target, topicType, assigneeType }) {
   return [
     `Hãy đặt câu hỏi cho Topic "${target.topic}".`,
-    `${gradebookTypeLabels[target.targetType] || "Assignee"}: ${target.label}`,
-    `Reviewer: ${assignmentReviewerLabel(reviewerType)}`
+    `${gradebookTypeLabels[target.targetType] || "Topic"}: ${target.label}`,
+    `Topic: ${assignmentReviewerLabel(topicType)}`,
+    `Assignee: ${gradebookTypeLabels[assigneeType] || "Cá nhân"}`
   ].join("\n");
 }
 
@@ -9215,6 +9627,11 @@ function PersonalTopicCard({ admin, canEdit, course, updateCourse }) {
           ))}
         </tbody>
       </table>
+      {canEdit && (
+        <div className="bottom-save-row">
+          <button className="primary-action compact" type="button" onClick={savePersonalTopics}>Save</button>
+        </div>
+      )}
     </>
   );
 }
