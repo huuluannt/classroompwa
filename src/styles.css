@@ -2879,17 +2879,31 @@ textarea { min-height: 88px; resize: vertical; }
   padding: 6px 8px;
   text-decoration: none;
 }
+.feed .attachment-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  max-width: 760px;
+}
 .attachment-item {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
 }
+.feed .attachment-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
 .attachment-preview {
   max-width: min(520px, 100%);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.feed .attachment-preview {
+  max-width: 100%;
 }
 .download-icon-button {
   width: 34px;

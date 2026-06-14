@@ -4704,7 +4704,11 @@ function MaterialItem({ admin, user, course, item, updateCourse, onNotice, onErr
                     type="button"
                     title="Xóa file khỏi thẻ"
                     aria-label={`Xóa ${file.fileName || "file"} khỏi thẻ`}
-                    onClick={() => setEditFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
+                    onClick={() => requestConfirm({
+                      title: "Xóa file khỏi thẻ tài liệu?",
+                      message: `Bạn có chắc muốn xóa "${file.fileName || "file"}" khỏi thẻ tài liệu này không?`,
+                      confirmLabel: "Xóa file"
+                    }, () => setEditFiles((current) => current.filter((_, fileIndex) => fileIndex !== index)))}
                   >
                     <X size={14} />
                   </button>
@@ -5835,6 +5839,14 @@ const ASSIGNMENT_REVIEWER_OPTIONS = [
   { value: "intergroup", label: "Liên nhóm" }
 ];
 const ASSIGNMENT_DISCUSSION_TOPIC_OPTIONS = ASSIGNMENT_REVIEWER_OPTIONS.filter((option) => option.value !== "none");
+const ASSIGNMENT_ASSIGNEE_OPTIONS = [
+  { value: "personal", label: "Cá nhân" },
+  { value: "group", label: "Nhóm" },
+  { value: "intergroup", label: "Liên nhóm" },
+  { value: "personalTopic", label: "Cá nhân (Topic)" },
+  { value: "groupTopic", label: "Nhóm (Topic)" },
+  { value: "intergroupTopic", label: "Liên nhóm (Topic)" }
+];
 const ASSIGNMENT_EXAM_SESSION_PREFIX = "classroompwa-active-exam-session:";
 
 function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerOpenConsumed, updateCourse }) {
@@ -6321,9 +6333,9 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
                       value={draft.type}
                       onChange={(event) => setDraft({ ...draft, type: event.target.value })}
                     >
-                      <option value="personal">Cá nhân</option>
-                      <option value="group">Nhóm</option>
-                      <option value="intergroup">Liên nhóm</option>
+                      {ASSIGNMENT_ASSIGNEE_OPTIONS.map((option) => (
+                        <option value={option.value} key={option.value}>{option.label}</option>
+                      ))}
                     </select>
                   </label>
                   <label className="assignment-create-field" htmlFor="assignment-format">
@@ -6428,6 +6440,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
   const lastAssignment = assignmentIndex === assignmentCount - 1;
   const assignmentFormat = normalizeAssignmentFormat(assignment.format);
   const assignmentType = normalizeGradebookType(assignment.type, "personal");
+  const assignmentBaseType = baseGradebookType(assignmentType);
   const reviewerType = normalizeDiscussionTopicType(assignment.reviewerType, assignmentFormat);
   const reviewerTargets = useMemo(
     () => buildAssignmentReviewerTargets(course, assignment),
@@ -6449,7 +6462,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
     : { scope: null, submission: null };
   const scopedExamSubmission = learnerExamScopeStatus.submission;
   const userSubmissions = canHaveSubmissions
-    ? (assignmentFormat === "exam" && assignmentType !== "personal" && scopedExamSubmission ? [scopedExamSubmission] : ownCompletedSubmissions)
+    ? (assignmentFormat === "exam" && assignmentBaseType !== "personal" && scopedExamSubmission ? [scopedExamSubmission] : ownCompletedSubmissions)
     : [];
   const examLockMessage = assignmentFormat === "exam" && scopedExamSubmission
     ? examScopeSubmittedMessage(learnerExamScopeStatus.scope, scopedExamSubmission, user.email)
@@ -6731,9 +6744,9 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                     value={editDraft.type}
                     onChange={(event) => setEditDraft((current) => ({ ...current, type: event.target.value }))}
                   >
-                    <option value="personal">Cá nhân</option>
-                    <option value="group">Nhóm</option>
-                    <option value="intergroup">Liên nhóm</option>
+                    {ASSIGNMENT_ASSIGNEE_OPTIONS.map((option) => (
+                      <option value={option.value} key={option.value}>{option.label}</option>
+                    ))}
                   </select>
                 </label>
                 <label>
@@ -7412,7 +7425,7 @@ function AssignmentReviewerWorkspace({ admin, course, user, assignment, target, 
   const groupedQuestions = useMemo(() => groupAssignmentReviewerQuestions(questions), [questions]);
   const questionScope = useMemo(
     () => buildReviewerQuestionScope(course, assigneeType, user),
-    [course.members, course.groupTopics, course.intergroupTopics, assigneeType, user?.email]
+    [course.members, course.personalTopics, course.groupTopics, course.intergroupTopics, assigneeType, user?.email]
   );
 
   async function postReviewerQuestionPrompt() {
@@ -8172,6 +8185,7 @@ function compareAssignmentReviewerTargets(first, second) {
 }
 
 function buildReviewerQuestionScope(course, reviewerType, user) {
+  const scopeType = baseGradebookType(reviewerType);
   const normalizedEmail = normalizeEmail(user?.email || "");
   const member = findCourseMember(course, normalizedEmail);
   if (!member) {
@@ -8180,7 +8194,7 @@ function buildReviewerQuestionScope(course, reviewerType, user) {
       label: "Lecturer"
     };
   }
-  if (reviewerType === "group") {
+  if (scopeType === "group") {
     const rawGroup = String(member?.group ?? "").trim();
     return {
       key: rawGroup ? `group:${rawGroup}` : `group:none:${normalizedEmail}`,
@@ -8188,7 +8202,7 @@ function buildReviewerQuestionScope(course, reviewerType, user) {
     };
   }
 
-  if (reviewerType === "intergroup") {
+  if (scopeType === "intergroup") {
     const groupCards = buildGroupTopicCards(course);
     const intergroupCard = buildIntergroupTopicCards(course, groupCards).find((link) => (
       link.groups.some((group) => group.members.some((item) => normalizeEmail(item.email) === normalizedEmail))
@@ -8529,6 +8543,7 @@ function normalizeAssignmentRatios(assignments) {
   if (!assignments.length) return [];
   const normalized = assignments.map((assignment) => ({
     ...assignment,
+    type: normalizeGradebookType(assignment.type, "personal"),
     format: normalizeAssignmentFormat(assignment.format)
   }));
   const lastIndex = normalized.length - 1;
@@ -8569,11 +8584,26 @@ function formatRatioNumber(value) {
 const gradebookTypeLabels = {
   personal: "Cá nhân",
   group: "Nhóm",
-  intergroup: "Liên nhóm"
+  intergroup: "Liên nhóm",
+  personalTopic: "Cá nhân (Topic)",
+  groupTopic: "Nhóm (Topic)",
+  intergroupTopic: "Liên nhóm (Topic)"
 };
 
 function normalizeGradebookType(type, fallback = "personal") {
   return gradebookTypeLabels[type] ? type : fallback;
+}
+
+function baseGradebookType(type) {
+  const normalizedType = normalizeGradebookType(type, "personal");
+  if (normalizedType === "personalTopic") return "personal";
+  if (normalizedType === "groupTopic") return "group";
+  if (normalizedType === "intergroupTopic") return "intergroup";
+  return normalizedType;
+}
+
+function gradebookTypeUsesTopic(type) {
+  return ["personalTopic", "groupTopic", "intergroupTopic"].includes(normalizeGradebookType(type, "personal"));
 }
 
 function findStoredGradebook(course, assignmentId) {
@@ -8823,6 +8853,8 @@ function GradebookItem({ admin, user, book, course, updateCourse, onOpenExamGrad
   const availableExams = Array.isArray(course.exams) && course.exams.length > 0 ? normalizeExams(course.exams) : [];
   const exam = examGradebook ? findAssignmentExam(assignment, availableExams) : null;
   const bookType = normalizeGradebookType(book.type, "personal");
+  const bookBaseType = baseGradebookType(bookType);
+  const showTopic = gradebookTypeUsesTopic(bookType);
   const published = isGradebookPublished(book);
 
   useEffect(() => {
@@ -8949,12 +8981,12 @@ function GradebookItem({ admin, user, book, course, updateCourse, onOpenExamGrad
             draftRows={draftRows}
             onGrade={() => onOpenExamGrading?.({ assignment, book, exam, initialRows: draftRows })}
           />
-        ) : bookType === "personal" ? (
-          <PersonalGradeTable admin={admin} user={user} course={course} draftRows={draftRows} onScoreChange={changeDraftScore} />
-        ) : bookType === "intergroup" ? (
-          <IntergroupGradebookCards admin={admin} user={user} course={course} draftRows={draftRows} onScoreChange={changeDraftScore} onBonusChange={changeDraftBonus} />
+        ) : bookBaseType === "personal" ? (
+          <PersonalGradeTable admin={admin} user={user} course={course} draftRows={draftRows} onScoreChange={changeDraftScore} showTopic={showTopic} />
+        ) : bookBaseType === "intergroup" ? (
+          <IntergroupGradebookCards admin={admin} user={user} course={course} draftRows={draftRows} onScoreChange={changeDraftScore} onBonusChange={changeDraftBonus} showTopic={showTopic} />
         ) : (
-          <GroupGradebookCards admin={admin} user={user} course={course} draftRows={draftRows} onScoreChange={changeDraftScore} onBonusChange={changeDraftBonus} />
+          <GroupGradebookCards admin={admin} user={user} course={course} draftRows={draftRows} onScoreChange={changeDraftScore} onBonusChange={changeDraftBonus} showTopic={showTopic} />
         )
       )}
     </article>
@@ -8963,6 +8995,8 @@ function GradebookItem({ admin, user, book, course, updateCourse, onOpenExamGrad
 
 function ExamGradebookPanel({ admin, user, course, assignment, book, exam, draftRows, onGrade }) {
   const bookType = examGradebookType(book, assignment);
+  const bookBaseType = baseGradebookType(bookType);
+  const showTopic = gradebookTypeUsesTopic(bookType);
   const displayRows = draftRows?.length
     ? draftRows
     : buildExamGradeRowsForSave(course, assignment, exam, draftRows, bookType);
@@ -8987,18 +9021,19 @@ function ExamGradebookPanel({ admin, user, course, assignment, book, exam, draft
           </button>
         )}
       </div>
-      {bookType === "personal" ? (
-        <PersonalGradeTable admin={admin} user={user} course={course} draftRows={displayRows} readOnly emptyScoreLabel={admin ? "" : "Chưa có điểm"} />
-      ) : bookType === "intergroup" ? (
-        <ExamAllocatedGradebookCards admin={admin} user={user} course={course} draftRows={displayRows} type="intergroup" />
+      {bookBaseType === "personal" ? (
+        <PersonalGradeTable admin={admin} user={user} course={course} draftRows={displayRows} readOnly emptyScoreLabel={admin ? "" : "Chưa có điểm"} showTopic={showTopic} />
+      ) : bookBaseType === "intergroup" ? (
+        <ExamAllocatedGradebookCards admin={admin} user={user} course={course} draftRows={displayRows} type="intergroup" showTopic={showTopic} />
       ) : (
-        <ExamAllocatedGradebookCards admin={admin} user={user} course={course} draftRows={displayRows} type="group" />
+        <ExamAllocatedGradebookCards admin={admin} user={user} course={course} draftRows={displayRows} type="group" showTopic={showTopic} />
       )}
     </div>
   );
 }
 
 function ExamGradingWorkspace({ course, assignment, book, exam, bookType = "personal", initialRows, onBack, onSave }) {
+  const gradingBaseType = baseGradebookType(bookType);
   const parts = normalizeExamParts(exam?.parts).filter((part) => normalizeExamQuestions(part.questions).length > 0);
   const firstPartId = parts[0]?.id || "total";
   const [activeTab, setActiveTab] = useState(firstPartId);
@@ -9069,14 +9104,14 @@ function ExamGradingWorkspace({ course, assignment, book, exam, bookType = "pers
       </div>
       <div className="exam-grading-body">
         {activeTab === "total" ? (
-          <ExamTotalGradeTable course={course} rows={rows} parts={parts} type={bookType} />
+          <ExamTotalGradeTable course={course} rows={rows} parts={parts} type={gradingBaseType} />
         ) : activePart ? (
           <ExamGradingPart
             course={course}
             part={activePart}
             partIndex={parts.findIndex((part) => part.id === activePart.id)}
             rows={rows}
-            type={bookType}
+            type={gradingBaseType}
             activeQuestionKey={activeQuestions[activePart.id] || ""}
             onActiveQuestionChange={(questionKey) => setActiveQuestions((current) => ({ ...current, [activePart.id]: questionKey }))}
             onQuestionScoreChange={setQuestionScore}
@@ -9394,13 +9429,13 @@ function examScopeRepresentativeLabel(row) {
   return row.representative?.name || row.representativeEmail || "Chưa có bài nộp";
 }
 
-function PersonalGradeTable({ admin, user, course, draftRows, onScoreChange, readOnly = false, emptyScoreLabel = "Chưa có điểm" }) {
-  const rows = buildPersonalGradeRows(course, draftRows).filter((row) => admin || row.member.email === user.email);
+function PersonalGradeTable({ admin, user, course, draftRows, onScoreChange, readOnly = false, emptyScoreLabel = "Chưa có điểm", showTopic = false }) {
+  const rows = buildPersonalGradeRows(course, draftRows, showTopic).filter((row) => admin || row.member.email === user.email);
   if (rows.length === 0) return <div className="empty-state compact-empty">Chưa có học viên phù hợp.</div>;
 
   return (
     <table className="data-table grade-personal-table">
-      <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ và tên</th><th>Mã số</th><th>Điểm</th><th>Email</th></tr></thead>
+      <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ và tên</th><th>Mã số</th>{showTopic && <th>Topic</th>}<th>Điểm</th><th>Email</th></tr></thead>
       <tbody>
         {rows.map((row) => (
           <tr key={row.key}>
@@ -9408,6 +9443,7 @@ function PersonalGradeTable({ admin, user, course, draftRows, onScoreChange, rea
             <td><ProfileAvatar user={{ ...row.member, photoURL: row.member.photoURL || course.profiles?.[row.member.email]?.photoURL || "" }} label={row.member.name || row.member.email} small /></td>
             <td>{row.member.name || row.member.email}</td>
             <td>{row.member.studentId}</td>
+            {showTopic && <td>{row.topicTitle || "Chưa có topic."}</td>}
             <td>
               {admin && !readOnly ? (
                 <input className="score-input" data-enter-group="personal-grade-score" inputMode="decimal" value={row.score} onKeyDown={(event) => focusNextInputOnEnter(event, "personal-grade-score")} onChange={(event) => onScoreChange(row.key, event.target.value)} />
@@ -9423,9 +9459,9 @@ function PersonalGradeTable({ admin, user, course, draftRows, onScoreChange, rea
   );
 }
 
-function ExamAllocatedGradebookCards({ admin, user, course, draftRows, type = "group" }) {
+function ExamAllocatedGradebookCards({ admin, user, course, draftRows, type = "group", showTopic = true }) {
   const cards = type === "intergroup"
-    ? buildIntergroupGradeCards(course, draftRows)
+    ? buildIntergroupGradeCards(course, draftRows, showTopic)
       .map((card) => ({
         ...card,
         visibleGroups: card.groups
@@ -9433,7 +9469,7 @@ function ExamAllocatedGradebookCards({ admin, user, course, draftRows, type = "g
           .filter((group) => group.visibleMembers.length > 0)
       }))
       .filter((card) => card.visibleGroups.length > 0)
-    : buildGroupGradeCards(course, draftRows)
+    : buildGroupGradeCards(course, draftRows, showTopic)
       .map((card) => ({ ...card, visibleMembers: visibleGradeMembers(card.members, admin, user) }))
       .filter((card) => card.visibleMembers.length > 0);
 
@@ -9463,6 +9499,12 @@ function ExamAllocatedGradebookCards({ admin, user, course, draftRows, type = "g
               </label>
             </div>
           </div>
+          {showTopic && (
+            <div className="group-topic-topic-row">
+              <span>Topic:</span>
+              <p>{card.topicTitle || "Chưa có topic."}</p>
+            </div>
+          )}
           {type === "intergroup" ? (
             <div className="intergroup-member-list grade-intergroup-list">
               {card.visibleGroups.map((group) => (
@@ -9503,8 +9545,8 @@ function ExamAllocatedMembersTable({ members, course, score, admin }) {
   );
 }
 
-function GroupGradebookCards({ admin, user, course, draftRows, onScoreChange = () => {}, onBonusChange = () => {}, readOnly = false }) {
-  const cards = buildGroupGradeCards(course, draftRows)
+function GroupGradebookCards({ admin, user, course, draftRows, onScoreChange = () => {}, onBonusChange = () => {}, readOnly = false, showTopic = true }) {
+  const cards = buildGroupGradeCards(course, draftRows, showTopic)
     .map((card) => ({ ...card, visibleMembers: visibleGradeMembers(card.members, admin, user) }))
     .filter((card) => card.visibleMembers.length > 0);
   if (cards.length === 0) return <div className="empty-state compact-empty">Chưa có nhóm phù hợp.</div>;
@@ -9532,10 +9574,12 @@ function GroupGradebookCards({ admin, user, course, draftRows, onScoreChange = (
                 )}
               </label>
             </div>
-            <div className="group-topic-topic-row">
-              <span>Topic:</span>
-              <p>{card.topicTitle || "Chưa có topic."}</p>
-            </div>
+            {showTopic && (
+              <div className="group-topic-topic-row">
+                <span>Topic:</span>
+                <p>{card.topicTitle || "Chưa có topic."}</p>
+              </div>
+            )}
           </div>
           <div className="group-topic-table-wrap">
             <GradeMembersTable admin={admin} members={card.visibleMembers} course={course} score={card.score} bonuses={card.bonuses} rowKey={card.gradeKey} onBonusChange={onBonusChange} readOnly={readOnly} />
@@ -9546,8 +9590,8 @@ function GroupGradebookCards({ admin, user, course, draftRows, onScoreChange = (
   );
 }
 
-function IntergroupGradebookCards({ admin, user, course, draftRows, onScoreChange = () => {}, onBonusChange = () => {}, readOnly = false }) {
-  const cards = buildIntergroupGradeCards(course, draftRows)
+function IntergroupGradebookCards({ admin, user, course, draftRows, onScoreChange = () => {}, onBonusChange = () => {}, readOnly = false, showTopic = true }) {
+  const cards = buildIntergroupGradeCards(course, draftRows, showTopic)
     .map((card) => ({
       ...card,
       visibleGroups: card.groups
@@ -9573,10 +9617,12 @@ function IntergroupGradebookCards({ admin, user, course, draftRows, onScoreChang
                 )}
               </label>
             </div>
-            <div className="group-topic-topic-row">
-              <span>Topic:</span>
-              <p>{card.topicTitle || "Chưa có topic."}</p>
-            </div>
+            {showTopic && (
+              <div className="group-topic-topic-row">
+                <span>Topic:</span>
+                <p>{card.topicTitle || "Chưa có topic."}</p>
+              </div>
+            )}
           </div>
           <div className="intergroup-member-list grade-intergroup-list">
             {card.visibleGroups.map((group) => (
@@ -9624,27 +9670,32 @@ function GradeMembersTable({ admin, members, course, score, bonuses, rowKey, onB
 }
 
 function gradebookSourceCount(course, type) {
-  if (type === "personal") return buildPersonalGradeRows(course, []).length;
-  if (type === "intergroup") return buildIntergroupGradeCards(course, []).length;
-  return buildGroupGradeCards(course, []).length;
+  const baseType = baseGradebookType(type);
+  const showTopic = gradebookTypeUsesTopic(type);
+  if (baseType === "personal") return buildPersonalGradeRows(course, [], showTopic).length;
+  if (baseType === "intergroup") return buildIntergroupGradeCards(course, [], showTopic).length;
+  return buildGroupGradeCards(course, [], showTopic).length;
 }
 
 function buildGradebookRowsForSave(course, type, draftRows) {
-  if (type === "personal") {
-    return buildPersonalGradeRows(course, draftRows).map((row) => ({
+  const baseType = baseGradebookType(type);
+  const showTopic = gradebookTypeUsesTopic(type);
+  if (baseType === "personal") {
+    return buildPersonalGradeRows(course, draftRows, showTopic).map((row) => ({
       key: row.key,
       email: row.member.email,
       label: `${row.member.order}. ${row.member.name}`,
+      topic: showTopic ? row.topicTitle : "",
       score: row.score || ""
     }));
   }
 
-  if (type === "intergroup") {
-    return buildIntergroupGradeCards(course, draftRows).map((card) => ({
+  if (baseType === "intergroup") {
+    return buildIntergroupGradeCards(course, draftRows, showTopic).map((card) => ({
       key: card.gradeKey,
       intergroup: card.rawIntergroup,
       label: card.label,
-      topic: card.topicTitle,
+      topic: showTopic ? card.topicTitle : "",
       groupKeys: card.groupKeys,
       memberEmails: uniqueValues(card.groups.flatMap((group) => group.members.map((member) => member.email))),
       score: card.score || "",
@@ -9652,11 +9703,11 @@ function buildGradebookRowsForSave(course, type, draftRows) {
     }));
   }
 
-  return buildGroupGradeCards(course, draftRows).map((card) => ({
+  return buildGroupGradeCards(course, draftRows, showTopic).map((card) => ({
     key: card.gradeKey,
     group: card.rawGroup,
     label: card.label,
-    topic: card.topicTitle,
+    topic: showTopic ? card.topicTitle : "",
     reportOrder: card.reportOrder,
     memberEmails: card.members.map((member) => member.email),
     score: card.score || "",
@@ -9664,7 +9715,8 @@ function buildGradebookRowsForSave(course, type, draftRows) {
   }));
 }
 
-function buildPersonalGradeRows(course, draftRows) {
+function buildPersonalGradeRows(course, draftRows, showTopic = false) {
+  const personalTopicsByEmail = new Map((course.personalTopics || []).map((item) => [normalizeEmail(item.email), String(item.topic || "").trim()]));
   return course.members
     .filter((member) => member.status === "accepted")
     .sort(compareMemberOrder)
@@ -9673,21 +9725,25 @@ function buildPersonalGradeRows(course, draftRows) {
       return {
         key: member.email,
         member,
+        topicTitle: showTopic ? (personalTopicsByEmail.get(normalizeEmail(member.email)) || "") : "",
         score: row?.score || ""
       };
     });
 }
 
-function buildGroupGradeCards(course, draftRows) {
-  return [...buildGroupTopicCards(course)].sort(compareGroupTopicCards).map((group) => {
+function buildGroupGradeCards(course, draftRows, showTopic = true) {
+  const groups = showTopic
+    ? buildGroupTopicCards(course)
+    : groupMembersByGroup((course.members || []).filter((member) => member.status === "accepted")).filter((group) => group.rawGroup);
+  return [...groups].sort(compareGroupTopicCards).map((group) => {
     const gradeKey = group.topic?.id || groupTopicId(group.rawGroup);
     const row = findGradebookRow(draftRows, gradeKey);
     return {
       gradeKey,
       rawGroup: group.rawGroup,
       label: group.label,
-      reportOrder: group.topic?.reportOrder || group.rawGroup || "",
-      topicTitle: group.topic?.topic || "",
+      reportOrder: showTopic ? (group.topic?.reportOrder || group.rawGroup || "") : (group.rawGroup || ""),
+      topicTitle: showTopic ? (group.topic?.topic || "") : "",
       members: group.members,
       score: row?.score || "",
       bonuses: row?.bonuses || {}
@@ -9695,7 +9751,7 @@ function buildGroupGradeCards(course, draftRows) {
   });
 }
 
-function buildIntergroupGradeCards(course, draftRows) {
+function buildIntergroupGradeCards(course, draftRows, showTopic = true) {
   return buildIntergroupTopicCards(course, buildGroupTopicCards(course)).map((link) => {
     const gradeKey = link.topic?.id || intergroupTopicId(link.rawIntergroup);
     const row = findGradebookRow(draftRows, gradeKey);
@@ -9703,7 +9759,7 @@ function buildIntergroupGradeCards(course, draftRows) {
       gradeKey,
       rawIntergroup: link.rawIntergroup,
       label: link.label,
-      topicTitle: link.topic?.topic || "",
+      topicTitle: showTopic ? (link.topic?.topic || "") : "",
       groupKeys: link.groupKeys,
       groups: link.groups,
       score: row?.score || "",
@@ -9737,9 +9793,10 @@ function buildSummaryComponent(course, assignment, member, admin) {
   if (!book) return emptySummaryScore(assignment.id);
 
   const bookType = normalizeGradebookType(book.type, "personal");
+  const bookBaseType = baseGradebookType(bookType);
   const examGradebook = isExamGradebook(book, assignment);
-  if (bookType === "personal") return personalSummaryScore(course, book, assignment.id, member);
-  if (bookType === "intergroup") return intergroupSummaryScore(course, book, assignment.id, member, examGradebook);
+  if (bookBaseType === "personal") return personalSummaryScore(course, book, assignment.id, member);
+  if (bookBaseType === "intergroup") return intergroupSummaryScore(course, book, assignment.id, member, examGradebook);
   return groupSummaryScore(course, book, assignment.id, member, examGradebook);
 }
 
@@ -9768,7 +9825,8 @@ function courseMemberByEmail(course, email) {
 }
 
 function assignmentExamScope(course, assignment, email, explicitType = normalizeGradebookType(assignment?.type, "personal")) {
-  const type = normalizeGradebookType(explicitType, "personal");
+  const type = baseGradebookType(explicitType);
+  const showTopic = gradebookTypeUsesTopic(explicitType);
   const normalizedEmail = normalizeEmail(email || "");
   const fallbackMember = courseMemberByEmail(course, email);
   const fallbackEmail = fallbackMember?.email || email || "";
@@ -9783,7 +9841,7 @@ function assignmentExamScope(course, assignment, email, explicitType = normalize
   if (!course || type === "personal") return fallbackScope;
 
   if (type === "group") {
-    const card = buildGroupGradeCards(course, []).find((item) => (
+    const card = buildGroupGradeCards(course, [], showTopic).find((item) => (
       item.members.some((member) => normalizeEmail(member.email) === normalizedEmail)
     ));
     if (!card) return fallbackScope;
@@ -9798,7 +9856,7 @@ function assignmentExamScope(course, assignment, email, explicitType = normalize
     };
   }
 
-  const intergroupCard = buildIntergroupGradeCards(course, []).find((item) => (
+  const intergroupCard = buildIntergroupGradeCards(course, [], showTopic).find((item) => (
     item.groups.some((group) => group.members.some((member) => normalizeEmail(member.email) === normalizedEmail))
   ));
   if (!intergroupCard) return fallbackScope;
@@ -9816,8 +9874,8 @@ function assignmentExamScope(course, assignment, email, explicitType = normalize
 }
 
 function assignmentExamScopeFromSubmission(course, assignment, submission, explicitType = normalizeGradebookType(assignment?.type, "personal")) {
-  const type = normalizeGradebookType(explicitType, "personal");
-  if (submission?.examScopeKey && normalizeGradebookType(submission.examScopeType, type) === type) {
+  const type = baseGradebookType(explicitType);
+  if (submission?.examScopeKey && baseGradebookType(submission.examScopeType || type) === type) {
     return {
       type,
       key: submission.examScopeKey,
@@ -9838,13 +9896,13 @@ function examScopeSubmissionFields(scope) {
 }
 
 function latestSubmittedExamSubmissionsByScope(course, assignment, explicitType = normalizeGradebookType(assignment?.type, "personal")) {
-  const type = normalizeGradebookType(explicitType, "personal");
+  const fullType = normalizeGradebookType(explicitType, "personal");
   const map = new Map();
   cleanAssignmentSubmissionList(assignment?.submissions || [])
     .filter((submission) => submission?.type === "exam" && submission.status === "submitted")
     .sort((first, second) => Number(second.examSubmittedAtMillis || second.submittedAtMillis || 0) - Number(first.examSubmittedAtMillis || first.submittedAtMillis || 0))
     .forEach((submission) => {
-      const scope = assignmentExamScopeFromSubmission(course, assignment, submission, type);
+      const scope = assignmentExamScopeFromSubmission(course, assignment, submission, fullType);
       if (!scope.key || map.has(scope.key)) return;
       map.set(scope.key, {
         ...submission,
@@ -9922,7 +9980,8 @@ function buildExamGradeRowsForSave(course, assignment, exam, draftRows, type = e
 
 function buildExamGradingRows(course, assignment, exam, savedRows = [], questionScoreOverrides = null, type = "personal") {
   const normalizedType = normalizeGradebookType(type, "personal");
-  if (normalizedType !== "personal") {
+  const baseType = baseGradebookType(normalizedType);
+  if (baseType !== "personal") {
     return buildExamScopeGradingRows(course, assignment, exam, savedRows, questionScoreOverrides, normalizedType);
   }
 
@@ -9972,12 +10031,15 @@ function buildExamGradingRows(course, assignment, exam, savedRows = [], question
 }
 
 function buildExamScopeGradingRows(course, assignment, exam, savedRows = [], questionScoreOverrides = null, type = "group") {
+  const normalizedType = normalizeGradebookType(type, "group");
+  const baseType = baseGradebookType(normalizedType);
+  const showTopic = gradebookTypeUsesTopic(normalizedType);
   const parts = normalizeExamParts(exam?.parts).filter((part) => normalizeExamQuestions(part.questions).length > 0);
-  const submissionsByScope = latestSubmittedExamSubmissionsByScope(course, assignment, type);
-  const cards = type === "intergroup" ? buildIntergroupGradeCards(course, savedRows) : buildGroupGradeCards(course, savedRows);
+  const submissionsByScope = latestSubmittedExamSubmissionsByScope(course, assignment, normalizedType);
+  const cards = baseType === "intergroup" ? buildIntergroupGradeCards(course, savedRows, showTopic) : buildGroupGradeCards(course, savedRows, showTopic);
 
   return cards.map((card) => {
-    const members = type === "intergroup" ? card.groups.flatMap((group) => group.members) : card.members;
+    const members = baseType === "intergroup" ? card.groups.flatMap((group) => group.members) : card.members;
     const savedRow = findGradebookRow(savedRows, card.gradeKey);
     const submission = submissionsByScope.get(card.gradeKey) || null;
     const representative = submission ? assignmentSubmissionIdentity(course, submission, { email: submission.email }) : null;
@@ -10002,7 +10064,7 @@ function buildExamScopeGradingRows(course, assignment, exam, savedRows = [], que
 
     return {
       key: card.gradeKey,
-      scopeType: type,
+      scopeType: baseType,
       label: card.label,
       reportOrder: card.reportOrder || "",
       topicTitle: card.topicTitle || "",
@@ -10046,8 +10108,9 @@ function hasExamGradeDetail(row) {
 
 function serializeExamGradeRows(rows, exam, options = {}) {
   const type = normalizeGradebookType(options.type, "personal");
+  const baseType = baseGradebookType(type);
   const savedAtMillis = Date.now();
-  if (type === "group" || type === "intergroup") {
+  if (baseType === "group" || baseType === "intergroup") {
     return rows.map((row) => serializeScopeExamGradeRow(row, exam, savedAtMillis));
   }
   return rows.map((row) => serializePersonalExamGradeRow(row, exam, savedAtMillis));
@@ -10156,18 +10219,18 @@ function partsAwarePartTitle(part) {
 }
 
 function personalSummaryScore(course, book, assignmentId, member) {
-  const row = buildPersonalGradeRows(course, book.rows || []).find((item) => item.member.email === member.email);
+  const row = buildPersonalGradeRows(course, book.rows || [], gradebookTypeUsesTopic(book?.type)).find((item) => item.member.email === member.email);
   return scoreSummaryValue(assignmentId, row?.score);
 }
 
 function groupSummaryScore(course, book, assignmentId, member, ignoreBonus = false) {
-  const card = buildGroupGradeCards(course, book.rows || []).find((item) => item.members.some((student) => student.email === member.email));
+  const card = buildGroupGradeCards(course, book.rows || [], gradebookTypeUsesTopic(book?.type)).find((item) => item.members.some((student) => student.email === member.email));
   if (ignoreBonus) return scoreSummaryValue(assignmentId, card?.score);
   return combinedSummaryScore(assignmentId, card?.score, card?.bonuses?.[member.email]);
 }
 
 function intergroupSummaryScore(course, book, assignmentId, member, ignoreBonus = false) {
-  const card = buildIntergroupGradeCards(course, book.rows || []).find((item) => (
+  const card = buildIntergroupGradeCards(course, book.rows || [], gradebookTypeUsesTopic(book?.type)).find((item) => (
     item.groups.some((group) => group.members.some((student) => student.email === member.email))
   ));
   if (ignoreBonus) return scoreSummaryValue(assignmentId, card?.score);
