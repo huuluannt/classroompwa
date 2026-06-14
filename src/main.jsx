@@ -426,8 +426,9 @@ function formatFileSize(size) {
 
 function draftFileTypeLabel(file) {
   if (file?.type) return file.type;
-  const extension = String(file?.name || "").split(".").pop();
-  return extension && extension !== file?.name ? extension.toUpperCase() : "file";
+  const fileName = String(file?.name || file?.fileName || "");
+  const extension = fileName.split(".").pop();
+  return extension && extension !== fileName ? extension.toUpperCase() : "file";
 }
 
 function useOutsideClick(ref, active, onOutside) {
@@ -2102,6 +2103,57 @@ function PanelTitle({ title, action }) {
   );
 }
 
+function jsonSignature(value) {
+  try {
+    return JSON.stringify(value ?? null);
+  } catch {
+    return String(value ?? "");
+  }
+}
+
+function SaveButton({
+  children = "Save",
+  className = "",
+  dirty = false,
+  disabled = false,
+  icon = null,
+  onClick,
+  saving: controlledSaving = false,
+  type = "button",
+  ...props
+}) {
+  const [internalSaving, setInternalSaving] = useState(false);
+  const saving = Boolean(controlledSaving || internalSaving);
+
+  async function handleClick(event) {
+    if (disabled || saving) return;
+    const startedAt = Date.now();
+    setInternalSaving(true);
+    try {
+      await Promise.resolve(onClick?.(event));
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < 420) {
+        await new Promise((resolve) => window.setTimeout(resolve, 420 - elapsed));
+      }
+    } finally {
+      setInternalSaving(false);
+    }
+  }
+
+  return (
+    <button
+      className={`save-action ${className} ${dirty ? "is-dirty" : ""} ${saving ? "is-saving" : ""}`.trim()}
+      type={type}
+      onClick={handleClick}
+      disabled={disabled || saving}
+      {...props}
+    >
+      {saving ? <span className="button-spinner" /> : icon}
+      {saving ? "Saving" : children}
+    </button>
+  );
+}
+
 
 function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMembers, user, course, updateCourse }) {
   const requestConfirm = useConfirmAction();
@@ -2121,6 +2173,11 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
   const [memberDrafts, setMemberDrafts] = useState({});
   const orderedMembers = [...accepted].sort(compareMemberOrder);
   const groupedMembers = groupMembersByGroup(accepted);
+  const memberDraftDirty = accepted.some((member) => {
+    const draft = memberDrafts[member.email] || {};
+    return String(draft.order ?? "") !== String(member.order || "")
+      || String(draft.group ?? "") !== String(member.group || "");
+  });
 
   useOutsideClick(lecturerAddRef, lecturerAddOpen, () => setLecturerAddOpen(false));
   useOutsideClick(virtualAddRef, virtualAddOpen, () => setVirtualAddOpen(false));
@@ -2195,7 +2252,7 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
   }
 
   function saveMembers() {
-    updateCourse((current) => ({
+    return updateCourse((current) => ({
       ...current,
       members: current.members.map((member) => {
         const draft = memberDrafts[member.email];
@@ -2438,7 +2495,7 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
               <button type="button" className={viewMode === "personal" ? "active" : ""} onClick={() => setViewMode("personal")}>Cá nhân</button>
               <button type="button" className={viewMode === "group" ? "active" : ""} onClick={() => setViewMode("group")}>Nhóm</button>
             </div>
-            {canEditMembers && <button className="primary-action compact" onClick={saveMembers}>Save</button>}
+            {canEditMembers && <SaveButton className="compact" dirty={memberDraftDirty} onClick={saveMembers} />}
           </div>
         </div>
         {viewMode === "personal" ? (
@@ -2455,7 +2512,7 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
         )}
         {canEditMembers && (
           <div className="bottom-save-row">
-            <button className="primary-action compact" type="button" onClick={saveMembers}>Save</button>
+            <SaveButton className="compact" dirty={memberDraftDirty} onClick={saveMembers} />
           </div>
         )}
       </div>
@@ -3252,15 +3309,17 @@ function InfoCard({ admin, course, updateCourse }) {
   const [draft, setDraft] = useState(() => ({ rules: "", zaloGroupUrl: "", ...course.info }));
   const fields = [["title", "Title"], ["size", "Sĩ số"], ["time", "Thời gian"], ["room", "Phòng học"]];
   const zaloGroupUrl = normalizeExternalUrl(course.info?.zaloGroupUrl);
+  const normalizedInfoDraft = { rules: "", zaloGroupUrl: "", ...draft };
+  const infoDirty = jsonSignature(normalizedInfoDraft) !== jsonSignature({ rules: "", zaloGroupUrl: "", ...course.info });
 
   useEffect(() => {
     setDraft({ rules: "", zaloGroupUrl: "", ...course.info });
   }, [course.id, infoSignature]);
 
   function saveInfo() {
-    updateCourse((current) => ({
+    return updateCourse((current) => ({
       ...current,
-      info: { rules: "", zaloGroupUrl: "", ...draft }
+      info: normalizedInfoDraft
     }), {
       toast: true,
       writeMembers: false,
@@ -3271,7 +3330,7 @@ function InfoCard({ admin, course, updateCourse }) {
 
   return (
     <>
-      <PanelTitle title="Thông tin lớp học" action={admin && <button className="primary-action compact" onClick={saveInfo}>Save</button>} />
+      <PanelTitle title="Thông tin lớp học" action={admin && <SaveButton className="compact" dirty={infoDirty} onClick={saveInfo} />} />
       <div className="info-grid">
         {fields.map(([key, label]) => (
           <label key={key}>
@@ -3313,6 +3372,9 @@ function ScheduleCard({ admin, course, updateCourse }) {
   const [rows, setRows] = useState(() => normalizeScheduleRows(course.scheduleRows));
   const activeEditorRef = useRef(null);
   const scheduleSignature = JSON.stringify(course.scheduleRows || []);
+  const savedScheduleRows = normalizeScheduleRows(course.scheduleRows).map(normalizeScheduleRowForSave);
+  const draftScheduleRows = rows.map(normalizeScheduleRowForSave);
+  const scheduleDirty = jsonSignature(draftScheduleRows) !== jsonSignature(savedScheduleRows);
 
   useEffect(() => {
     setRows(normalizeScheduleRows(course.scheduleRows));
@@ -3331,7 +3393,7 @@ function ScheduleCard({ admin, course, updateCourse }) {
   }
 
   function saveSchedule() {
-    updateCourse((current) => ({ ...current, scheduleRows: rows.map(normalizeScheduleRowForSave) }), {
+    return updateCourse((current) => ({ ...current, scheduleRows: draftScheduleRows }), {
       toast: true,
       writeMembers: false,
       writeSummary: false,
@@ -3360,7 +3422,7 @@ function ScheduleCard({ admin, course, updateCourse }) {
             <button className="secondary-action compact" type="button" onClick={() => applyFormat("bold")} title="In đậm"><strong>B</strong></button>
             <button className="secondary-action compact highlight-tool" type="button" onClick={() => applyFormat("highlight")} title="Highlight">A</button>
             <button className="primary-action compact" type="button" onClick={addWeek}><Plus size={15} /> Thêm tuần</button>
-            <button className="primary-action compact" type="button" onClick={saveSchedule}>Save</button>
+            <SaveButton className="compact" dirty={scheduleDirty} onClick={saveSchedule} />
           </div>
         )}
       />
@@ -3541,6 +3603,11 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
   const [draftIntergroups, setDraftIntergroups] = useState({});
   const sortedGroupCards = useMemo(() => [...groupCards].sort((first, second) => compareGroupTopicCards(first, second, draftOrders)), [groupCards, draftOrders]);
   const nextGroupNumber = nextNumericText(groupCards.map((group) => group.rawGroup));
+  const groupTopicDirty = groupCards.some((group) => (
+    String(draftTopics[group.key] || "") !== String(group.topic?.topic || "")
+    || String(draftOrders[group.key] || "") !== String(group.topic?.reportOrder ?? "")
+    || String(draftIntergroups[group.key] || "") !== String(group.topic?.intergroup || "")
+  ));
 
   useOutsideClick(addPopoverRef, addOpen, () => setAddOpen(false));
 
@@ -3560,7 +3627,7 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
       intergroup: draftIntergroups[group.key] || "",
       memberEmails: group.members.map((member) => member.email)
     }));
-    updateCourse((current) => ({ ...current, groupTopics: nextTopics }), { toast: true, writeMembers: admin, classFields: admin ? null : ["groupTopics"] });
+    return updateCourse((current) => ({ ...current, groupTopics: nextTopics }), { toast: true, writeMembers: admin, classFields: admin ? null : ["groupTopics"] });
   }
 
   function createGroupPlaceholder() {
@@ -3637,7 +3704,7 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
                 </div>
               )}
             </div>
-            <button className="primary-action compact" type="button" onClick={saveTopics}>Save</button>
+            <SaveButton className="compact" dirty={groupTopicDirty} onClick={saveTopics} />
           </div>
         )}
       />
@@ -3712,7 +3779,7 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
       )}
       {canEdit && (
         <div className="bottom-save-row">
-          <button className="primary-action compact" type="button" onClick={saveTopics}>Save</button>
+          <SaveButton className="compact" dirty={groupTopicDirty} onClick={saveTopics} />
         </div>
       )}
     </>
@@ -3849,6 +3916,9 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
   const [placeholderDraft, setPlaceholderDraft] = useState({ intergroup: "", topic: "" });
   const [draftTopics, setDraftTopics] = useState({});
   const nextIntergroupNumber = nextNumericText(linkCards.map((link) => link.rawIntergroup));
+  const intergroupTopicDirty = linkCards.some((link) => (
+    String(draftTopics[link.key] || "") !== String(link.topic?.topic || "")
+  ));
 
   useOutsideClick(addPopoverRef, addOpen, () => setAddOpen(false));
 
@@ -3870,7 +3940,7 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
         };
       })
       .filter((item) => item.intergroup);
-    updateCourse((current) => ({ ...current, intergroupTopics: nextTopics }), { toast: true, writeMembers: admin, classFields: admin ? null : ["intergroupTopics"] });
+    return updateCourse((current) => ({ ...current, intergroupTopics: nextTopics }), { toast: true, writeMembers: admin, classFields: admin ? null : ["intergroupTopics"] });
   }
 
   function createIntergroupPlaceholder() {
@@ -3975,7 +4045,7 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
                 </div>
               )}
             </div>
-            <button className="primary-action compact" type="button" onClick={saveIntergroupTopics}>Save</button>
+            <SaveButton className="compact" dirty={intergroupTopicDirty} onClick={saveIntergroupTopics} />
           </div>
         )}
       />
@@ -4029,7 +4099,7 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
       )}
       {canEdit && (
         <div className="bottom-save-row">
-          <button className="primary-action compact" type="button" onClick={saveIntergroupTopics}>Save</button>
+          <SaveButton className="compact" dirty={intergroupTopicDirty} onClick={saveIntergroupTopics} />
         </div>
       )}
     </>
@@ -4639,6 +4709,7 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
   }
 
   const selectedParts = normalizeExamParts(selectedExam?.parts);
+  const examsDirty = jsonSignature(normalizeExams(draftExams)) !== jsonSignature(normalizeExams(course.exams));
 
   return (
     <div className="exam-builder">
@@ -4653,9 +4724,7 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
             onRenameExam={renameExam}
             onDeleteExam={requestDeleteExam}
           />
-          <button className="primary-action compact exam-save-button" type="button" onClick={saveExams} disabled={savingExam}>
-            {savingExam ? "Saving..." : "Save"}
-          </button>
+          <SaveButton className="compact exam-save-button" dirty={examsDirty} saving={savingExam} onClick={saveExams} />
           <div className="exam-template-menu-wrap" ref={templateMenuRef}>
             <button
               className="icon-button exam-template-trigger"
@@ -6025,7 +6094,8 @@ function assignmentEditDraft(assignment) {
     format,
     reviewerType: normalizeDiscussionTopicType(assignment?.reviewerType, format),
     dueAt: assignmentDateTimeLocalValue(assignment),
-    ratio: cleanRatioInput(assignment?.ratio || "")
+    ratio: cleanRatioInput(assignment?.ratio || ""),
+    attachments: Array.isArray(assignment?.attachments) ? assignment.attachments : []
   };
 }
 
@@ -6034,6 +6104,8 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editDraft, setEditDraft] = useState(() => assignmentEditDraft(assignment));
+  const [editFilesDraft, setEditFilesDraft] = useState([]);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState("");
   const [file, setFile] = useState(null);
   const [submitted, setSubmitted] = useState(false);
@@ -6074,10 +6146,14 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
   const visibleSubmissions = canHaveSubmissions
     ? (admin ? cleanAssignmentSubmissionList(assignment.submissions || []) : userSubmissions)
     : [];
+  const assignmentEditDirty = editFilesDraft.length > 0 || jsonSignature(editDraft) !== jsonSignature(assignmentEditDraft(assignment));
 
   useEffect(() => {
-    if (!editing) setEditDraft(assignmentEditDraft(assignment));
-  }, [assignment.id, assignment.title, assignment.content, assignment.type, assignment.format, assignment.reviewerType, assignment.dueAt, assignment.dueAtMillis, assignment.ratio, editing]);
+    if (!editing) {
+      setEditDraft(assignmentEditDraft(assignment));
+      setEditFilesDraft([]);
+    }
+  }, [assignment.id, assignment.title, assignment.content, assignment.type, assignment.format, assignment.reviewerType, assignment.dueAt, assignment.dueAtMillis, assignment.ratio, assignment.attachments, editing]);
 
   useEffect(() => {
     if (assignmentFormat !== "exam") {
@@ -6123,22 +6199,45 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
     setOpen(true);
     setShowResults(false);
     setEditDraft(assignmentEditDraft(assignment));
+    setEditFilesDraft([]);
     setEditError("");
     setEditing(true);
   }
 
   function cancelEditingAssignment() {
     setEditDraft(assignmentEditDraft(assignment));
+    setEditFilesDraft([]);
     setEditError("");
     setEditing(false);
   }
 
-  function saveAssignmentEdit() {
+  function addEditDraftFiles(fileList) {
+    const nextFiles = Array.from(fileList || []).filter(Boolean);
+    if (!nextFiles.length) return;
+    setEditFilesDraft((current) => [...current, ...nextFiles]);
+    setEditError("");
+  }
+
+  function removeEditDraftFile(index) {
+    setEditFilesDraft((current) => current.filter((_, fileIndex) => fileIndex !== index));
+  }
+
+  function removeEditAttachment(index) {
+    setEditDraft((current) => ({
+      ...current,
+      attachments: (current.attachments || []).filter((_, fileIndex) => fileIndex !== index)
+    }));
+  }
+
+  async function saveAssignmentEdit() {
+    if (savingEdit) return;
     const title = editDraft.title.trim();
     if (!title) {
       setEditError("Title không được để trống.");
       return;
     }
+    setSavingEdit(true);
+    setEditError("");
     const nextType = normalizeGradebookType(editDraft.type, "personal");
     const nextFormat = normalizeAssignmentFormat(editDraft.format);
     const nextReviewerType = normalizeDiscussionTopicType(editDraft.reviewerType, nextFormat);
@@ -6146,27 +6245,52 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
     const parsedDueAtMillis = nextDueAt ? new Date(nextDueAt).getTime() : 0;
     const nextDueAtMillis = Number.isFinite(parsedDueAtMillis) && parsedDueAtMillis > 0 ? parsedDueAtMillis : "";
     const nextRatio = cleanRatioInput(editDraft.ratio || "");
-    updateCourse((current) => ({
-      ...current,
-      assignments: normalizeAssignmentRatios((current.assignments || []).map((item) => {
-        if (item.id !== assignment.id) return item;
-        return {
+    try {
+      const uploadedAttachments = editFilesDraft.length
+        ? (hasFirebaseConfig
+          ? await uploadManyFiles(course, `assignments/${assignment.id}/attachments`, editFilesDraft, { anyoneWithLink: true, writerEmails: adminWriterEmails() })
+          : await Promise.all(editFilesDraft.map(readFileAsDataUrl)))
+        : [];
+      const nextAttachments = [...(editDraft.attachments || []), ...uploadedAttachments];
+      const relatedAnnouncements = (course.announcements || []).filter((item) => item.assignmentId === assignment.id);
+      if (hasFirebaseConfig && relatedAnnouncements.length > 0) {
+        await Promise.all(relatedAnnouncements.map((item) => saveAnnouncementToCloud(course.id, {
           ...item,
-          title,
-          content: editDraft.content.trim(),
-          type: nextType,
-          format: nextFormat,
-          reviewerType: nextReviewerType,
-          dueAt: nextDueAt,
-          dueAtMillis: nextDueAtMillis,
-          ratio: lastAssignment ? item.ratio : nextRatio,
-          examId: nextFormat === "exam" ? (item.examId || "") : "",
-          examSnapshot: nextFormat === "exam" ? (item.examSnapshot || null) : null
-        };
-      }))
-    }), { toast: "Đã cập nhật bài tập." });
-    setEditError("");
-    setEditing(false);
+          attachments: nextAttachments
+        })));
+      }
+      await updateCourse((current) => ({
+        ...current,
+        assignments: normalizeAssignmentRatios((current.assignments || []).map((item) => {
+          if (item.id !== assignment.id) return item;
+          return {
+            ...item,
+            title,
+            content: editDraft.content.trim(),
+            type: nextType,
+            format: nextFormat,
+            reviewerType: nextReviewerType,
+            dueAt: nextDueAt,
+            dueAtMillis: nextDueAtMillis,
+            ratio: lastAssignment ? item.ratio : nextRatio,
+            examId: nextFormat === "exam" ? (item.examId || "") : "",
+            examSnapshot: nextFormat === "exam" ? (item.examSnapshot || null) : null,
+            attachments: nextAttachments
+          };
+        })),
+        announcements: (current.announcements || []).map((item) => (
+          item.assignmentId === assignment.id ? { ...item, attachments: nextAttachments } : item
+        ))
+      }), { toast: "Đã cập nhật bài tập." });
+      setEditFilesDraft([]);
+      setEditError("");
+      setEditing(false);
+    } catch (error) {
+      console.error(error);
+      setEditError("Không thể cập nhật bài tập hoặc file hướng dẫn. Vui lòng thử lại.");
+    } finally {
+      setSavingEdit(false);
+    }
   }
 
   return (
@@ -6201,6 +6325,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
               <label>
                 <span>Title</span>
                 <input
+                  disabled={savingEdit}
                   value={editDraft.title}
                   onChange={(event) => setEditDraft((current) => ({ ...current, title: event.target.value }))}
                   placeholder="Title..."
@@ -6209,15 +6334,89 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
               <label className="assignment-edit-content">
                 <span>Assignment</span>
                 <textarea
+                  disabled={savingEdit}
                   value={editDraft.content}
                   onChange={(event) => setEditDraft((current) => ({ ...current, content: event.target.value }))}
                   placeholder="Assignment..."
                 />
               </label>
+              <div
+                className={`assignment-attachment-dropzone ${savingEdit ? "is-disabled" : ""}`}
+                tabIndex={0}
+                onPaste={(event) => {
+                  const pastedFiles = event.clipboardData?.files;
+                  if (pastedFiles?.length) {
+                    event.preventDefault();
+                    addEditDraftFiles(pastedFiles);
+                  }
+                }}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (savingEdit) return;
+                  addEditDraftFiles(event.dataTransfer.files);
+                }}
+              >
+                <label className="assignment-attachment-add" title="Thêm file hướng dẫn" aria-label="Thêm file hướng dẫn">
+                  <Plus size={22} />
+                  <input
+                    disabled={savingEdit}
+                    type="file"
+                    multiple
+                    onChange={(event) => {
+                      addEditDraftFiles(event.target.files);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+                <div className="assignment-attachment-copy">
+                  <strong>File hướng dẫn</strong>
+                  <span>Browse, kéo thả hoặc Ctrl+V để thêm nhiều file/hình.</span>
+                </div>
+              </div>
+              {((editDraft.attachments || []).length > 0 || editFilesDraft.length > 0) && (
+                <div className="assignment-draft-file-list" aria-label="File hướng dẫn của bài tập">
+                  {(editDraft.attachments || []).map((fileItem, index) => (
+                    <div className="assignment-draft-file-row" key={`${fileItem.fileName}-${index}`}>
+                      <div className="assignment-draft-file-info">
+                        <strong>{fileItem.fileName || "file"}</strong>
+                        <small>{draftFileTypeLabel(fileItem)} · Đã upload</small>
+                      </div>
+                      <button
+                        type="button"
+                        title="Xóa file"
+                        aria-label={`Xóa ${fileItem.fileName || "file"}`}
+                        disabled={savingEdit}
+                        onClick={() => removeEditAttachment(index)}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  {editFilesDraft.map((fileItem, index) => (
+                    <div className="assignment-draft-file-row" key={`${fileItem.name}-${fileItem.size}-${fileItem.lastModified}-${index}`}>
+                      <div className="assignment-draft-file-info">
+                        <strong>{fileItem.name}</strong>
+                        <small>{[draftFileTypeLabel(fileItem), formatFileSize(fileItem.size), "Chưa lưu"].filter(Boolean).join(" · ")}</small>
+                      </div>
+                      <button
+                        type="button"
+                        title="Xóa file"
+                        aria-label={`Xóa ${fileItem.name}`}
+                        disabled={savingEdit}
+                        onClick={() => removeEditDraftFile(index)}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="assignment-edit-grid">
                 <label>
                   <span>Assignee</span>
                   <select
+                    disabled={savingEdit}
                     value={editDraft.type}
                     onChange={(event) => setEditDraft((current) => ({ ...current, type: event.target.value }))}
                   >
@@ -6229,6 +6428,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                 <label>
                   <span>Format</span>
                   <select
+                    disabled={savingEdit}
                     value={editDraft.format}
                     onChange={(event) => setEditDraft((current) => updateAssignmentDraftFormat(current, event.target.value))}
                   >
@@ -6241,6 +6441,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                   <label>
                     <span>Topic</span>
                     <select
+                      disabled={savingEdit}
                       value={normalizeDiscussionTopicType(editDraft.reviewerType, editDraft.format)}
                       onChange={(event) => setEditDraft((current) => ({ ...current, reviewerType: event.target.value }))}
                     >
@@ -6250,21 +6451,22 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                     </select>
                   </label>
                 )}
-                <label>
+                <label className="assignment-edit-due-label">
                   <span>Hạn nộp</span>
                   <input
                     type="datetime-local"
+                    disabled={savingEdit}
                     value={editDraft.dueAt}
                     onChange={(event) => setEditDraft((current) => ({ ...current, dueAt: event.target.value }))}
                   />
                 </label>
-                <label>
+                <label className="assignment-edit-ratio-label">
                   <span>Tỉ lệ</span>
                   <div className="assignment-edit-ratio-field">
                     <input
                       className="ratio-input"
                       inputMode="decimal"
-                      disabled={lastAssignment}
+                      disabled={lastAssignment || savingEdit}
                       value={lastAssignment ? (assignment.ratio || "0") : editDraft.ratio}
                       onChange={(event) => setEditDraft((current) => ({ ...current, ratio: cleanRatioInput(event.target.value) }))}
                     />
@@ -6273,16 +6475,17 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                   </div>
                 </label>
                 <div className="assignment-edit-actions">
-                  <button className="primary-action compact" type="button" onClick={saveAssignmentEdit}>Save</button>
-                  <button className="secondary-action compact" type="button" onClick={cancelEditingAssignment}>Cancel</button>
+                  <SaveButton className="compact" dirty={assignmentEditDirty} saving={savingEdit} onClick={saveAssignmentEdit} />
+                  <button className="secondary-action compact" type="button" onClick={cancelEditingAssignment} disabled={savingEdit}>Cancel</button>
                 </div>
               </div>
+              {savingEdit && <UploadStatus label={editFilesDraft.length > 0 ? "Đang upload file và cập nhật bài tập..." : "Đang cập nhật bài tập..."} />}
               {editError && <p className="error-text">{editError}</p>}
             </div>
           ) : (
-            <p>{assignment.content}</p>
+            <p className="assignment-content-text">{assignment.content}</p>
           )}
-          {(assignment.attachments || []).length > 0 && (
+          {!editing && (assignment.attachments || []).length > 0 && (
             <div className="file-list assignment-attachment-list">
               {(assignment.attachments || []).map((file, index) => {
                 const previewUrl = filePreviewUrl(file);
@@ -6306,7 +6509,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
               })}
             </div>
           )}
-          <div className="assignment-meta-row">
+          {!editing && <div className="assignment-meta-row">
             <div className="assignment-format-row">
               <span>Assignee:</span>
               <strong>{gradebookTypeLabels[assignmentType]}</strong>
@@ -6335,8 +6538,8 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                 Xem kết quả nộp bài
               </button>
             )}
-          </div>
-          {reviewerEnabled && (
+          </div>}
+          {!editing && reviewerEnabled && (
             <div className="assignment-reviewer-panel">
               <div className="assignment-reviewer-panel-head">
                 <strong>Topic</strong>
@@ -6356,7 +6559,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
               </div>
             </div>
           )}
-          {scoreReviewEnabled && (
+          {!editing && scoreReviewEnabled && (
             <AssignmentReviewerScorePanel
               admin={admin}
               user={user}
@@ -6367,7 +6570,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
               onOpenStats={() => onOpenScoreStats?.(assignment.id)}
             />
           )}
-          {assignmentFormat === "exam" && admin && (
+          {!editing && assignmentFormat === "exam" && admin && (
             <div className="assignment-exam-picker-row">
               <label htmlFor={`assignment-exam-${assignment.id}`}>Đề thi:</label>
               <select
@@ -6386,7 +6589,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
               {availableExams.length === 0 && <small>Chưa có đề thi trong card Đề thi.</small>}
             </div>
           )}
-          {assignmentFormat === "exam" && !admin && (
+          {!editing && assignmentFormat === "exam" && !admin && (
             <AssignmentExamLearnerPanel
               exam={learnerExam}
               active={activeExamForAssignment}
@@ -6399,7 +6602,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
               }}
             />
           )}
-          {assignmentFormat === "uploadFile" && !admin && (
+          {!editing && assignmentFormat === "uploadFile" && !admin && (
             <>
               <div className={`upload-row ${submitting ? "is-uploading" : ""}`}>
                 <input disabled={submitting} type="file" onChange={(event) => setFile(event.target.files?.[0] || null)} />
@@ -6413,7 +6616,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
               {submitError && <p className="error-text">{submitError}</p>}
             </>
           )}
-          {canHaveSubmissions && (admin ? showResults : true) && (
+          {!editing && canHaveSubmissions && (admin ? showResults : true) && (
             <table className="data-table compact-table assignment-submissions-table">
               <thead><tr><th>Họ tên</th><th>File</th><th>Thời gian</th><th>Email</th></tr></thead>
               <tbody>
@@ -6521,6 +6724,7 @@ function AssignmentReviewerScorePanel({ admin, user, course, assignment, targets
     responses: responseRows
   };
   const selectedTarget = targetOptions.find((target) => target.key === topicKey) || targetOptions[0] || null;
+  const scoreConfigDirty = jsonSignature(configDraft) !== jsonSignature(peerReviewScoreConfig(assignment));
 
   useEffect(() => {
     if (!targetOptions.length) {
@@ -6545,7 +6749,7 @@ function AssignmentReviewerScorePanel({ admin, user, course, assignment, targets
       setConfigError(validation.error);
       return;
     }
-    updateCourse((current) => ({
+    const savePromise = updateCourse((current) => ({
       ...current,
       assignments: normalizeAssignmentRatios((current.assignments || []).map((item) => (
         item.id === assignment.id ? { ...item, ...validation.config } : item
@@ -6557,6 +6761,7 @@ function AssignmentReviewerScorePanel({ admin, user, course, assignment, targets
       choiceValuesText: validation.config.choiceValues.join(", ")
     }));
     setConfigStatus("Đã lưu format chấm điểm.");
+    return savePromise;
   }
 
   async function submitReviewScore() {
@@ -6632,7 +6837,7 @@ function AssignmentReviewerScorePanel({ admin, user, course, assignment, targets
               >
                 <ChartColumn size={17} />
               </button>
-              <button className="primary-action compact" type="button" onClick={saveScoreConfig}>Save</button>
+              <SaveButton className="compact" dirty={scoreConfigDirty} onClick={saveScoreConfig} />
             </div>
           </div>
           {configStatus && <p className="success-text">{configStatus}</p>}
@@ -7366,7 +7571,7 @@ function GradesCard({ admin, user, course, updateCourse }) {
     const { assignment, book, exam } = gradingContext;
     const bookType = examGradebookType(book, assignment);
     const assignmentFormat = normalizeAssignmentFormat(book.assignmentFormat || assignment?.format);
-    updateCourse((current) => ({
+    const savePromise = updateCourse((current) => ({
       ...current,
       gradebooks: upsertGradebookRecord(current.gradebooks || [], book, {
         title: gradebookTitleWithRatio(book, current, bookType),
@@ -7382,6 +7587,7 @@ function GradesCard({ admin, user, course, updateCourse }) {
       book: { ...current.book, rows: nextRows },
       initialRows: nextRows
     } : current);
+    return savePromise;
   }
 
   return (
@@ -8335,7 +8541,7 @@ function GradebookItem({ admin, user, book, course, updateCourse, onOpenExamGrad
     const nextRows = examGradebook
       ? buildExamGradeRowsForSave(course, assignment, exam, draftRows, bookType)
       : buildGradebookRowsForSave(course, bookType, draftRows);
-    updateCourse((current) => ({
+    const savePromise = updateCourse((current) => ({
       ...current,
       gradebooks: upsertGradebookRecord(current.gradebooks || [], book, {
         title: gradebookTitleWithRatio(book, current, bookType),
@@ -8348,6 +8554,7 @@ function GradebookItem({ admin, user, book, course, updateCourse, onOpenExamGrad
     }), { toast: true });
     setDraftRows(nextRows);
     setDirty(false);
+    return savePromise;
   }
 
   async function publishScores() {
@@ -8402,7 +8609,7 @@ function GradebookItem({ admin, user, book, course, updateCourse, onOpenExamGrad
           <small>Format: {assignmentFormatLabel(assignmentFormat)}</small>
           {admin && <small>{published ? "Đã publish" : "Nháp"}</small>}
         </button>
-        {admin && open && !examGradebook && <button className="primary-action compact save-score-button" onClick={saveScores} disabled={!dirty}>Save</button>}
+        {admin && open && !examGradebook && <SaveButton className="compact save-score-button" dirty={dirty} onClick={saveScores} />}
         {admin && (
           <button
             className={`join-action compact publish-score-button ${published ? "is-published" : ""}`}
@@ -8489,9 +8696,11 @@ function ExamGradingWorkspace({ course, assignment, book, exam, bookType = "pers
     return [part.id, firstQuestion ? examQuestionResponseKey(part, firstQuestion) : ""];
   })));
   const [questionScores, setQuestionScores] = useState(() => examQuestionScoresFromRows(initialRows));
+  const [lastSavedQuestionScores, setLastSavedQuestionScores] = useState(() => examQuestionScoresFromRows(initialRows));
   const [saveStatus, setSaveStatus] = useState("");
   const rows = buildExamGradingRows(course, assignment, exam, initialRows, questionScores, bookType);
   const activePart = parts.find((part) => part.id === activeTab);
+  const examGradingDirty = jsonSignature(questionScores) !== jsonSignature(lastSavedQuestionScores);
 
   function setQuestionScore(email, questionKey, score) {
     setSaveStatus("");
@@ -8506,8 +8715,10 @@ function ExamGradingWorkspace({ course, assignment, book, exam, bookType = "pers
 
   function saveExamGrades() {
     const nextRows = serializeExamGradeRows(rows, exam, { course, assignment, type: bookType, previousRows: initialRows });
-    onSave(nextRows);
+    const savePromise = onSave(nextRows);
+    setLastSavedQuestionScores(questionScores);
     setSaveStatus("Đã lưu điểm đề thi.");
+    return savePromise;
   }
 
   return (
@@ -8520,9 +8731,7 @@ function ExamGradingWorkspace({ course, assignment, book, exam, bookType = "pers
           <strong>{exam.title || "Đề thi"}</strong>
           <span>{assignment?.title || book.title || "Bài tập"} · {examTotalQuestionCount(exam)} câu</span>
         </div>
-        <button className="primary-action compact" type="button" onClick={saveExamGrades}>
-          <Check size={15} /> Save
-        </button>
+        <SaveButton className="compact" dirty={examGradingDirty} icon={<Check size={15} />} onClick={saveExamGrades} />
       </div>
       <div className="exam-grading-tabs" role="tablist" aria-label="Các phần chấm điểm">
         {parts.map((part, index) => (
@@ -9727,6 +9936,9 @@ function PersonalTopicCard({ admin, canEdit, course, updateCourse }) {
     (course.personalTopics || []).map((item) => `${item.email}:${item.topic || ""}`).join("|")
   ].join("::");
   const [draftTopics, setDraftTopics] = useState({});
+  const personalTopicDirty = members.some((member) => (
+    String(draftTopics[member.email] || "") !== String((course.personalTopics || []).find((item) => item.email === member.email)?.topic || "")
+  ));
 
   useEffect(() => {
     setDraftTopics(Object.fromEntries(members.map((member) => [
@@ -9740,12 +9952,12 @@ function PersonalTopicCard({ admin, canEdit, course, updateCourse }) {
       email: member.email,
       topic: draftTopics[member.email] || ""
     }));
-    updateCourse((current) => ({ ...current, personalTopics: nextTopics }), { toast: true, writeMembers: admin, classFields: admin ? null : ["personalTopics"] });
+    return updateCourse((current) => ({ ...current, personalTopics: nextTopics }), { toast: true, writeMembers: admin, classFields: admin ? null : ["personalTopics"] });
   }
 
   return (
     <>
-      <PanelTitle title="Topic Cá nhân" action={canEdit && <button className="primary-action compact" onClick={savePersonalTopics}>Save</button>} />
+      <PanelTitle title="Topic Cá nhân" action={canEdit && <SaveButton className="compact" dirty={personalTopicDirty} onClick={savePersonalTopics} />} />
       <table className="data-table personal-topic-table">
         <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ và tên</th><th>Topic</th><th>Mã số</th><th>Email</th></tr></thead>
         <tbody>
@@ -9769,7 +9981,7 @@ function PersonalTopicCard({ admin, canEdit, course, updateCourse }) {
       </table>
       {canEdit && (
         <div className="bottom-save-row">
-          <button className="primary-action compact" type="button" onClick={savePersonalTopics}>Save</button>
+          <SaveButton className="compact" dirty={personalTopicDirty} onClick={savePersonalTopics} />
         </div>
       )}
     </>
@@ -10092,6 +10304,7 @@ function PeerReviewItem({ admin, user, course, review, updateCourse }) {
   const [configError, setConfigError] = useState("");
   const choiceValuesSignature = Array.isArray(review.choiceValues) ? review.choiceValues.join("|") : String(review.choiceValues || "");
   const visibleResponses = admin ? (review.responses || []) : (review.responses || []).filter((row) => row.email === user.email);
+  const reviewScoreConfigDirty = jsonSignature(configDraft) !== jsonSignature(peerReviewScoreConfig(review));
 
   useEffect(() => {
     setConfigDraft(peerReviewScoreConfig(review));
@@ -10106,7 +10319,7 @@ function PeerReviewItem({ admin, user, course, review, updateCourse }) {
       setConfigError(validation.error);
       return;
     }
-    updateCourse((current) => ({
+    const savePromise = updateCourse((current) => ({
       ...current,
       peerReviews: (current.peerReviews || []).map((item) => (
         item.id === review.id ? { ...item, ...validation.config } : item
@@ -10118,6 +10331,7 @@ function PeerReviewItem({ admin, user, course, review, updateCourse }) {
       choiceValuesText: validation.config.choiceValues.join(", ")
     }));
     setConfigStatus("Đã lưu format chấm điểm.");
+    return savePromise;
   }
 
   async function submitReviewScore() {
@@ -10174,7 +10388,7 @@ function PeerReviewItem({ admin, user, course, review, updateCourse }) {
         <div className="peer-score-admin-panel">
           <div className="peer-score-admin-head">
             <strong>Format chấm điểm</strong>
-            <button className="primary-action compact" type="button" onClick={saveScoreConfig}>Save</button>
+            <SaveButton className="compact" dirty={reviewScoreConfigDirty} onClick={saveScoreConfig} />
           </div>
           <PeerReviewScoreConfigFields draft={configDraft} onChange={(nextDraft) => {
             setConfigDraft(nextDraft);
@@ -10347,6 +10561,10 @@ function ProfileModal({ user, onClose, onSave }) {
     displayName: user.displayName || "",
     studentId: user.studentId || ""
   });
+  const profileDirty = jsonSignature(form) !== jsonSignature({
+    displayName: user.displayName || "",
+    studentId: user.studentId || ""
+  });
 
   return (
     <Modal title="Profile" onClose={onClose}>
@@ -10371,7 +10589,7 @@ function ProfileModal({ user, onClose, onSave }) {
           <input value={form.studentId} onChange={(event) => setForm({ ...form, studentId: event.target.value })} />
         </label>
       </div>
-      <button className="primary-action" onClick={() => onSave({ ...user, ...form })}>Save</button>
+      <SaveButton dirty={profileDirty} onClick={() => onSave({ ...user, ...form })} />
     </Modal>
   );
 }
@@ -10418,11 +10636,16 @@ function prepareCourseForSave(course, user) {
 
 function NewClassModal({ existing, user, onClose, onSave }) {
   const [form, setForm] = useState(() => existing || { id: crypto.randomUUID(), name: "", description: "", code: "", pinned: false, announcementPostPermission: ANNOUNCEMENT_POST_PERMISSIONS.everyone, info: { title: "", size: 0, time: "", room: "", description: "", rules: "", zaloGroupUrl: "" }, scheduleRows: defaultScheduleRows(), members: [], announcements: [], groupTopics: [], intergroupTopics: [], personalTopics: [], materials: [], assignments: [], gradebooks: [], peerReviews: [], extraCards: [], hiddenCards: [], pinnedCards: [], cardOrder: [] });
+  const classFormDirty = existing ? jsonSignature(form) !== jsonSignature(existing) : true;
   return (
     <Modal title={existing ? "Chỉnh sửa lớp học" : "Thêm lớp học mới"} onClose={onClose}>
       <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value, info: { ...form.info, title: event.target.value } })} placeholder="Tên lớp mới" />
       <input value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value, info: { ...form.info, description: event.target.value } })} placeholder="Mô tả" />
-      <button className="primary-action" onClick={() => onSave(form)}>{existing ? "Lưu lớp học" : "Tạo lớp mới"}</button>
+      {existing ? (
+        <SaveButton dirty={classFormDirty} onClick={() => onSave(form)}>Lưu lớp học</SaveButton>
+      ) : (
+        <button className="primary-action" onClick={() => onSave(form)}>Tạo lớp mới</button>
+      )}
     </Modal>
   );
 }

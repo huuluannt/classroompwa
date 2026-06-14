@@ -235,6 +235,35 @@ textarea { min-height: 88px; resize: vertical; }
   color: #172033;
   font-weight: 800;
 }
+.save-action {
+  min-height: 36px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+  background: #fff;
+  color: #020617;
+  font-weight: 800;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 80ms ease;
+}
+.save-action.is-dirty,
+.save-action.is-saving {
+  border-color: #020617;
+  background: #020617;
+  color: #fff;
+}
+.save-action.is-saving {
+  box-shadow: 0 0 0 3px rgba(2, 6, 23, 0.12);
+}
+.save-action:active {
+  transform: translateY(1px);
+}
+.save-action:disabled {
+  cursor: default;
+}
 .danger-action {
   min-height: 32px;
   border: 1px solid #dc2626;
@@ -848,6 +877,8 @@ textarea { min-height: 88px; resize: vertical; }
   display: grid;
   place-items: center;
   border: 1px dashed #b9c5d6;
+  background: #fff;
+  color: #020617;
 }
 .detail-panel {
   min-width: 0;
@@ -1585,12 +1616,12 @@ textarea { min-height: 88px; resize: vertical; }
 }
 .schedule-table {
   width: 100%;
-  min-width: 760px;
+  min-width: 0;
   table-layout: fixed;
 }
-.schedule-table .schedule-week-col { width: 10%; }
-.schedule-table .schedule-date-col { width: 15%; }
-.schedule-table .schedule-content-col { width: 75%; }
+.schedule-table .schedule-week-col { width: 14%; }
+.schedule-table .schedule-date-col { width: 18%; }
+.schedule-table .schedule-content-col { width: 68%; }
 .schedule-table th,
 .schedule-table td {
   white-space: normal;
@@ -1618,11 +1649,14 @@ textarea { min-height: 88px; resize: vertical; }
 }
 .schedule-content-cell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 32px;
   gap: 8px;
   align-items: start;
+  min-width: 0;
 }
 .rich-text-cell {
+  min-width: 0;
+  max-width: 100%;
   min-height: 40px;
   border: 1px solid #dce3ee;
   border-radius: 8px;
@@ -1693,6 +1727,10 @@ textarea { min-height: 88px; resize: vertical; }
   color: #172033;
 }
 .expand-card p { color: #42526b; }
+.assignment-content-text {
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
 .compact-table td { padding: 9px; }
 .assignment-edit-form {
   display: grid;
@@ -1727,9 +1765,18 @@ textarea { min-height: 88px; resize: vertical; }
 }
 .assignment-edit-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) minmax(210px, 1.2fr) minmax(104px, 0.55fr);
   align-items: end;
   gap: 10px;
+}
+.assignment-edit-grid:has(.assignment-edit-due-label:nth-child(4)) {
+  grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) minmax(150px, 1fr) minmax(210px, 1.2fr) minmax(104px, 0.55fr);
+}
+.assignment-edit-due-label {
+  min-width: 210px;
+}
+.assignment-edit-ratio-label {
+  max-width: 118px;
 }
 .assignment-edit-ratio-field {
   display: flex;
@@ -1745,6 +1792,7 @@ textarea { min-height: 88px; resize: vertical; }
   align-items: center;
   gap: 8px;
   justify-content: flex-start;
+  grid-column: 1 / -1;
 }
 .assignment-meta-row {
   display: flex;
@@ -2887,10 +2935,10 @@ textarea { min-height: 88px; resize: vertical; }
 .material-add-button {
   min-height: 34px;
   min-width: 96px;
-  border: 1px solid #0284c7;
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
-  background: #7dd3fc;
-  color: #0f172a;
+  background: #fff;
+  color: #020617;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2901,7 +2949,7 @@ textarea { min-height: 88px; resize: vertical; }
 .topic-add-button {
   min-height: 34px;
   min-width: 124px;
-  border: 1px solid #020617;
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
   background: #fff;
   color: #020617;
@@ -4284,6 +4332,7 @@ button:disabled {
   border-radius: 7px;
 }
 .primary-action,
+.save-action,
 .join-action,
 .inline-form button,
 .resource-row button,
@@ -4297,6 +4346,7 @@ button:disabled {
   padding: 0 10px;
 }
 .secondary-action,
+.save-action,
 .danger-action {
   min-height: 30px;
   border-radius: 7px;
