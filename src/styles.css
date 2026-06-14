@@ -2927,6 +2927,23 @@ textarea { min-height: 88px; resize: vertical; }
   display: grid;
   gap: 8px;
 }
+.material-card-head {
+  align-items: flex-start;
+}
+.material-card-head > strong {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+}
+.material-title-edit {
+  width: min(560px, 100%);
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 6px 9px;
+  font-weight: 800;
+}
 .material-add-wrap {
   position: relative;
   display: inline-flex;
@@ -3732,19 +3749,51 @@ textarea { min-height: 88px; resize: vertical; }
   color: #fff;
 }
 .material-file-list {
-  align-items: center;
+  display: grid;
+  gap: 8px;
+  align-items: stretch;
 }
 .material-file-item {
+  width: 100%;
   min-width: 0;
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
 }
 .material-file-preview {
-  max-width: min(620px, 100%);
+  width: 100%;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: left;
+}
+.material-file-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.material-inline-upload-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.material-inline-upload-popover {
+  width: min(470px, calc(100vw - 34px));
+}
+.compact-icon {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+}
+.material-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-start;
 }
 .row-actions {
   display: inline-flex;

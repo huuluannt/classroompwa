@@ -83,7 +83,24 @@ function isClassLeaderMember(member) {
 }
 
 function isVirtualMember(member) {
-  return member?.isVirtual === true || String(member?.email || "").endsWith(`@${VIRTUAL_MEMBER_DOMAIN}`);
+  const email = String(member?.email || "").toLowerCase();
+  return member?.isVirtual === true
+    || email.endsWith(`@${VIRTUAL_MEMBER_DOMAIN}`)
+    || LEGACY_VIRTUAL_MEMBER_DOMAINS.some((domain) => email.endsWith(`@${domain}`));
+}
+
+function virtualMemberSerial(member) {
+  const studentIdMatch = String(member?.studentId || "").match(/(\d+)$/);
+  if (studentIdMatch) return studentIdMatch[1].padStart(3, "0");
+  const emailMatch = String(member?.email || "").match(/(?:-|v)(\d+)@/i);
+  if (emailMatch) return emailMatch[1].padStart(3, "0");
+  const orderMatch = String(member?.order || "").match(/\d+/);
+  return (orderMatch ? orderMatch[0] : "1").padStart(3, "0");
+}
+
+function displayMemberEmail(member) {
+  if (!isVirtualMember(member)) return member?.email || "";
+  return `v${virtualMemberSerial(member)}@${VIRTUAL_MEMBER_DOMAIN}`;
 }
 
 function virtualVietnameseName(serial, usedNames = new Set()) {
@@ -93,10 +110,6 @@ function virtualVietnameseName(serial, usedNames = new Set()) {
     if (!usedNames.has(name)) return name;
   }
   return `Học viên ảo ${String(serial || 1).padStart(3, "0")}`;
-}
-
-function virtualMemberClassKey(courseId) {
-  return String(courseId || "class").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || "class";
 }
 
 function isClassLeaderForCourse(course, user) {
@@ -131,7 +144,8 @@ const ConfirmContext = React.createContext((options, onConfirm) => onConfirm?.()
 const LECTURER_ONLY_CARD_IDS = new Set(["exams"]);
 const MAX_INLINE_EXAM_TEMPLATE_BYTES = 850 * 1024;
 const MAX_VIRTUAL_MEMBERS = 100;
-const VIRTUAL_MEMBER_DOMAIN = "classroom.local";
+const VIRTUAL_MEMBER_DOMAIN = "ao.local";
+const LEGACY_VIRTUAL_MEMBER_DOMAINS = ["classroom.local"];
 const VIRTUAL_VIETNAMESE_NAMES = [
   "Nguyễn An Nhiên",
   "Trần Gia Hân",
@@ -2565,7 +2579,7 @@ function MembersTable({ admin, canManageCourseLecturers, canEditMembers, course,
             </td>
             <td>{canEditMembers ? <input className="group-input" data-enter-group="member-group" inputMode="numeric" value={memberDrafts[member.email]?.group ?? String(member.group || "")} onKeyDown={(event) => focusNextInputOnEnter(event, "member-group")} onChange={(event) => onDraftChange(member.email, "group", event.target.value)} /> : member.group || ""}</td>
             <td>{member.studentId}</td>
-            <td>{member.email}</td>
+            <td>{displayMemberEmail(member)}</td>
             {admin && (
               <td>
                 <div className="member-actions">
@@ -2678,14 +2692,13 @@ function createVirtualMembers(course, count) {
   const existingEmails = new Set(existingMembers.map((member) => normalizeEmail(member.email)));
   const usedNames = new Set(existingMembers.filter(isVirtualMember).map((member) => String(member.name || "").trim()).filter(Boolean));
   const nextMembers = [];
-  const classKey = virtualMemberClassKey(course.id || course.code || course.name);
   const createdAtMillis = Date.now();
   let serial = nextVirtualMemberSerial(existingMembers);
   let nextOrder = Number(nextNumericText(existingMembers.map((member) => member.order)));
 
   while (nextMembers.length < count && nextMembers.length + existingMembers.filter(isVirtualMember).length < MAX_VIRTUAL_MEMBERS) {
     const serialText = String(serial).padStart(3, "0");
-    const email = normalizeEmail(`virtual-${classKey}-${serialText}@${VIRTUAL_MEMBER_DOMAIN}`);
+    const email = normalizeEmail(`v${serialText}@${VIRTUAL_MEMBER_DOMAIN}`);
     serial += 1;
     if (existingEmails.has(email)) continue;
     existingEmails.add(email);
@@ -2713,7 +2726,7 @@ function nextVirtualMemberSerial(members = []) {
     .map((member) => {
       const studentIdMatch = String(member.studentId || "").match(/(\d+)$/);
       if (studentIdMatch) return Number(studentIdMatch[1]);
-      const emailMatch = String(member.email || "").match(/-(\d+)@/);
+      const emailMatch = String(member.email || "").match(/(?:-|v)(\d+)@/i);
       return emailMatch ? Number(emailMatch[1]) : 0;
     })
     .filter(Number.isFinite);
@@ -3920,7 +3933,7 @@ function TopicMembersTable({ members, course }) {
                 {isVirtualMember(member) && <VirtualMemberBadge />}
               </span>
             </td>
-            <td>{member.email}</td>
+            <td>{displayMemberEmail(member)}</td>
             <td>{member.studentId}</td>
           </tr>
         ))}
@@ -4232,7 +4245,6 @@ function uniqueValues(items) {
 
 
 function MaterialsCard({ admin, user, course, updateCourse }) {
-  const requestConfirm = useConfirmAction();
   const addPopoverRef = useRef(null);
   const [addOpen, setAddOpen] = useState(false);
   const [materialTitle, setMaterialTitle] = useState("");
@@ -4403,38 +4415,313 @@ function MaterialsCard({ admin, user, course, updateCourse }) {
           <div className="empty-state compact-empty">Chưa có tài liệu. Giảng viên có thể đăng tài liệu từ Card Tài liệu hoặc tick Tài liệu khi đăng tin trong Card Thông báo.</div>
         )}
         {materials.map((item) => (
-          <article className="material-card" key={item.id}>
-            <div className="card-row-head">
-              <strong>{item.title}</strong>
-              {admin && <button className="icon-danger" onClick={() => requestConfirm({
-                title: "Xác nhận xóa tài liệu",
-                message: `Bạn có chắc muốn xóa tài liệu "${item.title}" không?`,
-                confirmLabel: "Xóa tài liệu"
-              }, () => updateCourse((current) => ({ ...current, materials: (current.materials || []).filter((material) => material.id !== item.id) })))}><Trash2 size={15} /></button>}
-            </div>
-            <div className="file-list material-file-list">
-              {materialFiles(item).length === 0 && <span>Chưa có file đính kèm.</span>}
-              {materialFiles(item).map((file, index) => {
-                const previewUrl = filePreviewUrl(file) || materialFileUrl(file);
-                const downloadUrl = fileDownloadUrl(file) || materialFileUrl(file);
-                return (
-                  <div className="material-file-item" key={`${file.fileName}-${index}`}>
-                    <button className="material-file-preview" type="button" onClick={() => previewUrl && window.open(previewUrl, "_blank", "noopener,noreferrer")}>
-                      {file.fileName || "file"}
-                    </button>
-                    {downloadUrl && (
-                      <a className="download-icon-button" href={downloadUrl} target="_blank" rel="noreferrer" download title="Tải file" aria-label={`Tải ${file.fileName || "file"}`}>
-                        <Download size={15} />
-                      </a>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </article>
+          <MaterialItem
+            admin={admin}
+            user={user}
+            course={course}
+            item={item}
+            updateCourse={updateCourse}
+            onNotice={setMaterialNotice}
+            onError={setMaterialError}
+            key={item.id}
+          />
         ))}
       </div>
     </>
+  );
+}
+
+function MaterialItem({ admin, user, course, item, updateCourse, onNotice, onError }) {
+  const requestConfirm = useConfirmAction();
+  const uploadPopoverRef = useRef(null);
+  const originalFiles = materialFiles(item);
+  const originalFileSignature = jsonSignature(originalFiles);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadFilesDraft, setUploadFilesDraft] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(item.title || "");
+  const [editFiles, setEditFiles] = useState(originalFiles);
+  const [localError, setLocalError] = useState("");
+  const editDirty = editing && (
+    editTitle.trim() !== String(item.title || "").trim()
+    || jsonSignature(editFiles) !== originalFileSignature
+  );
+
+  useOutsideClick(uploadPopoverRef, uploadOpen, () => {
+    if (!uploading) setUploadOpen(false);
+  });
+
+  useEffect(() => {
+    if (!editing) {
+      setEditTitle(item.title || "");
+      setEditFiles(originalFiles);
+    }
+  }, [item.id, item.title, originalFileSignature, editing]);
+
+  function addUploadFiles(fileList) {
+    const nextFiles = Array.from(fileList || []).filter(Boolean);
+    if (!nextFiles.length) return;
+    setUploadFilesDraft((current) => [...current, ...nextFiles]);
+    setLocalError("");
+    onError?.("");
+  }
+
+  function removeUploadDraftFile(index) {
+    setUploadFilesDraft((current) => current.filter((_, fileIndex) => fileIndex !== index));
+  }
+
+  function startEdit() {
+    setUploadOpen(false);
+    setLocalError("");
+    setEditTitle(item.title || "");
+    setEditFiles(originalFiles);
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setEditTitle(item.title || "");
+    setEditFiles(originalFiles);
+    setLocalError("");
+    setEditing(false);
+  }
+
+  function saveEdit() {
+    const nextTitle = editTitle.trim();
+    if (!nextTitle) {
+      setLocalError("Title không được để trống.");
+      return;
+    }
+    const savePromise = updateCourse((current) => ({
+      ...current,
+      materials: (current.materials || []).map((material) => (
+        material.id === item.id
+          ? { ...material, title: nextTitle, files: editFiles }
+          : material
+      ))
+    }), { toast: "Đã cập nhật tài liệu." });
+    setEditing(false);
+    setLocalError("");
+    onNotice?.("Đã cập nhật tài liệu.");
+    return savePromise;
+  }
+
+  async function uploadIntoMaterial() {
+    if (!admin || uploading) return;
+    if (uploadFilesDraft.length === 0) {
+      setLocalError("Vui lòng chọn ít nhất 1 file.");
+      return;
+    }
+    setUploading(true);
+    setLocalError("");
+    onError?.("");
+    onNotice?.("");
+    try {
+      const attachments = hasFirebaseConfig
+        ? await uploadManyFiles(course, `materials/${item.id}`, uploadFilesDraft, { anyoneWithLink: true, writerEmails: adminWriterEmails() })
+        : await Promise.all(uploadFilesDraft.map(readFileAsDataUrl));
+      const createdAtMillis = Date.now();
+      const title = item.title || "Tài liệu";
+      const announcement = {
+        id: crypto.randomUUID(),
+        author: user.email,
+        authorName: user.displayName || user.email,
+        authorPhotoURL: user.photoURL || "",
+        role: "admin",
+        content: `Tài liệu mới: ${title}`,
+        pinned: false,
+        attachments,
+        publishAsMaterial: false,
+        materialId: item.id,
+        createdAt: formatDateTime24(createdAtMillis),
+        createdAtMillis,
+        publishAtMillis: createdAtMillis,
+        scheduledAt: "",
+        scheduledAtMillis: 0
+      };
+      const savedAnnouncement = hasFirebaseConfig
+        ? await saveAnnouncementToCloud(course.id, announcement)
+        : announcement;
+      await updateCourse((current) => ({
+        ...current,
+        announcements: [savedAnnouncement, ...(current.announcements || [])],
+        materials: (current.materials || []).map((material) => (
+          material.id === item.id
+            ? { ...material, files: [...materialFiles(material), ...attachments] }
+            : material
+        ))
+      }), { sync: true });
+      setUploadFilesDraft([]);
+      setUploadOpen(false);
+
+      if (hasFirebaseConfig && course.announcementEmailEnabled) {
+        try {
+          const emailResult = await notifyAnnouncementEmail(course.id, savedAnnouncement.id);
+          if (emailResult.skipped && emailResult.reason === "missing_email_config") {
+            onNotice?.("Đã thêm tài liệu. Chưa gửi email vì chưa cấu hình RESEND_API_KEY và EMAIL_FROM trên Vercel.");
+          } else if (emailResult.skipped && emailResult.reason === "email_disabled") {
+            onNotice?.("Đã thêm tài liệu.");
+          } else if (emailResult.sentCount > 0) {
+            onNotice?.(`Đã thêm tài liệu và gửi email đến ${emailResult.sentCount} thành viên.`);
+          } else {
+            onNotice?.("Đã thêm tài liệu. Không có thành viên khác để gửi email.");
+          }
+        } catch (error) {
+          console.error(error);
+          onNotice?.("Đã thêm tài liệu nhưng không gửi được email thông báo.");
+        }
+      } else {
+        onNotice?.("Đã thêm tài liệu.");
+      }
+    } catch (error) {
+      console.error(error);
+      const message = formatActionError(error, "Không thể thêm tài liệu.");
+      setLocalError(message);
+      onError?.(message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function deleteMaterial() {
+    return updateCourse((current) => ({
+      ...current,
+      materials: (current.materials || []).filter((material) => material.id !== item.id)
+    }), { toast: "Đã xóa tài liệu." });
+  }
+
+  const displayFiles = editing ? editFiles : originalFiles;
+
+  return (
+    <article className="material-card">
+      <div className="card-row-head material-card-head">
+        {editing ? (
+          <input
+            className="material-title-edit"
+            value={editTitle}
+            onChange={(event) => {
+              setEditTitle(event.target.value);
+              setLocalError("");
+            }}
+            placeholder="Title..."
+          />
+        ) : (
+          <strong>{item.title}</strong>
+        )}
+        {admin && (
+          <div className="row-actions">
+            <div className="material-inline-upload-wrap" ref={uploadPopoverRef}>
+              <button
+                className={`icon-soft ${uploadOpen ? "active" : ""}`}
+                type="button"
+                title="Upload thêm tài liệu"
+                aria-label={`Upload thêm tài liệu vào ${item.title || "thẻ tài liệu"}`}
+                disabled={editing}
+                onClick={() => {
+                  setUploadOpen((current) => !current);
+                  setLocalError("");
+                }}
+              >
+                <Upload size={15} />
+              </button>
+              {uploadOpen && (
+                <div className="material-add-popover material-inline-upload-popover">
+                  <div className="material-file-picker-row">
+                    <label className="material-file-picker">
+                      Add File
+                      <input
+                        type="file"
+                        multiple
+                        disabled={uploading}
+                        onChange={(event) => {
+                          addUploadFiles(event.target.files);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                    <span>{uploadFilesDraft.length ? `${uploadFilesDraft.length} files have been selected` : "No file selected"}</span>
+                  </div>
+                  {uploadFilesDraft.length > 0 && (
+                    <div className="material-draft-file-list">
+                      {uploadFilesDraft.map((file, index) => (
+                        <div className="material-draft-file-row" key={`${file.name}-${file.size}-${file.lastModified}-${index}`}>
+                          <span>{file.name}</span>
+                          <button type="button" disabled={uploading} onClick={() => removeUploadDraftFile(index)} title="Xóa file">
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {uploading && <UploadStatus label="Đang upload thêm tài liệu..." />}
+                  {localError && <p className="error-text">{localError}</p>}
+                  <div className="material-upload-actions">
+                    <button className="primary-action compact dark-action" type="button" onClick={uploadIntoMaterial} disabled={uploading}>
+                      {uploading ? <span className="button-spinner" /> : <Upload size={14} />}
+                      {uploading ? "Uploading" : "Upload"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <button
+              className={`icon-soft ${editing ? "active" : ""}`}
+              type="button"
+              title="Edit tài liệu"
+              aria-label={`Edit ${item.title || "tài liệu"}`}
+              disabled={uploading}
+              onClick={editing ? cancelEdit : startEdit}
+            >
+              <Pencil size={15} />
+            </button>
+            <button className="icon-danger" onClick={() => requestConfirm({
+              title: "Xác nhận xóa tài liệu",
+              message: `Bạn có chắc muốn xóa tài liệu "${item.title}" không?`,
+              confirmLabel: "Xóa tài liệu"
+            }, deleteMaterial)}><Trash2 size={15} /></button>
+          </div>
+        )}
+      </div>
+      <div className={`file-list material-file-list ${editing ? "is-editing" : ""}`}>
+        {displayFiles.length === 0 && <span>Chưa có file đính kèm.</span>}
+        {displayFiles.map((file, index) => {
+          const previewUrl = filePreviewUrl(file) || materialFileUrl(file);
+          const downloadUrl = fileDownloadUrl(file) || materialFileUrl(file);
+          return (
+            <div className="material-file-item" key={`${file.fileName}-${index}`}>
+              <button className="material-file-preview" type="button" onClick={() => previewUrl && window.open(previewUrl, "_blank", "noopener,noreferrer")}>
+                {file.fileName || "file"}
+              </button>
+              <div className="material-file-actions">
+                {downloadUrl && (
+                  <a className="download-icon-button" href={downloadUrl} target="_blank" rel="noreferrer" download title="Tải file" aria-label={`Tải ${file.fileName || "file"}`}>
+                    <Download size={15} />
+                  </a>
+                )}
+                {editing && (
+                  <button
+                    className="icon-danger compact-icon"
+                    type="button"
+                    title="Xóa file khỏi thẻ"
+                    aria-label={`Xóa ${file.fileName || "file"} khỏi thẻ`}
+                    onClick={() => setEditFiles((current) => current.filter((_, fileIndex) => fileIndex !== index))}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {editing && (
+        <div className="material-edit-actions">
+          <SaveButton className="compact" dirty={editDirty} onClick={saveEdit} />
+          <button className="secondary-action compact" type="button" onClick={cancelEdit}>Cancel</button>
+        </div>
+      )}
+      {localError && !uploadOpen && <p className="error-text">{localError}</p>}
+    </article>
   );
 }
 
