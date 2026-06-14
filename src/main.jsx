@@ -410,6 +410,26 @@ function isImageFile(file) {
   return file?.type?.startsWith("image/") || String(file?.previewUrl || file?.url || "").startsWith("data:image");
 }
 
+function formatFileSize(size) {
+  const value = Number(size || 0);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let nextValue = value;
+  let unitIndex = 0;
+  while (nextValue >= 1024 && unitIndex < units.length - 1) {
+    nextValue /= 1024;
+    unitIndex += 1;
+  }
+  const decimals = nextValue >= 10 || unitIndex === 0 ? 0 : 1;
+  return `${nextValue.toFixed(decimals)} ${units[unitIndex]}`;
+}
+
+function draftFileTypeLabel(file) {
+  if (file?.type) return file.type;
+  const extension = String(file?.name || "").split(".").pop();
+  return extension && extension !== file?.name ? extension.toUpperCase() : "file";
+}
+
 function useOutsideClick(ref, active, onOutside) {
   useEffect(() => {
     if (!active) return undefined;
@@ -5442,6 +5462,7 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
   const addPopoverRef = useRef(null);
   const [addOpen, setAddOpen] = useState(false);
   const [draft, setDraft] = useState({ title: "", content: "", type: "personal", format: "uploadFile", reviewerType: "none" });
+  const [assignmentFilesDraft, setAssignmentFilesDraft] = useState([]);
   const [creatingAssignment, setCreatingAssignment] = useState(false);
   const [assignmentCreateError, setAssignmentCreateError] = useState("");
   const [assignmentCreateNotice, setAssignmentCreateNotice] = useState("");
@@ -5530,6 +5551,18 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
     });
     onReviewerOpenConsumed?.(reviewerOpenRequest.id);
   }, [assignments, course, course.id, onReviewerOpenConsumed, reviewerOpenRequest]);
+
+  function addAssignmentDraftFiles(fileList) {
+    const nextFiles = Array.from(fileList || []).filter(Boolean);
+    if (!nextFiles.length) return;
+    setAssignmentFilesDraft((current) => [...current, ...nextFiles]);
+    setAssignmentCreateError("");
+    setAssignmentCreateNotice("");
+  }
+
+  function removeAssignmentDraftFile(index) {
+    setAssignmentFilesDraft((current) => current.filter((_, fileIndex) => fileIndex !== index));
+  }
 
   async function startAssignmentExam(assignment, exam) {
     if (!assignment || !exam) return;
@@ -5689,8 +5722,14 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
       const assignmentType = normalizeGradebookType(draft.type, "personal");
       const assignmentFormat = normalizeAssignmentFormat(draft.format);
       const assignmentReviewerType = normalizeDiscussionTopicType(draft.reviewerType, assignmentFormat);
+      const assignmentId = crypto.randomUUID();
+      const attachments = assignmentFilesDraft.length
+        ? (hasFirebaseConfig
+          ? await uploadManyFiles(course, `assignments/${assignmentId}/attachments`, assignmentFilesDraft, { anyoneWithLink: true, writerEmails: adminWriterEmails() })
+          : await Promise.all(assignmentFilesDraft.map(readFileAsDataUrl)))
+        : [];
       const assignment = {
-        id: crypto.randomUUID(),
+        id: assignmentId,
         title,
         content: draft.content.trim(),
         type: assignmentType,
@@ -5707,7 +5746,8 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
         limitMin: "",
         limitMax: "",
         choiceValues: [],
-        peerScoreResponses: []
+        peerScoreResponses: [],
+        attachments
       };
       const createdAtMillis = Date.now();
       const announcement = {
@@ -5718,7 +5758,7 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
         role: "admin",
         content: assignmentAnnouncementContent(assignment),
         pinned: false,
-        attachments: [],
+        attachments,
         publishAsMaterial: false,
         createdAt: formatDateTime24(createdAtMillis),
         createdAtMillis,
@@ -5741,6 +5781,7 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
       }, { sync: true });
 
       setDraft({ title: "", content: "", type: "personal", format: "uploadFile", reviewerType: "none" });
+      setAssignmentFilesDraft([]);
       setAddOpen(false);
       if (hasFirebaseConfig && course.announcementEmailEnabled) {
         try {
@@ -5820,7 +5861,16 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
               <Plus size={14} /> Add
             </button>
             {addOpen && (
-              <div className="material-add-popover assignment-add-popover">
+              <div
+                className="material-add-popover assignment-add-popover"
+                onPaste={(event) => {
+                  const pastedFiles = event.clipboardData?.files;
+                  if (pastedFiles?.length) {
+                    event.preventDefault();
+                    addAssignmentDraftFiles(pastedFiles);
+                  }
+                }}
+              >
                 <input
                   disabled={creatingAssignment}
                   placeholder="Title..."
@@ -5833,6 +5883,54 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
                   value={draft.content}
                   onChange={(event) => setDraft({ ...draft, content: event.target.value })}
                 />
+                <div
+                  className={`assignment-attachment-dropzone ${creatingAssignment ? "is-disabled" : ""}`}
+                  tabIndex={0}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (creatingAssignment) return;
+                    addAssignmentDraftFiles(event.dataTransfer.files);
+                  }}
+                >
+                  <label className="assignment-attachment-add" title="Thêm file hướng dẫn" aria-label="Thêm file hướng dẫn">
+                    <Plus size={22} />
+                    <input
+                      disabled={creatingAssignment}
+                      type="file"
+                      multiple
+                      onChange={(event) => {
+                        addAssignmentDraftFiles(event.target.files);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
+                  <div className="assignment-attachment-copy">
+                    <strong>File hướng dẫn</strong>
+                    <span>Browse, kéo thả hoặc Ctrl+V để thêm nhiều file/hình.</span>
+                  </div>
+                </div>
+                {assignmentFilesDraft.length > 0 && (
+                  <div className="assignment-draft-file-list" aria-label="File hướng dẫn đã thêm">
+                    {assignmentFilesDraft.map((file, index) => (
+                      <div className="assignment-draft-file-row" key={`${file.name}-${file.size}-${file.lastModified}-${index}`}>
+                        <div className="assignment-draft-file-info">
+                          <strong>{file.name}</strong>
+                          <small>{[draftFileTypeLabel(file), formatFileSize(file.size)].filter(Boolean).join(" · ")}</small>
+                        </div>
+                        <button
+                          type="button"
+                          title="Xóa file"
+                          aria-label={`Xóa ${file.name}`}
+                          disabled={creatingAssignment}
+                          onClick={() => removeAssignmentDraftFile(index)}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="assignment-create-popover-row">
                   <label className="assignment-create-field" htmlFor="assignment-type">
                     <span>Assignee:</span>
@@ -6184,6 +6282,30 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
           ) : (
             <p>{assignment.content}</p>
           )}
+          {(assignment.attachments || []).length > 0 && (
+            <div className="file-list assignment-attachment-list">
+              {(assignment.attachments || []).map((file, index) => {
+                const previewUrl = filePreviewUrl(file);
+                const downloadUrl = fileDownloadUrl(file);
+                return (
+                  <div className="assignment-attachment-item" key={`${file.fileName}-${index}`}>
+                    <button
+                      className="material-file-preview"
+                      type="button"
+                      onClick={() => previewUrl && window.open(previewUrl, "_blank", "noopener,noreferrer")}
+                    >
+                      {file.fileName || "file"}
+                    </button>
+                    {downloadUrl && (
+                      <button className="download-icon-button" type="button" title="Tải file" aria-label={`Tải ${file.fileName || "file"}`} onClick={() => window.open(downloadUrl, "_blank", "noopener,noreferrer")}>
+                        <Download size={15} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="assignment-meta-row">
             <div className="assignment-format-row">
               <span>Assignee:</span>
@@ -6493,6 +6615,13 @@ function AssignmentReviewerScorePanel({ admin, user, course, assignment, targets
         <div className="peer-score-admin-panel">
           <div className="peer-score-admin-head">
             <strong>Format chấm điểm</strong>
+          </div>
+          <div className="peer-score-config-row">
+            <PeerReviewScoreConfigFields draft={configDraft} onChange={(nextDraft) => {
+              setConfigDraft(nextDraft);
+              setConfigStatus("");
+              setConfigError("");
+            }} />
             <div className="peer-score-admin-actions">
               <button
                 className="icon-soft"
@@ -6506,11 +6635,6 @@ function AssignmentReviewerScorePanel({ admin, user, course, assignment, targets
               <button className="primary-action compact" type="button" onClick={saveScoreConfig}>Save</button>
             </div>
           </div>
-          <PeerReviewScoreConfigFields draft={configDraft} onChange={(nextDraft) => {
-            setConfigDraft(nextDraft);
-            setConfigStatus("");
-            setConfigError("");
-          }} />
           {configStatus && <p className="success-text">{configStatus}</p>}
           {configError && <p className="error-text">{configError}</p>}
         </div>
@@ -6581,18 +6705,33 @@ function buildAssignmentReviewerScoreStats(course, targets, responses) {
   const acceptedMembers = (course.members || [])
     .filter((member) => member.status === "accepted")
     .sort(compareMemberOrder);
+  const totalLearners = acceptedMembers.length;
   const topicRows = targets.map((target, index) => {
     const targetResponses = responses.filter((response) => responseMatchesScoreTarget(response, target));
-    const scores = targetResponses
+    const latestByReviewer = new Map();
+    targetResponses.forEach((response) => {
+      const email = normalizeEmail(response.email || "");
+      if (!email) return;
+      const existing = latestByReviewer.get(email);
+      if (!existing || Number(response.submittedAtMillis || 0) >= Number(existing.submittedAtMillis || 0)) {
+        latestByReviewer.set(email, response);
+      }
+    });
+    const reviewerResponses = [...latestByReviewer.values()];
+    const scores = reviewerResponses
       .map((response) => Number(String(response.score ?? "").replace(",", ".")))
       .filter(Number.isFinite);
     const average = scores.length
       ? formatScoreNumber(scores.reduce((total, value) => total + value, 0) / scores.length)
       : "";
+    const range = scores.length
+      ? `${formatScoreNumber(Math.min(...scores))}-${formatScoreNumber(Math.max(...scores))}`
+      : "";
     return {
       index: index + 1,
       topic: target.label,
-      count: targetResponses.length,
+      count: `${latestByReviewer.size}/${totalLearners}`,
+      range,
       average
     };
   });
@@ -6636,7 +6775,7 @@ function AssignmentReviewerScoreStatsWorkspace({ course, assignment, targets, re
           <ChevronLeft size={18} /> Back
         </button>
         <div>
-        <strong>Thống kê Reviewer: Score</strong>
+          <strong>Thống kê Reviewer: Score</strong>
           <small>{assignment.title || "Reviewer: Score"} · {targetOptions.length} Topic</small>
         </div>
       </div>
@@ -6645,15 +6784,16 @@ function AssignmentReviewerScoreStatsWorkspace({ course, assignment, targets, re
           <h4>Điểm trung bình theo Topic</h4>
           <div className="reviewer-score-table-wrap">
             <table className="data-table compact-table reviewer-score-stats-table">
-              <thead><tr><th>STT</th><th>Topic</th><th>Số lượt chấm</th><th>Điểm trung bình</th></tr></thead>
+              <thead><tr><th>STT</th><th>Topic</th><th>Số lượt chấm</th><th>Range</th><th>Điểm trung bình</th></tr></thead>
               <tbody>
                 {stats.topicRows.length === 0 ? (
-                  <tr><td colSpan="4">Chưa có Topic.</td></tr>
+                  <tr><td colSpan="5">Chưa có Topic.</td></tr>
                 ) : stats.topicRows.map((row) => (
                   <tr key={row.topic}>
                     <td>{row.index}</td>
                     <td>{row.topic}</td>
                     <td>{row.count}</td>
+                    <td>{row.range}</td>
                     <td>{row.average}</td>
                   </tr>
                 ))}
@@ -6665,7 +6805,7 @@ function AssignmentReviewerScoreStatsWorkspace({ course, assignment, targets, re
           <h4>Tiến độ người học chấm điểm</h4>
           <div className="reviewer-score-table-wrap">
             <table className="data-table compact-table reviewer-score-completion-table">
-              <thead><tr><th>STT</th><th>Họ và tên</th><th>Mã số</th><th>Email</th><th>Đã chấm</th><th>Còn thiếu</th></tr></thead>
+              <thead><tr><th>STT</th><th>Họ và tên</th><th>Mã số</th><th>Đã chấm</th><th>Email</th><th>Còn thiếu</th></tr></thead>
               <tbody>
                 {stats.completionRows.length === 0 ? (
                   <tr><td colSpan="6">Chưa có người học.</td></tr>
@@ -6674,8 +6814,8 @@ function AssignmentReviewerScoreStatsWorkspace({ course, assignment, targets, re
                     <td>{row.index}</td>
                     <td>{row.name}</td>
                     <td>{row.studentId}</td>
-                    <td>{row.email}</td>
                     <td>{row.progress}</td>
+                    <td>{row.email}</td>
                     <td>{row.missing}</td>
                   </tr>
                 ))}
@@ -8740,7 +8880,7 @@ function PersonalGradeTable({ admin, user, course, draftRows, onScoreChange, rea
 
   return (
     <table className="data-table grade-personal-table">
-      <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ và tên</th><th>Mã số</th><th>Email</th><th>Điểm</th></tr></thead>
+      <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ và tên</th><th>Mã số</th><th>Điểm</th><th>Email</th></tr></thead>
       <tbody>
         {rows.map((row) => (
           <tr key={row.key}>
@@ -8748,7 +8888,6 @@ function PersonalGradeTable({ admin, user, course, draftRows, onScoreChange, rea
             <td><ProfileAvatar user={{ ...row.member, photoURL: row.member.photoURL || course.profiles?.[row.member.email]?.photoURL || "" }} label={row.member.name || row.member.email} small /></td>
             <td>{row.member.name || row.member.email}</td>
             <td>{row.member.studentId}</td>
-            <td>{row.member.email}</td>
             <td>
               {admin && !readOnly ? (
                 <input className="score-input" data-enter-group="personal-grade-score" inputMode="decimal" value={row.score} onKeyDown={(event) => focusNextInputOnEnter(event, "personal-grade-score")} onChange={(event) => onScoreChange(row.key, event.target.value)} />
@@ -8756,6 +8895,7 @@ function PersonalGradeTable({ admin, user, course, draftRows, onScoreChange, rea
                 row.score || emptyScoreLabel
               )}
             </td>
+            <td>{row.member.email}</td>
           </tr>
         ))}
       </tbody>
@@ -8826,16 +8966,16 @@ function ExamAllocatedGradebookCards({ admin, user, course, draftRows, type = "g
 function ExamAllocatedMembersTable({ members, course, score, admin }) {
   return (
     <table className="data-table topic-members-table grade-members-table exam-allocated-members-table">
-      <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ tên</th><th>Email</th><th>Mã số</th><th>Điểm</th></tr></thead>
+      <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ tên</th><th>Mã số</th><th>Điểm</th><th>Email</th></tr></thead>
       <tbody>
         {members.map((member) => (
           <tr key={member.email}>
             <td>{member.order}</td>
             <td><ProfileAvatar user={{ ...member, photoURL: member.photoURL || course.profiles?.[member.email]?.photoURL || "" }} label={member.name || member.email} small /></td>
             <td>{member.name}</td>
-            <td>{member.email}</td>
             <td>{member.studentId}</td>
             <td><span className="score-box final-score">{score || (admin ? "" : "Chưa có điểm")}</span></td>
+            <td>{member.email}</td>
           </tr>
         ))}
       </tbody>
@@ -8935,7 +9075,7 @@ function IntergroupGradebookCards({ admin, user, course, draftRows, onScoreChang
 function GradeMembersTable({ admin, members, course, score, bonuses, rowKey, onBonusChange = () => {}, readOnly = false }) {
   return (
     <table className="data-table topic-members-table grade-members-table">
-      <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ tên</th><th>Email</th><th>Mã số</th><th>Bonus</th><th>Final</th></tr></thead>
+      <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ tên</th><th>Mã số</th><th>Bonus</th><th>Final</th><th>Email</th></tr></thead>
       <tbody>
         {members.map((member) => {
           const bonus = bonuses?.[member.email] || "";
@@ -8945,7 +9085,6 @@ function GradeMembersTable({ admin, members, course, score, bonuses, rowKey, onB
               <td>{member.order}</td>
               <td><ProfileAvatar user={{ ...member, photoURL: member.photoURL || course.profiles?.[member.email]?.photoURL || "" }} label={member.name || member.email} small /></td>
               <td>{member.name}</td>
-              <td>{member.email}</td>
               <td>{member.studentId}</td>
               <td>
                 {admin && !readOnly ? (
@@ -8955,6 +9094,7 @@ function GradeMembersTable({ admin, members, course, score, bonuses, rowKey, onB
                 )}
               </td>
               <td><span className="score-box final-score">{finalScore || (admin ? "" : "Chưa có điểm")}</span></td>
+              <td>{member.email}</td>
             </tr>
           );
         })}

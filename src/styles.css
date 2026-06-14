@@ -2460,6 +2460,21 @@ textarea { min-height: 88px; resize: vertical; }
   color: #334155;
   font-size: 14px;
 }
+.peer-score-config-row {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.peer-score-config-row .peer-score-config-fields {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.peer-score-admin-panel .peer-score-choice-field {
+  flex: 0 1 360px;
+  min-width: 220px;
+  max-width: 420px;
+}
 .assignment-peer-score-panel {
   display: grid;
   gap: 10px;
@@ -2469,6 +2484,7 @@ textarea { min-height: 88px; resize: vertical; }
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  margin-left: auto;
 }
 .peer-score-admin-actions .icon-soft {
   width: 34px;
@@ -2576,7 +2592,7 @@ textarea { min-height: 88px; resize: vertical; }
   overflow: auto;
 }
 .reviewer-score-table-wrap table {
-  min-width: 720px;
+  min-width: 820px;
 }
 .reviewer-score-completion-table {
   min-width: 980px;
@@ -2587,11 +2603,17 @@ textarea { min-height: 88px; resize: vertical; }
 .reviewer-score-stats-table td:nth-child(3),
 .reviewer-score-stats-table th:nth-child(4),
 .reviewer-score-stats-table td:nth-child(4),
+.reviewer-score-stats-table th:nth-child(5),
+.reviewer-score-stats-table td:nth-child(5),
 .reviewer-score-completion-table th:nth-child(1),
 .reviewer-score-completion-table td:nth-child(1),
+.reviewer-score-completion-table th:nth-child(4),
+.reviewer-score-completion-table td:nth-child(4) {
+  text-align: center;
+}
 .reviewer-score-completion-table th:nth-child(5),
 .reviewer-score-completion-table td:nth-child(5) {
-  text-align: center;
+  min-width: 260px;
 }
 .reviewer-score-completion-table th:nth-child(6),
 .reviewer-score-completion-table td:nth-child(6) {
@@ -2917,6 +2939,112 @@ textarea { min-height: 88px; resize: vertical; }
 }
 .assignment-add-popover {
   width: min(560px, calc(100vw - 34px));
+}
+.assignment-attachment-dropzone {
+  min-height: 74px;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border: 1px dashed #b8c4d6;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 9px;
+}
+.assignment-attachment-dropzone:focus-within,
+.assignment-attachment-dropzone:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.18);
+  outline: 0;
+}
+.assignment-attachment-dropzone.is-disabled {
+  opacity: 0.72;
+  pointer-events: none;
+}
+.assignment-attachment-add {
+  width: 54px;
+  aspect-ratio: 1;
+  border: 1px solid #94a3b8;
+  border-radius: 8px;
+  background: #fff;
+  color: #1d4ed8;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.assignment-attachment-add input {
+  display: none;
+}
+.assignment-attachment-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.assignment-attachment-copy strong {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 900;
+}
+.assignment-attachment-copy span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.assignment-draft-file-list {
+  display: grid;
+  gap: 6px;
+}
+.assignment-draft-file-row,
+.assignment-attachment-item {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #dbe4f0;
+  border-radius: 8px;
+  background: #fff;
+  padding: 6px 8px;
+}
+.assignment-draft-file-info {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.assignment-draft-file-info strong,
+.assignment-draft-file-info small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.assignment-draft-file-info strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+.assignment-draft-file-info small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+.assignment-draft-file-row button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  display: inline-grid;
+  place-items: center;
+  background: #fee2e2;
+  color: #dc2626;
+}
+.assignment-attachment-list {
+  margin: 8px 0 10px;
+}
+.assignment-attachment-item {
+  width: fit-content;
+  max-width: 100%;
+  grid-template-columns: minmax(0, auto) auto;
 }
 .exam-builder {
   display: grid;
@@ -3726,8 +3854,8 @@ textarea { min-height: 88px; resize: vertical; }
 .grade-personal-table .avatar-col, .grade-personal-table td:nth-child(2) { width: 52px; text-align: center; }
 .grade-personal-table th:nth-child(3), .grade-personal-table td:nth-child(3) { min-width: max-content; }
 .grade-personal-table th:nth-child(4), .grade-personal-table td:nth-child(4) { width: 100px; }
-.grade-personal-table th:nth-child(5), .grade-personal-table td:nth-child(5) { min-width: max-content; }
-.grade-personal-table th:nth-child(6), .grade-personal-table td:nth-child(6) { width: 90px; text-align: center; }
+.grade-personal-table th:nth-child(5), .grade-personal-table td:nth-child(5) { width: 90px; text-align: center; }
+.grade-personal-table th:nth-child(6), .grade-personal-table td:nth-child(6) { min-width: max-content; }
 .exam-gradebook-panel {
   display: grid;
   gap: 10px;
@@ -3976,8 +4104,8 @@ textarea { min-height: 88px; resize: vertical; }
 }
 .exam-allocated-members-table th:last-child,
 .exam-allocated-members-table td:last-child {
-  width: 96px;
-  text-align: center;
+  min-width: max-content;
+  text-align: left;
 }
 @media (max-width: 760px) {
   .exam-scope-grade-card .group-topic-bar {
@@ -4003,12 +4131,25 @@ textarea { min-height: 88px; resize: vertical; }
   table-layout: auto;
 }
 .grade-members-table th:nth-child(3), .grade-members-table td:nth-child(3) { min-width: max-content; }
-.grade-members-table th:nth-child(4), .grade-members-table td:nth-child(4) { min-width: max-content; }
+.grade-members-table th:nth-child(4), .grade-members-table td:nth-child(4) { width: 100px; }
 .grade-members-table th:nth-child(5), .grade-members-table td:nth-child(5) { width: 82px; }
-.grade-members-table th:nth-child(6), .grade-members-table td:nth-child(6),
-.grade-members-table th:nth-child(7), .grade-members-table td:nth-child(7) {
+.grade-members-table th:nth-child(6), .grade-members-table td:nth-child(6) {
   width: 82px;
   text-align: center;
+}
+.grade-members-table th:nth-child(7), .grade-members-table td:nth-child(7) {
+  min-width: max-content;
+  text-align: left;
+}
+.exam-allocated-members-table th:nth-child(5),
+.exam-allocated-members-table td:nth-child(5) {
+  width: 82px;
+  text-align: center;
+}
+.exam-allocated-members-table th:nth-child(6),
+.exam-allocated-members-table td:nth-child(6) {
+  min-width: max-content;
+  text-align: left;
 }
 .assignment-head > button:first-child {
   flex: 1;
