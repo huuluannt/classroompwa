@@ -387,7 +387,31 @@ function adminWriterEmails() {
 }
 
 async function uploadManyFiles(course, folder, files, shareOptions = {}) {
-  return Promise.all(Array.from(files || []).map((file) => uploadClassFile(course, folder, file, shareOptions)));
+  const uploadedFiles = [];
+  for (const file of Array.from(files || [])) {
+    try {
+      uploadedFiles.push(await uploadClassFile(course, folder, file, shareOptions));
+    } catch (error) {
+      throw new Error(formatUploadFailureMessage(error, file));
+    }
+  }
+  return uploadedFiles;
+}
+
+function formatUploadFailureMessage(error, file) {
+  const fileName = file?.name ? ` "${file.name}"` : "";
+  const message = String(error?.message || "").trim();
+  if (!message) return `Không thể upload file${fileName}. Google Drive không trả về lý do cụ thể.`;
+  return message.includes(fileName)
+    ? message
+    : `Không thể upload file${fileName}. Lý do: ${message}`;
+}
+
+function formatActionError(error, fallback) {
+  const message = String(error?.message || "").trim();
+  if (!message) return fallback;
+  if (/^Không thể|^Vui lòng|^HTTP\s/i.test(message)) return message;
+  return `${fallback} Lý do: ${message}`;
 }
 
 function materialFiles(item) {
@@ -3013,7 +3037,7 @@ function AnnouncementsCard({ admin, classLeader, user, course, showToast, update
       }
     } catch (error) {
       console.error(error);
-      setPostError("Không thể đăng tin. Vui lòng thử lại hoặc kiểm tra quyền đăng tin/file.");
+      setPostError(formatActionError(error, "Không thể đăng tin."));
     } finally {
       setPosting(false);
     }
@@ -4303,7 +4327,7 @@ function MaterialsCard({ admin, user, course, updateCourse }) {
       }
     } catch (error) {
       console.error(error);
-      setMaterialError("Không thể upload tài liệu. Vui lòng thử lại hoặc kiểm tra quyền upload/file.");
+      setMaterialError(formatActionError(error, "Không thể upload tài liệu."));
     } finally {
       setUploadingMaterial(false);
     }
@@ -5873,7 +5897,7 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
       }
     } catch (error) {
       console.error(error);
-      setAssignmentCreateError("Không thể tạo bài tập hoặc thông báo. Vui lòng thử lại.");
+      setAssignmentCreateError(formatActionError(error, "Không thể tạo bài tập hoặc thông báo."));
     } finally {
       setCreatingAssignment(false);
     }
@@ -6189,7 +6213,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
       setSubmitted(true);
     } catch (error) {
       console.error(error);
-      setSubmitError("Không thể lưu bài nộp. Vui lòng thử lại hoặc báo admin kiểm tra quyền Firestore.");
+      setSubmitError(formatActionError(error, "Không thể lưu bài nộp."));
     } finally {
       setSubmitting(false);
     }
@@ -6287,7 +6311,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
       setEditing(false);
     } catch (error) {
       console.error(error);
-      setEditError("Không thể cập nhật bài tập hoặc file hướng dẫn. Vui lòng thử lại.");
+      setEditError(formatActionError(error, "Không thể cập nhật bài tập hoặc file hướng dẫn."));
     } finally {
       setSavingEdit(false);
     }

@@ -9,6 +9,7 @@ const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 const DEFAULT_SHARE_MODE = (process.env.GOOGLE_DRIVE_SHARE_MODE || "anyone").toLowerCase();
 const MAX_CHUNK_BYTES = 4 * 1024 * 1024;
+const DRIVE_APP_PROPERTY_MAX_BYTES = 124;
 
 let cachedDriveToken = null;
 
@@ -120,7 +121,6 @@ async function startDriveUpload({ classId, course, requesterEmail, sharedDriveId
       classId,
       classCode: course.code || "",
       folderPath: cleanFolderPath,
-      originalName: safeFileName,
       uploadedBy: requesterEmail
     })
   };
@@ -486,7 +486,27 @@ function sanitizeFileName(value) {
 }
 
 function sanitizeAppProperties(values) {
-  return Object.fromEntries(Object.entries(values).map(([key, value]) => [key, String(value || "").slice(0, 120)]));
+  return Object.fromEntries(Object.entries(values)
+    .map(([key, value]) => {
+      const cleanKey = String(key || "").trim();
+      if (!cleanKey) return null;
+      const maxValueBytes = DRIVE_APP_PROPERTY_MAX_BYTES - Buffer.byteLength(cleanKey, "utf8");
+      if (maxValueBytes <= 0) return null;
+      return [cleanKey, truncateUtf8(String(value || ""), maxValueBytes)];
+    })
+    .filter(Boolean));
+}
+
+function truncateUtf8(value, maxBytes) {
+  let output = "";
+  let usedBytes = 0;
+  for (const char of String(value || "")) {
+    const charBytes = Buffer.byteLength(char, "utf8");
+    if (usedBytes + charBytes > maxBytes) break;
+    output += char;
+    usedBytes += charBytes;
+  }
+  return output;
 }
 
 function escapeDriveQueryValue(value) {
