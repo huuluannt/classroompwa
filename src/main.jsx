@@ -45,6 +45,7 @@ import {
   deleteCourseFromCloud,
   deleteExamFromCloud,
   deleteLecturerFromCloud,
+  deleteMemberActivityFromCloud,
   deleteMemberFromCloud,
   isSupremeEmail,
   joinClassByCode,
@@ -103,6 +104,19 @@ function virtualMemberSerial(member) {
 function displayMemberEmail(member) {
   if (!isVirtualMember(member)) return member?.email || "";
   return `v${virtualMemberSerial(member)}@${VIRTUAL_MEMBER_DOMAIN}`;
+}
+
+function userFromVirtualMember(member, realUser) {
+  if (!member) return realUser;
+  return {
+    displayName: member.name || member.email,
+    email: normalizeEmail(member.email),
+    photoURL: member.photoURL || "",
+    studentId: member.studentId || "",
+    isDemo: true,
+    isVirtualView: true,
+    realUserEmail: realUser?.email || ""
+  };
 }
 
 function virtualVietnameseName(serial, usedNames = new Set()) {
@@ -297,6 +311,7 @@ function isAcceptedCourseMember(course, user) {
 
 function canPostAnnouncement(course, user, admin, classLeader) {
   if (admin) return true;
+  if (user?.isVirtualView) return isAcceptedCourseMember(course, user);
   const permission = getAnnouncementPostPermission(course);
   if (permission === ANNOUNCEMENT_POST_PERMISSIONS.lecturersLeaders) return Boolean(classLeader);
   if (permission === ANNOUNCEMENT_POST_PERMISSIONS.everyone) return isAcceptedCourseMember(course, user);
@@ -391,11 +406,22 @@ const DATE_TIME_24_OPTIONS = {
   year: "numeric",
   hourCycle: "h23"
 };
+const NOTIFICATION_AGO_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 function formatDateTime24(value = Date.now()) {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "";
   return date.toLocaleString("vi-VN", DATE_TIME_24_OPTIONS);
+}
+
+function formatNotificationTime(item, nowMillis = Date.now()) {
+  const publishMillis = Number(item?.publishMillis || 0);
+  if (!Number.isFinite(publishMillis) || publishMillis <= 0) return item?.createdAt || "";
+  const ageMillis = Math.max(0, nowMillis - publishMillis);
+  if (ageMillis >= NOTIFICATION_AGO_WINDOW_MS) return item?.createdAt || formatDateTime24(publishMillis);
+  if (ageMillis < 60 * 1000) return "now";
+  if (ageMillis < 60 * 60 * 1000) return `${Math.max(1, Math.floor(ageMillis / (60 * 1000)))}m ago`;
+  return `${Math.max(1, Math.floor(ageMillis / (60 * 60 * 1000)))}h ago`;
 }
 
 function adminWriterEmails() {
@@ -631,6 +657,7 @@ function App() {
   const [loginError, setLoginError] = useState("");
   const [selectedClassId, setSelectedClassId] = useState(classes[0]?.id);
   const [selectedCard, setSelectedCard] = useState("announcements");
+  const [virtualViewByClass, setVirtualViewByClass] = useState({});
   const [reviewerOpenRequest, setReviewerOpenRequest] = useState(null);
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -678,10 +705,18 @@ function App() {
     return classes.filter((item) => canManageCourse(user, item) || item.members.some((member) => member.email === user.email));
   }, [classes, primaryLecturer, supreme, user]);
   const selectedClass = visibleClasses.find((item) => item.id === selectedClassId) || visibleClasses[0];
-  const membership = selectedClass?.members.find((member) => member.email === user.email);
-  const selectedClassAdmin = canManageCourse(user, selectedClass);
-  const selectedClassCanDelete = canDeleteCourse(user, selectedClass);
-  const selectedClassCanManageLecturers = canManageCourseLecturers(user, selectedClass);
+  const selectedClassAdminReal = canManageCourse(user, selectedClass);
+  const selectedClassVirtualEmail = selectedClass ? normalizeEmail(virtualViewByClass[selectedClass.id] || "") : "";
+  const selectedClassVirtualMembers = selectedClassAdminReal
+    ? (selectedClass?.members || []).filter((member) => member.status === "accepted" && isVirtualMember(member)).sort(compareMemberOrder)
+    : [];
+  const selectedClassVirtualMember = selectedClassVirtualMembers.find((member) => normalizeEmail(member.email) === selectedClassVirtualEmail) || null;
+  const effectiveUser = selectedClassVirtualMember ? userFromVirtualMember(selectedClassVirtualMember, user) : user;
+  const viewingAsVirtualStudent = Boolean(selectedClassVirtualMember);
+  const membership = selectedClass?.members.find((member) => normalizeEmail(member.email) === normalizeEmail(effectiveUser?.email));
+  const selectedClassAdmin = viewingAsVirtualStudent ? false : selectedClassAdminReal;
+  const selectedClassCanDelete = viewingAsVirtualStudent ? false : canDeleteCourse(user, selectedClass);
+  const selectedClassCanManageLecturers = viewingAsVirtualStudent ? false : canManageCourseLecturers(user, selectedClass);
   const latestAnnouncementTime = useMemo(() => latestAnnouncementTimestamp(notificationClasses), [notificationClasses]);
   const notificationItems = useMemo(() => notificationItemsFromClasses(notificationClasses, announcementSeenAt), [notificationClasses, announcementSeenAt]);
   const hasUnreadAnnouncements = announcementSeenAt !== null && latestAnnouncementTime > announcementSeenAt;
@@ -776,6 +811,17 @@ function App() {
   }, [saveToast]);
 
   useEffect(() => {
+    if (!selectedClass?.id || !selectedClassVirtualEmail) return;
+    if (selectedClassVirtualMember) return;
+    setVirtualViewByClass((current) => {
+      if (!current[selectedClass.id]) return current;
+      const next = { ...current };
+      delete next[selectedClass.id];
+      return next;
+    });
+  }, [selectedClass?.id, selectedClassVirtualEmail, selectedClassVirtualMember]);
+
+  useEffect(() => {
     if (!user?.email) {
       setAnnouncementSeenAt(null);
       return;
@@ -838,6 +884,30 @@ function App() {
 
   function showSaveToast(message = "Đã lưu thành công.") {
     setSaveToast({ id: Date.now(), message });
+  }
+
+  function toggleVirtualStudentView() {
+    if (!selectedClassAdminReal || !selectedClass?.id) return;
+    if (selectedClassVirtualMember) {
+      setVirtualViewByClass((current) => {
+        const next = { ...current };
+        delete next[selectedClass.id];
+        return next;
+      });
+      showSaveToast("Đã quay lại góc nhìn giảng viên.");
+      return;
+    }
+    const nextMember = selectedClassVirtualMembers[0];
+    if (!nextMember) {
+      showSaveToast("Chưa có học viên ảo trong lớp. Vào card Thành viên để thêm học viên ảo.");
+      return;
+    }
+    setVirtualViewByClass((current) => ({
+      ...current,
+      [selectedClass.id]: normalizeEmail(nextMember.email)
+    }));
+    showSaveToast(`Đang xem như ${nextMember.name || displayMemberEmail(nextMember)}.`);
+    setSelectedCard("announcements");
   }
 
   function requestConfirm(options, onConfirm) {
@@ -1083,9 +1153,14 @@ function App() {
         ) : (
         <ClassPane
           admin={selectedClassAdmin}
+          canViewAsVirtualStudent={selectedClassAdminReal}
+          viewingAsVirtualStudent={viewingAsVirtualStudent}
+          virtualStudentMember={selectedClassVirtualMember}
+          virtualStudentCount={selectedClassVirtualMembers.length}
+          onToggleVirtualStudentView={toggleVirtualStudentView}
           canDeleteClass={selectedClassCanDelete}
           canManageCourseLecturers={selectedClassCanManageLecturers}
-          user={user}
+          user={effectiveUser}
           course={selectedClass}
           examFormTemplates={examFormTemplates}
           setExamFormTemplates={setExamFormTemplates}
@@ -1374,6 +1449,13 @@ function LoginScreen({ onLogin, loginError }) {
 }
 
 function NotificationPanel({ items, onSelect }) {
+  const [nowMillis, setNowMillis] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMillis(Date.now()), 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   return (
     <div className="notification-panel">
       <div className="notification-panel-head">
@@ -1396,7 +1478,7 @@ function NotificationPanel({ items, onSelect }) {
             </span>
             {item.courseCode && <span className="notification-code">{item.courseCode}</span>}
             <span className="notification-preview">{item.content}</span>
-            <time>{item.createdAt}</time>
+            <time>{formatNotificationTime(item, nowMillis)}</time>
             {item.unread && <span className="notification-badge">Mới</span>}
           </button>
         ))}
@@ -1746,6 +1828,11 @@ function ClassRow({ course, selected, pinned, archived, archivedMode, owned, can
 
 function ClassPane({
   admin,
+  canViewAsVirtualStudent,
+  viewingAsVirtualStudent,
+  virtualStudentMember,
+  virtualStudentCount = 0,
+  onToggleVirtualStudentView,
   canManageCourseLecturers,
   user,
   course,
@@ -1861,9 +1948,27 @@ function ClassPane({
           <h2>{course.name}</h2>
           <p>{course.description}</p>
         </div>
-        <button className="class-code class-code-button" type="button" onClick={() => setShowClassCode(true)}>
-          Mã lớp: {course.code}
-        </button>
+        <div className="class-header-actions">
+          {canViewAsVirtualStudent && (
+            <button
+              className={`virtual-view-toggle ${viewingAsVirtualStudent ? "active" : ""}`}
+              type="button"
+              onClick={onToggleVirtualStudentView}
+              disabled={!viewingAsVirtualStudent && virtualStudentCount === 0}
+              title={viewingAsVirtualStudent
+                ? "Quay lại góc nhìn giảng viên"
+                : (virtualStudentCount > 0 ? "Xem lớp như học viên ảo" : "Chưa có học viên ảo trong lớp")}
+              aria-label={viewingAsVirtualStudent ? "Quay lại góc nhìn giảng viên" : "Xem lớp như học viên ảo"}
+              aria-pressed={viewingAsVirtualStudent}
+            >
+              {viewingAsVirtualStudent ? <Eye size={16} /> : <EyeOff size={16} />}
+              <span>{viewingAsVirtualStudent ? `As ${virtualStudentMember?.name || "học viên ảo"}` : "View as"}</span>
+            </button>
+          )}
+          <button className="class-code class-code-button" type="button" onClick={() => setShowClassCode(true)}>
+            Mã lớp: {course.code}
+          </button>
+        </div>
       </div>
       <div className="class-workspace">
         <aside className="leftpanel">
@@ -2270,21 +2375,25 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
     try {
       await updateCourse((current) => {
         const currentVirtualEmails = new Set((current.members || []).filter(isVirtualMember).map((member) => normalizeEmail(member.email)));
-        return {
+        const nextCourse = {
           ...current,
           members: (current.members || []).filter((member) => !currentVirtualEmails.has(normalizeEmail(member.email))),
           groupTopics: removeVirtualEmailsFromTopics(current.groupTopics || [], currentVirtualEmails),
           intergroupTopics: removeVirtualEmailsFromTopics(current.intergroupTopics || [], currentVirtualEmails),
           personalTopics: (current.personalTopics || []).filter((item) => !currentVirtualEmails.has(normalizeEmail(item.email)))
         };
+        return removeMemberGeneratedActivity(nextCourse, currentVirtualEmails);
       }, {
-        toast: "Đã remove học viên ảo. Topic vẫn được giữ lại.",
+        toast: "Đã remove học viên ảo và dữ liệu test của học viên ảo.",
         writeMembers: false,
         writeSummary: false,
-        classFields: ["groupTopics", "intergroupTopics", "personalTopics"],
+        classFields: ["groupTopics", "intergroupTopics", "personalTopics", "assignments", "peerReviews"],
         throwOnError: true
       });
-      await Promise.all([...virtualEmails].map((email) => deleteMemberFromCloud(course.id, email)));
+      await Promise.all([...virtualEmails].flatMap((email) => [
+        deleteMemberActivityFromCloud(course.id, email),
+        deleteMemberFromCloud(course.id, email)
+      ]));
       setVirtualAddOpen(false);
     } catch (error) {
       console.error(error);
@@ -2520,7 +2629,7 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
                       {virtualMembers.length > 0 && (
                         <button className="secondary-action compact virtual-remove-button" type="button" onClick={() => requestConfirm({
                           title: "Remove học viên ảo?",
-                          message: `Bạn có chắc muốn remove ${virtualMembers.length} học viên ảo khỏi lớp không? Các topic nhóm vẫn được giữ lại, chỉ bỏ học viên ảo khỏi danh sách thành viên của topic.`,
+                          message: `Bạn có chắc muốn remove ${virtualMembers.length} học viên ảo khỏi lớp không? Bài đăng, bài nộp và dữ liệu test của học viên ảo cũng sẽ bị xóa khỏi class.`,
                           confirmLabel: "Remove học viên ảo"
                         }, removeVirtualMembers)}>
                           <Trash2 size={14} /> Remove học viên ảo
@@ -2592,7 +2701,9 @@ function MembersTable({ admin, canManageCourseLecturers, canEditMembers, course,
                     onPromoteToLecturer={() => onPromoteToLecturer(member)}
                     onDelete={() => requestConfirm({
                       title: "Xóa người học?",
-                      message: `Bạn có chắc muốn xóa "${member.name || member.email}" khỏi lớp này không?`,
+                      message: isVirtualMember(member)
+                        ? `Bạn có chắc muốn xóa "${member.name || member.email}" khỏi lớp này không? Bài đăng, bài nộp và dữ liệu test của học viên ảo này cũng sẽ bị xóa khỏi class.`
+                        : `Bạn có chắc muốn xóa "${member.name || member.email}" khỏi lớp này không?`,
                       confirmLabel: "Xóa người học"
                     }, () => removeMember(course, updateCourse, member.email))}
                   />
@@ -2687,6 +2798,26 @@ function MemberRoleMenu({ member, canPromoteToLecturer, onToggleClassLeader, onP
       )}
     </div>
   );
+}
+
+function removeMemberGeneratedActivity(course, emails) {
+  const emailSet = new Set(Array.from(emails || []).map(normalizeEmail).filter(Boolean));
+  if (emailSet.size === 0) return course;
+  const byEmail = (value) => emailSet.has(normalizeEmail(value || ""));
+  return {
+    ...course,
+    announcements: (course.announcements || []).filter((post) => !byEmail(post.author || post.authorEmail || post.email)),
+    assignments: (course.assignments || []).map((assignment) => ({
+      ...assignment,
+      submissions: (assignment.submissions || []).filter((submission) => !byEmail(submission.email)),
+      peerScoreResponses: (assignment.peerScoreResponses || []).filter((response) => !byEmail(response.email)),
+      reviewerQuestions: (assignment.reviewerQuestions || []).filter((question) => !byEmail(question.email))
+    })),
+    peerReviews: (course.peerReviews || []).map((review) => ({
+      ...review,
+      responses: (review.responses || []).filter((response) => !byEmail(response.email))
+    }))
+  };
 }
 
 function createVirtualMembers(course, count) {
@@ -2839,9 +2970,19 @@ function markClassLeader(member, classLeader) {
   return nextMember;
 }
 
-function removeMember(course, updateCourse, email) {
-  updateCourse((current) => ({ ...current, members: current.members.filter((member) => member.email !== email) }));
-  deleteMemberFromCloud(course.id, email);
+async function removeMember(course, updateCourse, email) {
+  const normalized = normalizeEmail(email);
+  const targetMember = (course.members || []).find((member) => normalizeEmail(member.email) === normalized);
+  const shouldRemoveActivity = targetMember && isVirtualMember(targetMember);
+  await updateCourse((current) => {
+    const nextCourse = {
+      ...current,
+      members: (current.members || []).filter((member) => normalizeEmail(member.email) !== normalized)
+    };
+    return shouldRemoveActivity ? removeMemberGeneratedActivity(nextCourse, [normalized]) : nextCourse;
+  });
+  if (shouldRemoveActivity) await deleteMemberActivityFromCloud(course.id, normalized);
+  await deleteMemberFromCloud(course.id, email);
 }
 
 function PostAuthor({ post, currentUser }) {

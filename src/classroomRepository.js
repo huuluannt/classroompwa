@@ -615,6 +615,20 @@ export async function deleteMemberFromCloud(courseId, email) {
   await deleteDoc(doc(db, "classes", courseId, "members", email));
 }
 
+export async function deleteMemberActivityFromCloud(courseId, email) {
+  if (!hasFirebaseConfig || !courseId || !email) return;
+  const normalized = normalizeEmail(email);
+  if (!normalized) return;
+  const activityQueries = [
+    query(collection(db, "classes", courseId, "announcements"), where("author", "==", normalized)),
+    query(collection(db, "classes", courseId, "submissions"), where("email", "==", normalized)),
+    query(collection(db, "classes", courseId, "peerReviewResponses"), where("email", "==", normalized)),
+    query(collection(db, "classes", courseId, "reviewerQuestions"), where("email", "==", normalized))
+  ];
+  const snapshots = await Promise.all(activityQueries.map((item) => getDocs(item)));
+  await Promise.all(snapshots.flatMap((snapshot) => snapshot.docs.map((item) => deleteDoc(item.ref))));
+}
+
 export async function joinClassByCode(user, form) {
   if (!hasFirebaseConfig) return null;
   const userEmail = normalizeEmail(user.email);
