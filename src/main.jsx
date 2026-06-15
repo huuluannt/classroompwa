@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 import {
   Archive,
   ArchiveRestore,
@@ -6449,6 +6451,8 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
   const reviewerEnabled = isReviewerDiscussionFormat(assignmentFormat) && reviewerType !== "none" && reviewerTargets.length > 0;
   const scoreReviewEnabled = isReviewerScoreFormat(assignmentFormat) && reviewerType !== "none";
   const canHaveSubmissions = assignmentFormat === "uploadFile" || assignmentFormat === "exam";
+  const canControlSubmissionVisibility = canHaveSubmissions || scoreReviewEnabled;
+  const submissionsPublic = assignment.submissionsPublic === true;
   const availableExams = useMemo(() => (
     Array.isArray(course.exams) && course.exams.length > 0 ? normalizeExams(course.exams) : []
   ), [course.exams]);
@@ -6468,7 +6472,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
     ? examScopeSubmittedMessage(learnerExamScopeStatus.scope, scopedExamSubmission, user.email)
     : "";
   const visibleSubmissions = canHaveSubmissions
-    ? (admin ? cleanAssignmentSubmissionList(assignment.submissions || []) : userSubmissions)
+    ? (admin || submissionsPublic ? cleanAssignmentSubmissionList(assignment.submissions || []) : userSubmissions)
     : [];
   const assignmentEditDirty = editFilesDraft.length > 0 || jsonSignature(editDraft) !== jsonSignature(assignmentEditDraft(assignment));
 
@@ -6533,6 +6537,21 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
     setEditFilesDraft([]);
     setEditError("");
     setEditing(false);
+  }
+
+  function toggleAssignmentSubmissionVisibility() {
+    if (!admin || !canControlSubmissionVisibility) return;
+    const nextPublic = !submissionsPublic;
+    updateCourse((current) => ({
+      ...current,
+      assignments: normalizeAssignmentRatios((current.assignments || []).map((item) => (
+        item.id === assignment.id ? { ...item, submissionsPublic: nextPublic } : item
+      )))
+    }), {
+      toast: nextPublic
+        ? "Đã công khai danh sách bài nộp cho học viên."
+        : "Đã ẩn danh sách bài nộp với học viên."
+    });
   }
 
   function addEditDraftFiles(fileList) {
@@ -6857,6 +6876,18 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
               <input className="ratio-input" value={assignment.ratio || "0"} disabled readOnly />
               <strong>%</strong>
             </div>
+            {admin && canControlSubmissionVisibility && (
+              <button
+                className={`icon-soft assignment-submission-visibility-toggle ${submissionsPublic ? "is-public" : ""}`}
+                type="button"
+                title={submissionsPublic ? "Học viên đang thấy tất cả bài nộp" : "Học viên chỉ thấy bài nộp của mình"}
+                aria-label={submissionsPublic ? "Ẩn danh sách bài nộp với học viên" : "Công khai danh sách bài nộp cho học viên"}
+                aria-pressed={submissionsPublic}
+                onClick={toggleAssignmentSubmissionVisibility}
+              >
+                {submissionsPublic ? <Eye size={17} /> : <EyeOff size={17} />}
+              </button>
+            )}
             {admin && canHaveSubmissions && (
               <button className="join-action compact assignment-results-toggle" onClick={() => setShowResults(!showResults)}>
                 Xem kết quả nộp bài
@@ -6891,6 +6922,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
               assignment={assignment}
               targets={reviewerTargets}
               updateCourse={updateCourse}
+              submissionsPublic={submissionsPublic}
               onOpenStats={() => onOpenScoreStats?.(assignment.id)}
             />
           )}
@@ -7017,7 +7049,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
   );
 }
 
-function AssignmentReviewerScorePanel({ admin, user, course, assignment, targets, updateCourse, onOpenStats }) {
+function AssignmentReviewerScorePanel({ admin, user, course, assignment, targets, updateCourse, submissionsPublic = false, onOpenStats }) {
   const targetOptions = useMemo(() => targets.map((target) => ({
     key: target.key,
     label: formatAssignmentScoreTarget(target)
@@ -7037,7 +7069,7 @@ function AssignmentReviewerScorePanel({ admin, user, course, assignment, targets
   const [configError, setConfigError] = useState("");
   const choiceValuesSignature = Array.isArray(assignment.choiceValues) ? assignment.choiceValues.join("|") : String(assignment.choiceValues || "");
   const normalizedUserEmail = normalizeEmail(user?.email || "");
-  const visibleResponses = admin
+  const visibleResponses = admin || submissionsPublic
     ? responseRows
     : responseRows.filter((row) => normalizeEmail(row.email || "") === normalizedUserEmail);
   const resultsVisible = admin ? resultsOpen : true;
@@ -7194,7 +7226,7 @@ function AssignmentReviewerScorePanel({ admin, user, course, assignment, targets
       {resultsVisible && (
         <>
           <div className="review-results-head">
-            <strong>{admin ? "Tất cả điểm đã chấm" : "Điểm bạn đã chấm"}</strong>
+            <strong>{admin || submissionsPublic ? "Tất cả điểm đã chấm" : "Điểm bạn đã chấm"}</strong>
             {admin && <button className="export-button" onClick={() => exportReview({ ...scoreReview, responses: visibleResponses })}>Export Excel</button>}
           </div>
           <table className="data-table compact-table review-results-table">
@@ -7778,6 +7810,21 @@ function AssignmentExamReviewModal({ course, user, assignment, exam, submission,
   const parts = normalizeExamParts(exam.parts);
   const answers = submission.examAnswers || {};
   const submitter = assignmentSubmissionIdentity(course, submission, user);
+  const [exportingPdf, setExportingPdf] = useState(false);
+
+  async function exportPdf() {
+    if (exportingPdf) return;
+    setExportingPdf(true);
+    try {
+      await exportExamSubmissionPdf({ course, user, assignment, exam, submission });
+    } catch (error) {
+      console.error(error);
+      window.alert("Không thể export PDF bài làm. Vui lòng thử lại.");
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   return (
     <Modal title="Bài làm đã nộp" onClose={onClose} className="assignment-exam-review-modal">
       <div className="assignment-exam-review-head">
@@ -7815,10 +7862,145 @@ function AssignmentExamReviewModal({ course, user, assignment, exam, submission,
         </div>
       </div>
       <div className="confirm-actions">
+        <button className="export-button" type="button" onClick={exportPdf} disabled={exportingPdf}>
+          {exportingPdf ? <span className="button-spinner" /> : <Download size={15} />}
+          {exportingPdf ? "Exporting" : "Export PDF"}
+        </button>
         <button className="secondary-action" type="button" onClick={onClose}>Close</button>
       </div>
     </Modal>
   );
+}
+
+async function exportExamSubmissionPdf({ course, user, assignment, exam, submission }) {
+  const submitter = assignmentSubmissionIdentity(course, submission, user);
+  const exportNode = document.createElement("div");
+  exportNode.className = "exam-pdf-export-root";
+  exportNode.innerHTML = examSubmissionPdfHtml({ assignment, exam, submission, submitter });
+  document.body.appendChild(exportNode);
+  try {
+    await document.fonts?.ready;
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+    const canvas = await html2canvas(exportNode, {
+      backgroundColor: "#ffffff",
+      scale: 2,
+      useCORS: true,
+      windowWidth: exportNode.scrollWidth,
+      windowHeight: exportNode.scrollHeight
+    });
+    saveCanvasAsPdf(canvas, examSubmissionPdfFileName({ assignment, exam, submission, submitter }));
+  } finally {
+    exportNode.remove();
+  }
+}
+
+function examSubmissionPdfHtml({ assignment, exam, submission, submitter }) {
+  const parts = normalizeExamParts(exam.parts);
+  const answers = submission.examAnswers || {};
+  return `
+    <section class="exam-pdf-sheet">
+      <header class="exam-pdf-header">
+        <h1>${escapeXml(submission.examTitle || exam.title || "Đề thi")}</h1>
+        <p>${escapeXml(assignment?.title || "Bài tập")} · ${examTotalQuestionCount(exam)} câu</p>
+        <p>Đã nộp: ${escapeXml(submission.submittedAt || formatDateTime24(submission.submittedAtMillis || Date.now()))}</p>
+      </header>
+      <dl class="exam-pdf-submitter">
+        <div><dt>Họ tên người nộp</dt><dd>${escapeXml(submitter.name || "Chưa có")}</dd></div>
+        <div><dt>Mã số</dt><dd>${escapeXml(submitter.studentId || "Chưa có")}</dd></div>
+        <div><dt>Email</dt><dd>${escapeXml(submitter.email || "Chưa có")}</dd></div>
+      </dl>
+      <main class="exam-pdf-parts">
+        ${parts.map((part, partIndex) => examPartSubmissionPdfHtml(part, partIndex, answers, parts.length > 1)).join("")}
+      </main>
+    </section>
+  `;
+}
+
+function examPartSubmissionPdfHtml(part, partIndex, answers, showPartTitle) {
+  const questions = normalizeExamQuestions(part.questions);
+  if (questions.length === 0) return "";
+  return `
+    <section class="exam-pdf-part">
+      ${showPartTitle ? `<h2>Phần ${toRomanNumeral(partIndex + 1)}</h2>` : ""}
+      ${questions.map((question, questionIndex) => examQuestionSubmissionPdfHtml(part, question, questionIndex, answers)).join("")}
+    </section>
+  `;
+}
+
+function examQuestionSubmissionPdfHtml(part, question, questionIndex, answers) {
+  const questionType = part.questionType || "multipleChoice";
+  const response = answers[examQuestionResponseKey(part, question)];
+  const answerOptions = normalizeExamAnswers(question.answers);
+  const checkboxResponse = Array.isArray(response) ? response : [];
+  const questionText = question.text || "Câu hỏi";
+  if (questionType === "multipleChoice" || questionType === "checkbox") {
+    return `
+      <article class="exam-pdf-question">
+        <h3>Câu ${questionIndex + 1}</h3>
+        <p>${escapeXml(questionText)}</p>
+        <div class="exam-pdf-options">
+          ${answerOptions.map((answer, answerIndex) => {
+            const selected = questionType === "multipleChoice"
+              ? response === answer.id
+              : checkboxResponse.includes(answer.id);
+            return `
+              <div class="exam-pdf-option ${selected ? "selected" : ""}">
+                <span class="exam-pdf-check">${selected ? "✓" : ""}</span>
+                <strong>${String.fromCharCode(65 + answerIndex)}.</strong>
+                <span>${escapeXml(answer.text || `Đáp án ${answerIndex + 1}`)}</span>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </article>
+    `;
+  }
+  return `
+    <article class="exam-pdf-question">
+      <h3>Câu ${questionIndex + 1}</h3>
+      <p>${escapeXml(questionText)}</p>
+      <div class="exam-pdf-text-answer">${escapeXml(response || "Chưa trả lời.")}</div>
+    </article>
+  `;
+}
+
+function examSubmissionPdfFileName({ assignment, exam, submission, submitter }) {
+  const title = [
+    "bai-lam",
+    exam?.title || submission?.examTitle || assignment?.title || "exam",
+    submitter?.studentId || submitter?.name || submitter?.email || ""
+  ].filter(Boolean).join("-");
+  return `${safeExportFileName(title)}.pdf`;
+}
+
+function saveCanvasAsPdf(canvas, fileName) {
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const margin = 10;
+  const imageWidth = pageWidth - margin * 2;
+  const usablePageHeight = pageHeight - margin * 2;
+  const pixelsPerMm = canvas.width / imageWidth;
+  const pageHeightPx = Math.floor(usablePageHeight * pixelsPerMm);
+  const pageCanvas = document.createElement("canvas");
+  const pageContext = pageCanvas.getContext("2d");
+  pageCanvas.width = canvas.width;
+
+  let offsetY = 0;
+  let pageIndex = 0;
+  while (offsetY < canvas.height) {
+    const sliceHeight = Math.min(pageHeightPx, canvas.height - offsetY);
+    pageCanvas.height = sliceHeight;
+    pageContext.fillStyle = "#ffffff";
+    pageContext.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+    pageContext.drawImage(canvas, 0, offsetY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+    if (pageIndex > 0) pdf.addPage();
+    const imageData = pageCanvas.toDataURL("image/jpeg", 0.96);
+    pdf.addImage(imageData, "JPEG", margin, margin, imageWidth, sliceHeight / pixelsPerMm);
+    offsetY += sliceHeight;
+    pageIndex += 1;
+  }
+  pdf.save(fileName || "bai-lam.pdf");
 }
 
 function AssignmentExamQuestion({ part, question, questionIndex, value, disabled, onChange = () => {}, reviewMode = false }) {

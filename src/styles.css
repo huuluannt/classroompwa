@@ -1860,6 +1860,16 @@ textarea { min-height: 88px; resize: vertical; }
   min-height: 34px;
   white-space: nowrap;
 }
+.assignment-submission-visibility-toggle {
+  min-width: 36px;
+  min-height: 34px;
+  padding: 0 9px;
+}
+.assignment-submission-visibility-toggle.is-public {
+  background: #eaf2ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
 .assignment-reviewer-toggle {
   min-height: 34px;
   white-space: nowrap;
@@ -2674,6 +2684,119 @@ textarea { min-height: 88px; resize: vertical; }
   font-weight: 700;
 }
 .export-button { width: fit-content; }
+.exam-pdf-export-root {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 794px;
+  background: #fff;
+  color: #0f172a;
+  pointer-events: none;
+  z-index: -1;
+}
+.exam-pdf-sheet {
+  width: 794px;
+  padding: 32px;
+  background: #fff;
+  color: #0f172a;
+  font-family: Arial, "Helvetica Neue", sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.exam-pdf-header {
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid #cbd5e1;
+}
+.exam-pdf-header h1 {
+  margin: 0 0 6px;
+  font-size: 22px;
+}
+.exam-pdf-header p {
+  margin: 2px 0;
+  color: #475569;
+}
+.exam-pdf-submitter {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.exam-pdf-submitter div {
+  min-width: 0;
+}
+.exam-pdf-submitter dt {
+  margin: 0 0 3px;
+  color: #475569;
+  font-weight: 800;
+}
+.exam-pdf-submitter dd {
+  margin: 0;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+.exam-pdf-part h2 {
+  margin: 18px 0 8px;
+  font-size: 16px;
+}
+.exam-pdf-question {
+  margin: 10px 0;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.exam-pdf-question h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+.exam-pdf-question p {
+  margin: 0 0 10px;
+  white-space: pre-wrap;
+}
+.exam-pdf-options {
+  display: grid;
+  gap: 6px;
+}
+.exam-pdf-option {
+  display: grid;
+  grid-template-columns: 24px 28px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  background: #fff;
+}
+.exam-pdf-option.selected {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+.exam-pdf-check {
+  width: 18px;
+  height: 18px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  color: #2563eb;
+  font-weight: 900;
+}
+.exam-pdf-text-answer {
+  min-height: 42px;
+  padding: 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #f8fafc;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .wide-input { margin-bottom: 12px; }
 .add-card-wrap { position: relative; margin-top: auto; }
 .leftpanel .add-card { width: 100%; }
