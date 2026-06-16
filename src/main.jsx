@@ -2021,7 +2021,7 @@ function ClassPane({
               </button>
               {cardMenuOpen && (
                 <div className="add-card-menu">
-                  {addableCards.length === 0 && <span>Đã có đủ card</span>}
+                  {addableCards.length === 0 && <span>Không còn card để thêm</span>}
                   {addableCards.map(([id, label]) => (
                     <button
                       key={id}
@@ -3078,11 +3078,31 @@ function AnnouncementsCard({ admin, classLeader, user, course, showToast, update
   const announcementEmailEnabled = Boolean(course.announcementEmailEnabled);
   const canPost = canPostAnnouncement(course, user, admin, classLeader);
   const canSchedulePost = admin || classLeader;
+  const pendingScheduledEmailIdsRef = useRef(new Set());
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMillis(Date.now()), 30000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!hasFirebaseConfig || (!admin && !classLeader)) return;
+    const dueScheduledPosts = (course.announcements || []).filter((item) => {
+      const publishAtMillis = announcementPublishMillis(item);
+      return item?.id
+        && item.emailRequested === true
+        && normalizeEmail(item.author) === normalizeEmail(user?.email)
+        && Number(item.scheduledAtMillis || 0) > 0
+        && publishAtMillis <= nowMillis
+        && !item.emailSentAtMillis
+        && !item.emailSkippedAtMillis
+        && !pendingScheduledEmailIdsRef.current.has(item.id);
+    });
+    if (!dueScheduledPosts.length) return;
+    dueScheduledPosts.forEach((item) => {
+      sendScheduledAnnouncementEmail(item);
+    });
+  }, [admin, classLeader, course.announcements, course.id, nowMillis, user?.email]);
 
   function addFiles(fileList) {
     const nextFiles = Array.from(fileList || []);
@@ -3149,7 +3169,8 @@ function AnnouncementsCard({ admin, classLeader, user, course, showToast, update
         createdAtMillis: publishAtMillis,
         publishAtMillis,
         scheduledAt: hasValidFutureSchedule ? formatDateTime24(publishAtMillis) : "",
-        scheduledAtMillis: hasValidFutureSchedule ? publishAtMillis : 0
+        scheduledAtMillis: hasValidFutureSchedule ? publishAtMillis : 0,
+        emailRequested
       };
       const savedAnnouncement = hasFirebaseConfig
         ? await saveAnnouncementToCloud(course.id, announcement)
@@ -3170,7 +3191,7 @@ function AnnouncementsCard({ admin, classLeader, user, course, showToast, update
 
       if (hasValidFutureSchedule) {
         setPostNotice(emailRequested
-          ? `Đã hẹn giờ đăng tin lúc ${savedAnnouncement.scheduledAt}. Email chỉ gửi cho bài đăng ngay.`
+          ? `Đã hẹn giờ đăng tin lúc ${savedAnnouncement.scheduledAt}. Email sẽ gửi khi bài đăng được công bố.`
           : `Đã hẹn giờ đăng tin lúc ${savedAnnouncement.scheduledAt}.`);
       } else if (hasFirebaseConfig && emailRequested) {
         try {
@@ -3196,6 +3217,38 @@ function AnnouncementsCard({ admin, classLeader, user, course, showToast, update
       setPostError(formatActionError(error, "Không thể đăng tin."));
     } finally {
       setPosting(false);
+    }
+  }
+
+  async function sendScheduledAnnouncementEmail(item) {
+    if (!item?.id || pendingScheduledEmailIdsRef.current.has(item.id)) return;
+    pendingScheduledEmailIdsRef.current.add(item.id);
+    const processedAtMillis = Date.now();
+    try {
+      const emailResult = await notifyAnnouncementEmail(course.id, item.id);
+      const nextPost = {
+        ...item,
+        emailStatus: emailResult.skipped ? "skipped" : "sent",
+        emailSentCount: Number(emailResult.sentCount || 0),
+        emailSkippedReason: emailResult.skipped ? emailResult.reason || "skipped" : "",
+        emailSentAtMillis: emailResult.skipped ? 0 : processedAtMillis,
+        emailSkippedAtMillis: emailResult.skipped ? processedAtMillis : 0,
+        emailProcessedAt: formatDateTime24(processedAtMillis)
+      };
+      await saveAnnouncementToCloud(course.id, nextPost);
+      updateCourse((current) => ({
+        ...current,
+        announcements: (current.announcements || []).map((post) => post.id === item.id ? nextPost : post)
+      }), { sync: false });
+      if (emailResult.skipped && emailResult.reason === "missing_email_config") {
+        setPostNotice("Bài đăng hẹn giờ đã được công bố. Chưa gửi email vì chưa cấu hình RESEND_API_KEY và EMAIL_FROM trên Vercel.");
+      } else if (emailResult.sentCount > 0) {
+        setPostNotice(`Bài đăng hẹn giờ đã được công bố và gửi email đến ${emailResult.sentCount} thành viên.`);
+      }
+    } catch (error) {
+      console.error(error);
+      setPostError("Bài đăng hẹn giờ đã được công bố nhưng chưa gửi được email thông báo.");
+      pendingScheduledEmailIdsRef.current.delete(item.id);
     }
   }
 
@@ -3370,9 +3423,8 @@ function AnnouncementsCard({ admin, classLeader, user, course, showToast, update
               {(admin || item.author === user.email) && (
                 <div className="post-actions">
                   {admin && (
-                    <button className="zalo-share-button compact" type="button" onClick={() => sharePostToZalo(item)}>
+                    <button className="zalo-share-button compact icon-only" type="button" title="Gửi Zalo" aria-label="Gửi Zalo" onClick={() => sharePostToZalo(item)}>
                       <Send size={14} />
-                      Gửi Zalo
                     </button>
                   )}
                   <button className="pin-button icon-only" title={item.pinned ? "Unpin" : "Pin"} aria-label={item.pinned ? "Unpin" : "Pin"} onClick={() => togglePostPin(item)}>{item.pinned ? <PinOff size={16} /> : <Pin size={16} />}</button>

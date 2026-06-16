@@ -1043,7 +1043,8 @@ textarea { min-height: 88px; resize: vertical; }
   min-width: 88px;
 }
 .virtual-member-popover {
-  width: min(390px, calc(100vw - 34px));
+  width: min(238px, calc(100vw - 34px));
+  min-width: 0;
 }
 .virtual-member-summary strong,
 .virtual-member-summary small {
@@ -1067,8 +1068,12 @@ textarea { min-height: 88px; resize: vertical; }
   text-align: center;
 }
 .virtual-member-popover-actions {
-  justify-content: flex-end;
+  flex-direction: column;
+  justify-content: stretch;
   gap: 8px;
+}
+.virtual-member-popover-actions button {
+  width: 100%;
 }
 .virtual-remove-button {
   color: #b91c1c;
@@ -2951,6 +2956,11 @@ textarea { min-height: 88px; resize: vertical; }
   background: #ecfdf5;
   color: #047857;
   font-weight: 800;
+}
+.zalo-share-button.icon-only {
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
 }
 .file-picker {
   min-height: 32px;
@@ -5232,12 +5242,22 @@ textarea {
   .student-list-toolbar {
     align-items: stretch;
     flex-direction: column;
+    position: relative;
   }
   .student-list-title {
     white-space: normal;
   }
   .student-list-actions {
     justify-content: flex-end;
+  }
+  .student-list-actions .virtual-member-wrap {
+    position: static;
+  }
+  .student-list-actions .virtual-member-popover {
+    right: 0;
+    left: auto;
+    width: min(238px, calc(100vw - 24px));
+    max-width: calc(100vw - 24px);
   }
   .lecturer-invite-wrap {
     width: 100%;
