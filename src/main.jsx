@@ -36,6 +36,7 @@ import {
   Upload,
   UserRound,
   UserPlus,
+  Video,
   X
 } from "lucide-react";
 import { SUPREME_EMAIL, SUPREME_PROFILE, baseCards, extraCardLabels } from "./data";
@@ -140,13 +141,15 @@ function isClassLeaderForCourse(course, user) {
 const ANNOUNCEMENT_POST_PERMISSIONS = {
   lecturers: "lecturers",
   lecturersLeaders: "lecturers_leaders",
-  everyone: "everyone"
+  everyone: "everyone",
+  everyoneNoFiles: "everyone_no_files"
 };
 
 const ANNOUNCEMENT_POST_PERMISSION_OPTIONS = [
   { value: ANNOUNCEMENT_POST_PERMISSIONS.lecturers, label: "Giảng viên" },
   { value: ANNOUNCEMENT_POST_PERMISSIONS.lecturersLeaders, label: "Giảng viên + Lớp trưởng" },
-  { value: ANNOUNCEMENT_POST_PERMISSIONS.everyone, label: "Tất cả mọi người" }
+  { value: ANNOUNCEMENT_POST_PERMISSIONS.everyone, label: "Tất cả mọi người" },
+  { value: ANNOUNCEMENT_POST_PERMISSIONS.everyoneNoFiles, label: "Tất cả mọi người (No Files)" }
 ];
 
 const MOBILE_MEDIA_QUERY = "(max-width: 760px)";
@@ -314,7 +317,10 @@ function canPostAnnouncement(course, user, admin, classLeader) {
   if (user?.isVirtualView) return isAcceptedCourseMember(course, user);
   const permission = getAnnouncementPostPermission(course);
   if (permission === ANNOUNCEMENT_POST_PERMISSIONS.lecturersLeaders) return Boolean(classLeader);
-  if (permission === ANNOUNCEMENT_POST_PERMISSIONS.everyone) return isAcceptedCourseMember(course, user);
+  if (
+    permission === ANNOUNCEMENT_POST_PERMISSIONS.everyone
+    || permission === ANNOUNCEMENT_POST_PERMISSIONS.everyoneNoFiles
+  ) return isAcceptedCourseMember(course, user);
   return false;
 }
 
@@ -1936,6 +1942,8 @@ function ClassPane({
     updateCourse((current) => ({ ...current, cardOrder: nextOrder }));
   }
 
+  const googleMeetUrl = normalizeExternalUrl(course.info?.googleMeetUrl);
+
   return (
     <section className="rightpane">
       <div className="class-header">
@@ -1963,6 +1971,17 @@ function ClassPane({
             >
               {viewingAsVirtualStudent ? <Eye size={16} /> : <EyeOff size={16} />}
               <span>{viewingAsVirtualStudent ? `As ${virtualStudentMember?.name || "học viên ảo"}` : "View as"}</span>
+            </button>
+          )}
+          {googleMeetUrl && (
+            <button
+              className="class-meet-button"
+              type="button"
+              title="Mở Google Meet"
+              aria-label="Mở Google Meet"
+              onClick={() => openExternalUrl(googleMeetUrl)}
+            >
+              <Video size={17} />
             </button>
           )}
           <button className="class-code class-code-button" type="button" onClick={() => setShowClassCode(true)}>
@@ -3078,12 +3097,17 @@ function AnnouncementsCard({ admin, classLeader, user, course, showToast, update
   const announcementEmailEnabled = Boolean(course.announcementEmailEnabled);
   const canPost = canPostAnnouncement(course, user, admin, classLeader);
   const canSchedulePost = admin || classLeader;
+  const canAttachAnnouncementFiles = admin || postPermission !== ANNOUNCEMENT_POST_PERMISSIONS.everyoneNoFiles;
   const pendingScheduledEmailIdsRef = useRef(new Set());
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMillis(Date.now()), 30000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!canAttachAnnouncementFiles && files.length > 0) setFiles([]);
+  }, [canAttachAnnouncementFiles, files.length]);
 
   useEffect(() => {
     if (!hasFirebaseConfig || (!admin && !classLeader)) return;
@@ -3105,6 +3129,7 @@ function AnnouncementsCard({ admin, classLeader, user, course, showToast, update
   }, [admin, classLeader, course.announcements, course.id, nowMillis, user?.email]);
 
   function addFiles(fileList) {
+    if (!canAttachAnnouncementFiles) return;
     const nextFiles = Array.from(fileList || []);
     if (nextFiles.length) setFiles((current) => [...current, ...nextFiles]);
   }
@@ -3138,7 +3163,8 @@ function AnnouncementsCard({ admin, classLeader, user, course, showToast, update
   }
 
   async function submitPost() {
-    if (!content.trim() && files.length === 0) return;
+    const postFiles = canAttachAnnouncementFiles ? files : [];
+    if (!content.trim() && postFiles.length === 0) return;
     if (!canPost) {
       setPostError("Bạn không có quyền đăng tin trong lớp này.");
       return;
@@ -3153,8 +3179,8 @@ function AnnouncementsCard({ admin, classLeader, user, course, showToast, update
       const publishAtMillis = hasValidFutureSchedule ? scheduledAtMillis : createdAtMillis;
       const emailRequested = announcementEmailEnabled;
       const attachments = hasFirebaseConfig
-        ? await uploadManyFiles(course, "announcements", files, { anyoneWithLink: true, writerEmails: adminWriterEmails() })
-        : await Promise.all(files.map(readFileAsDataUrl));
+        ? await uploadManyFiles(course, "announcements", postFiles, { anyoneWithLink: true, writerEmails: adminWriterEmails() })
+        : await Promise.all(postFiles.map(readFileAsDataUrl));
       const announcement = {
         id: crypto.randomUUID(),
         author: user.email,
@@ -3347,10 +3373,12 @@ function AnnouncementsCard({ admin, classLeader, user, course, showToast, update
           <textarea disabled={posting} value={content} onChange={(event) => setContent(event.target.value)} placeholder="Nhập nội dung đăng tin..." />
           <div className="composer-tools">
             <div className="composer-left-tools">
-              <label className="file-picker icon-only" title="Đính kèm file" aria-label="Đính kèm file">
-                <Paperclip size={18} />
-                <input disabled={posting} type="file" multiple accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip" onChange={(event) => addFiles(event.target.files)} />
-              </label>
+              {canAttachAnnouncementFiles && (
+                <label className="file-picker icon-only" title="Đính kèm file" aria-label="Đính kèm file">
+                  <Paperclip size={18} />
+                  <input disabled={posting} type="file" multiple accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.zip" onChange={(event) => addFiles(event.target.files)} />
+                </label>
+              )}
               <button
                 className={`pin-button icon-only composer-pin-button ${pinned ? "active" : ""}`}
                 type="button"
@@ -3362,7 +3390,7 @@ function AnnouncementsCard({ admin, classLeader, user, course, showToast, update
                 {pinned ? <PinOff size={17} /> : <Pin size={17} />}
               </button>
               {admin && <label className="check-row"><input type="checkbox" disabled={posting} checked={publishAsMaterial} onChange={(event) => setPublishAsMaterial(event.target.checked)} /> Tài liệu</label>}
-              {files.length > 0 && <span>{`${files.length} file đã chọn`}</span>}
+              {canAttachAnnouncementFiles && files.length > 0 && <span>{`${files.length} file đã chọn`}</span>}
             </div>
             <div className="composer-right-tools">
               {canSchedulePost && (
@@ -3386,7 +3414,7 @@ function AnnouncementsCard({ admin, classLeader, user, course, showToast, update
               </div>
             </div>
           </div>
-          {files.length > 0 && (
+          {canAttachAnnouncementFiles && files.length > 0 && (
             <div className="selected-file-preview" aria-label="File đã chọn">
               {files.map((file, index) => (
                 <div className="selected-file-row" key={`${file.name}-${file.size}-${file.lastModified}-${index}`}>
@@ -3538,14 +3566,15 @@ function materialTitleFromAnnouncement(content, materials) {
 
 function InfoCard({ admin, course, updateCourse }) {
   const infoSignature = JSON.stringify(course.info || {});
-  const [draft, setDraft] = useState(() => ({ rules: "", zaloGroupUrl: "", ...course.info }));
+  const [draft, setDraft] = useState(() => ({ rules: "", zaloGroupUrl: "", googleMeetUrl: "", ...course.info }));
   const fields = [["title", "Title"], ["size", "Sĩ số"], ["time", "Thời gian"], ["room", "Phòng học"]];
   const zaloGroupUrl = normalizeExternalUrl(course.info?.zaloGroupUrl);
-  const normalizedInfoDraft = { rules: "", zaloGroupUrl: "", ...draft };
-  const infoDirty = jsonSignature(normalizedInfoDraft) !== jsonSignature({ rules: "", zaloGroupUrl: "", ...course.info });
+  const googleMeetUrl = normalizeExternalUrl(course.info?.googleMeetUrl);
+  const normalizedInfoDraft = { rules: "", zaloGroupUrl: "", googleMeetUrl: "", ...draft };
+  const infoDirty = jsonSignature(normalizedInfoDraft) !== jsonSignature({ rules: "", zaloGroupUrl: "", googleMeetUrl: "", ...course.info });
 
   useEffect(() => {
-    setDraft({ rules: "", zaloGroupUrl: "", ...course.info });
+    setDraft({ rules: "", zaloGroupUrl: "", googleMeetUrl: "", ...course.info });
   }, [course.id, infoSignature]);
 
   function saveInfo() {
@@ -3583,6 +3612,21 @@ function InfoCard({ admin, course, updateCourse }) {
             <a className="info-link" href={zaloGroupUrl} target="_blank" rel="noreferrer">{course.info.zaloGroupUrl}</a>
           ) : (
             <p>Chưa có link nhóm Zalo.</p>
+          )}
+        </label>
+        <label className="wide-field">
+          <span>Link Google Meet</span>
+          {admin ? (
+            <input
+              type="url"
+              value={draft.googleMeetUrl || ""}
+              onChange={(event) => setDraft({ ...draft, googleMeetUrl: event.target.value })}
+              placeholder="https://meet.google.com/..."
+            />
+          ) : googleMeetUrl ? (
+            <a className="info-link" href={googleMeetUrl} target="_blank" rel="noreferrer">{course.info.googleMeetUrl}</a>
+          ) : (
+            <p>Chưa có link Google Meet.</p>
           )}
         </label>
         <label className="wide-field">
@@ -7367,15 +7411,8 @@ function AssignmentReviewerScorePanel({ admin, user, course, assignment, targets
     <div className="assignment-peer-score-panel">
       {admin ? (
         <div className="peer-score-admin-panel">
-          <div className="peer-score-admin-head">
+          <div className="peer-score-admin-head peer-score-actions-near-title">
             <strong>Format chấm điểm</strong>
-          </div>
-          <div className="peer-score-config-row">
-            <PeerReviewScoreConfigFields draft={configDraft} onChange={(nextDraft) => {
-              setConfigDraft(nextDraft);
-              setConfigStatus("");
-              setConfigError("");
-            }} />
             <div className="peer-score-admin-actions">
               <button
                 className="icon-soft"
@@ -7388,6 +7425,13 @@ function AssignmentReviewerScorePanel({ admin, user, course, assignment, targets
               </button>
               <SaveButton className="compact" dirty={scoreConfigDirty} onClick={saveScoreConfig} />
             </div>
+          </div>
+          <div className="peer-score-config-row">
+            <PeerReviewScoreConfigFields draft={configDraft} onChange={(nextDraft) => {
+              setConfigDraft(nextDraft);
+              setConfigStatus("");
+              setConfigError("");
+            }} />
           </div>
           {configStatus && <p className="success-text">{configStatus}</p>}
           {configError && <p className="error-text">{configError}</p>}
@@ -11384,7 +11428,7 @@ function prepareCourseForSave(course, user) {
 }
 
 function NewClassModal({ existing, user, onClose, onSave }) {
-  const [form, setForm] = useState(() => existing || { id: crypto.randomUUID(), name: "", description: "", code: "", pinned: false, announcementPostPermission: ANNOUNCEMENT_POST_PERMISSIONS.everyone, info: { title: "", size: 0, time: "", room: "", description: "", rules: "", zaloGroupUrl: "" }, scheduleRows: defaultScheduleRows(), members: [], announcements: [], groupTopics: [], intergroupTopics: [], personalTopics: [], materials: [], assignments: [], gradebooks: [], peerReviews: [], extraCards: [], hiddenCards: [], pinnedCards: [], cardOrder: [] });
+  const [form, setForm] = useState(() => existing || { id: crypto.randomUUID(), name: "", description: "", code: "", pinned: false, announcementPostPermission: ANNOUNCEMENT_POST_PERMISSIONS.everyone, info: { title: "", size: 0, time: "", room: "", description: "", rules: "", zaloGroupUrl: "", googleMeetUrl: "" }, scheduleRows: defaultScheduleRows(), members: [], announcements: [], groupTopics: [], intergroupTopics: [], personalTopics: [], materials: [], assignments: [], gradebooks: [], peerReviews: [], extraCards: [], hiddenCards: [], pinnedCards: [], cardOrder: [] });
   const classFormDirty = existing ? jsonSignature(form) !== jsonSignature(existing) : true;
   return (
     <Modal title={existing ? "Chỉnh sửa lớp học" : "Thêm lớp học mới"} onClose={onClose}>

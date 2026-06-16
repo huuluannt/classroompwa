@@ -1210,6 +1210,7 @@ function withCourseDefaults(course) {
     description: course.description || "",
     rules: "",
     zaloGroupUrl: "",
+    googleMeetUrl: "",
     ...(course.info || {})
   };
 
