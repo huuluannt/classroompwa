@@ -57,6 +57,13 @@ service cloud.firestore {
         && get(memberDoc(classId, request.auth.token.email)).data.status == 'accepted';
     }
 
+    function isAcceptedVirtualMember(classId, email) {
+      return email is string
+        && exists(memberDoc(classId, email))
+        && get(memberDoc(classId, email)).data.status == 'accepted'
+        && get(memberDoc(classId, email)).data.isVirtual == true;
+    }
+
     function isClassLeader(classId) {
       return isAcceptedMember(classId)
         && (
@@ -74,7 +81,19 @@ service cloud.firestore {
     function canCreateAnnouncement(classId) {
       return isCourseLecturer(classId)
         || (announcementPostPermission(classId) == 'lecturers_leaders' && isClassLeader(classId))
-        || (announcementPostPermission(classId) == 'everyone' && isAcceptedMember(classId));
+        || (
+          (announcementPostPermission(classId) == 'everyone'
+            || announcementPostPermission(classId) == 'everyone_no_files')
+          && isAcceptedMember(classId)
+        );
+    }
+
+    function canCreateAnnouncementAsAuthor(classId) {
+      return request.resource.data.author == request.auth.token.email
+        || (
+          isCourseLecturer(classId)
+          && isAcceptedVirtualMember(classId, request.resource.data.author)
+        );
     }
 
     function classLeaderClassUpdate(classId) {
@@ -83,6 +102,14 @@ service cloud.firestore {
           'groupTopics',
           'intergroupTopics',
           'personalTopics',
+          'updatedAt'
+        ]);
+    }
+
+    function dutyScheduleMemberUpdate(classId) {
+      return isAcceptedMember(classId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'dutySchedules',
           'updatedAt'
         ]);
     }
@@ -151,14 +178,16 @@ service cloud.firestore {
         && request.resource.data.ownerEmail == request.auth.token.email
         && request.resource.data.lecturerEmails.hasAny([request.auth.token.email]);
       allow delete: if isCourseOwner(classId);
-      allow update: if isCourseLecturer(classId) || classLeaderClassUpdate(classId);
+      allow update: if isCourseLecturer(classId)
+        || classLeaderClassUpdate(classId)
+        || dutyScheduleMemberUpdate(classId);
 
       match /announcements/{announcementId} {
         allow read: if isCourseLecturer(classId) || isAcceptedMember(classId);
 
         allow create: if canCreateAnnouncement(classId)
           && request.resource.data.classId == classId
-          && request.resource.data.author == request.auth.token.email;
+          && canCreateAnnouncementAsAuthor(classId);
 
         allow update: if isCourseLecturer(classId)
           || (

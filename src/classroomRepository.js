@@ -1211,8 +1211,10 @@ function withCourseDefaults(course) {
     rules: "",
     zaloGroupUrl: "",
     googleMeetUrl: "",
+    gallery: [],
     ...(course.info || {})
   };
+  info.gallery = Array.isArray(info.gallery) ? info.gallery : [];
 
   return {
     pinned: false,
@@ -1224,6 +1226,7 @@ function withCourseDefaults(course) {
     announcementEmailEnabled: false,
     info,
     scheduleRows: [],
+    dutySchedules: [],
     announcements: [],
     groupTopics: [],
     intergroupTopics: [],

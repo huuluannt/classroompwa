@@ -13,6 +13,7 @@ import {
   Check,
   ChevronDown,
   ChevronLeft,
+  ChevronRight,
   Clock,
   Copy,
   Crown,
@@ -37,7 +38,9 @@ import {
   UserRound,
   UserPlus,
   Video,
-  X
+  X,
+  ZoomIn,
+  ZoomOut
 } from "lucide-react";
 import { SUPREME_EMAIL, SUPREME_PROFILE, baseCards, extraCardLabels } from "./data";
 import { hasFirebaseConfig, observeAuth, signInWithGoogle, signOutGoogle } from "./firebase";
@@ -480,6 +483,51 @@ function fileDownloadUrl(file) {
 
 function isImageFile(file) {
   return file?.type?.startsWith("image/") || String(file?.previewUrl || file?.url || "").startsWith("data:image");
+}
+
+function isImageUploadFile(file) {
+  return file?.type?.startsWith("image/");
+}
+
+function normalizeGalleryImages(info = {}) {
+  return Array.isArray(info.gallery)
+    ? info.gallery.filter(Boolean).map((image, index) => ({
+      id: image.id || image.driveFileId || `${image.fileName || "gallery"}-${index}`,
+      fileName: image.fileName || image.name || `Ảnh ${index + 1}`,
+      caption: image.caption || "",
+      url: image.url || image.webContentLink || image.previewUrl || "",
+      previewUrl: image.previewUrl || image.thumbnailLink || image.url || "",
+      webViewLink: image.webViewLink || "",
+      webContentLink: image.webContentLink || "",
+      driveFileId: image.driveFileId || "",
+      type: image.type || image.mimeType || "",
+      size: Number(image.size || 0),
+      createdAtMillis: Number(image.createdAtMillis || 0)
+    }))
+    : [];
+}
+
+function normalizeClassInfo(info = {}) {
+  const sourceInfo = info || {};
+  return {
+    rules: "",
+    zaloGroupUrl: "",
+    googleMeetUrl: "",
+    ...sourceInfo,
+    gallery: normalizeGalleryImages(sourceInfo)
+  };
+}
+
+function galleryImageSrc(image) {
+  return image?.previewUrl || image?.url || image?.webViewLink || "";
+}
+
+function galleryImageDownloadUrl(image) {
+  return fileDownloadUrl(image) || galleryImageSrc(image);
+}
+
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function formatFileSize(size) {
@@ -2247,6 +2295,7 @@ function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditM
   if (selectedCard === "announcements") return <AnnouncementsCard admin={admin} classLeader={classLeader} user={user} course={course} showToast={showToast} updateCourse={updateCourse} onOpenAssignments={() => setSelectedCard("assignments")} onOpenGrades={() => setSelectedCard("grades")} onOpenAssignmentReviewer={onOpenAssignmentReviewer} />;
   if (selectedCard === "info") return <InfoCard admin={admin} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "schedule") return <ScheduleCard admin={admin} course={course} updateCourse={updateCourse} />;
+  if (selectedCard === "dutySchedules") return <DutySchedulesCard admin={admin} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "groupTopic") return <GroupTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "intergroupTopic") return <IntergroupTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "materials") return <MaterialsCard admin={admin} user={user} course={course} updateCourse={updateCourse} />;
@@ -3564,7 +3613,7 @@ function materialTitleFromAnnouncement(content, materials) {
 }
 
 
-function InfoCard({ admin, course, updateCourse }) {
+function LegacyInfoCard({ admin, course, updateCourse }) {
   const infoSignature = JSON.stringify(course.info || {});
   const [draft, setDraft] = useState(() => ({ rules: "", zaloGroupUrl: "", googleMeetUrl: "", ...course.info }));
   const fields = [["title", "Title"], ["size", "Sĩ số"], ["time", "Thời gian"], ["room", "Phòng học"]];
@@ -3638,6 +3687,406 @@ function InfoCard({ admin, course, updateCourse }) {
           {admin ? <textarea value={draft.rules || ""} onChange={(event) => setDraft({ ...draft, rules: event.target.value })} /> : <p>{course.info.rules || "Chưa có quy định."}</p>}
         </label>
       </div>
+    </>
+  );
+}
+
+
+function InfoCard({ admin, course, updateCourse }) {
+  const requestConfirm = useConfirmAction();
+  const infoSignature = JSON.stringify(course.info || {});
+  const [draft, setDraft] = useState(() => normalizeClassInfo(course.info));
+  const [galleryUploading, setGalleryUploading] = useState(false);
+  const [galleryError, setGalleryError] = useState("");
+  const [lightboxIndex, setLightboxIndex] = useState(-1);
+  const [lightboxZoom, setLightboxZoom] = useState(1);
+  const [lightboxPan, setLightboxPan] = useState({ x: 0, y: 0 });
+  const [lightboxDirection, setLightboxDirection] = useState(0);
+  const [captionDraft, setCaptionDraft] = useState("");
+  const [galleryDragActive, setGalleryDragActive] = useState(false);
+  const galleryInputRef = useRef(null);
+  const lightboxDragRef = useRef(null);
+  const fields = [["title", "Title"], ["size", "Sĩ số"], ["time", "Thời gian"], ["room", "Phòng học"]];
+  const galleryImages = normalizeGalleryImages(draft);
+  const savedInfo = normalizeClassInfo(course.info);
+  const zaloGroupUrl = normalizeExternalUrl(course.info?.zaloGroupUrl);
+  const googleMeetUrl = normalizeExternalUrl(course.info?.googleMeetUrl);
+  const normalizedInfoDraft = normalizeClassInfo(draft);
+  const infoDirty = jsonSignature(normalizedInfoDraft) !== jsonSignature(savedInfo);
+  const activeImage = lightboxIndex >= 0 ? galleryImages[lightboxIndex] : null;
+  const activeImageSrc = galleryImageSrc(activeImage);
+
+  useEffect(() => {
+    setDraft(normalizeClassInfo(course.info));
+  }, [course.id, infoSignature]);
+
+  useEffect(() => {
+    if (!activeImage) return;
+    setCaptionDraft(activeImage.caption || "");
+    setLightboxZoom(1);
+    setLightboxPan({ x: 0, y: 0 });
+  }, [activeImage?.id]);
+
+  useEffect(() => {
+    if (!activeImage) return undefined;
+    function handleKeyDown(event) {
+      if (event.key === "Escape") closeLightbox();
+      if (event.key === "ArrowRight") moveLightbox(1);
+      if (event.key === "ArrowLeft") moveLightbox(-1);
+      if (event.key === "+" || event.key === "=") zoomLightbox(0.2);
+      if (event.key === "-") zoomLightbox(-0.2);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeImage, galleryImages.length, lightboxIndex, captionDraft]);
+
+  useEffect(() => {
+    if (lightboxZoom <= 1) setLightboxPan({ x: 0, y: 0 });
+  }, [lightboxZoom]);
+
+  function saveInfo() {
+    return updateCourse((current) => ({
+      ...current,
+      info: normalizedInfoDraft
+    }), {
+      toast: true,
+      writeMembers: false,
+      writeSummary: false,
+      classFields: ["info"]
+    });
+  }
+
+  function updateGalleryImages(nextImages, toast = false) {
+    const nextInfo = normalizeClassInfo({ ...normalizedInfoDraft, gallery: nextImages });
+    setDraft(nextInfo);
+    return updateCourse((current) => ({
+      ...current,
+      info: nextInfo
+    }), {
+      toast,
+      writeMembers: false,
+      writeSummary: false,
+      classFields: ["info"],
+      throwOnError: true
+    });
+  }
+
+  async function addGalleryFiles(fileList) {
+    if (!admin || galleryUploading) return;
+    const selectedFiles = Array.from(fileList || []);
+    const imageFiles = selectedFiles.filter(isImageUploadFile);
+    if (galleryInputRef.current) galleryInputRef.current.value = "";
+    if (!imageFiles.length) {
+      setGalleryError("Vui lòng chọn file hình ảnh.");
+      return;
+    }
+    setGalleryUploading(true);
+    setGalleryError(imageFiles.length === selectedFiles.length ? "" : "Một số file không phải hình ảnh đã được bỏ qua.");
+    try {
+      const uploadedFiles = hasFirebaseConfig
+        ? await uploadManyFiles(course, "class-gallery", imageFiles, { anyoneWithLink: true, writerEmails: adminWriterEmails() })
+        : await Promise.all(imageFiles.map(readFileAsDataUrl));
+      const createdAtMillis = Date.now();
+      const nextImages = uploadedFiles.map((file, index) => ({
+        id: crypto.randomUUID(),
+        fileName: file.fileName || imageFiles[index]?.name || `Ảnh ${galleryImages.length + index + 1}`,
+        caption: "",
+        url: file.url || "",
+        previewUrl: file.previewUrl || file.thumbnailLink || file.url || "",
+        webViewLink: file.webViewLink || "",
+        webContentLink: file.webContentLink || "",
+        driveFileId: file.driveFileId || "",
+        type: file.type || imageFiles[index]?.type || "",
+        size: Number(file.size || imageFiles[index]?.size || 0),
+        createdAtMillis: createdAtMillis + index
+      }));
+      await updateGalleryImages([...galleryImages, ...nextImages], "Đã thêm ảnh vào Gallery.");
+      if (imageFiles.length === selectedFiles.length) setGalleryError("");
+    } catch (error) {
+      console.error(error);
+      setGalleryError(formatActionError(error, "Không thể thêm ảnh vào Gallery."));
+    } finally {
+      setGalleryUploading(false);
+      setGalleryDragActive(false);
+    }
+  }
+
+  function saveGalleryCaption(index, caption) {
+    if (!admin || !galleryImages[index]) return;
+    const nextCaption = caption.trim();
+    if ((galleryImages[index].caption || "") === nextCaption) return;
+    const nextImages = galleryImages.map((image, imageIndex) => (
+      imageIndex === index ? { ...image, caption: nextCaption } : image
+    ));
+    updateGalleryImages(nextImages).catch((error) => {
+      console.error(error);
+      setGalleryError(formatActionError(error, "Không thể lưu caption."));
+    });
+  }
+
+  function deleteGalleryImage(index) {
+    const image = galleryImages[index];
+    if (!admin || !image) return;
+    requestConfirm({
+      title: "Xóa ảnh khỏi Gallery?",
+      message: `Bạn có chắc muốn xóa ảnh "${image.caption || image.fileName}" không?`,
+      confirmLabel: "Xóa ảnh"
+    }, async () => {
+      const nextImages = galleryImages.filter((_, imageIndex) => imageIndex !== index);
+      await updateGalleryImages(nextImages, "Đã xóa ảnh khỏi Gallery.");
+      if (nextImages.length === 0) {
+        setLightboxIndex(-1);
+        return;
+      }
+      setLightboxIndex(Math.min(index, nextImages.length - 1));
+    });
+  }
+
+  function openLightbox(index) {
+    setLightboxDirection(0);
+    setLightboxIndex(index);
+  }
+
+  function closeLightbox() {
+    if (activeImage && admin) saveGalleryCaption(lightboxIndex, captionDraft);
+    setLightboxIndex(-1);
+  }
+
+  function moveLightbox(delta) {
+    if (galleryImages.length <= 1) return;
+    if (activeImage && admin) saveGalleryCaption(lightboxIndex, captionDraft);
+    setLightboxDirection(delta > 0 ? 1 : -1);
+    setLightboxIndex((current) => (current + delta + galleryImages.length) % galleryImages.length);
+  }
+
+  function zoomLightbox(delta) {
+    setLightboxZoom((current) => clampNumber(Number((current + delta).toFixed(2)), 1, 4));
+  }
+
+  function handleLightboxPointerDown(event) {
+    if (event.button && event.button !== 0) return;
+    lightboxDragRef.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      pan: lightboxPan,
+      mode: lightboxZoom > 1 ? "pan" : "swipe"
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function handleLightboxPointerMove(event) {
+    const drag = lightboxDragRef.current;
+    if (!drag || drag.mode !== "pan") return;
+    setLightboxPan({
+      x: drag.pan.x + event.clientX - drag.startX,
+      y: drag.pan.y + event.clientY - drag.startY
+    });
+  }
+
+  function handleLightboxPointerUp(event) {
+    const drag = lightboxDragRef.current;
+    if (!drag) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    lightboxDragRef.current = null;
+    if (drag.mode === "swipe" && Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.25) {
+      moveLightbox(deltaX < 0 ? 1 : -1);
+    }
+  }
+
+  return (
+    <>
+      <PanelTitle title="Thông tin lớp học" action={admin && <SaveButton className="compact" dirty={infoDirty} onClick={saveInfo} />} />
+      <div className="info-grid">
+        {fields.map(([key, label]) => (
+          <label key={key}>
+            <span>{label}</span>
+            {admin ? <input value={draft[key] || ""} onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} /> : <strong>{course.info[key]}</strong>}
+          </label>
+        ))}
+        <label className="wide-field">
+          <span>Link nhóm Zalo</span>
+          {admin ? (
+            <input
+              type="url"
+              value={draft.zaloGroupUrl || ""}
+              onChange={(event) => setDraft({ ...draft, zaloGroupUrl: event.target.value })}
+              placeholder="https://zalo.me/g/..."
+            />
+          ) : zaloGroupUrl ? (
+            <a className="info-link" href={zaloGroupUrl} target="_blank" rel="noreferrer">{course.info.zaloGroupUrl}</a>
+          ) : (
+            <p>Chưa có link nhóm Zalo.</p>
+          )}
+        </label>
+        <label className="wide-field">
+          <span>Link Google Meet</span>
+          {admin ? (
+            <input
+              type="url"
+              value={draft.googleMeetUrl || ""}
+              onChange={(event) => setDraft({ ...draft, googleMeetUrl: event.target.value })}
+              placeholder="https://meet.google.com/..."
+            />
+          ) : googleMeetUrl ? (
+            <a className="info-link" href={googleMeetUrl} target="_blank" rel="noreferrer">{course.info.googleMeetUrl}</a>
+          ) : (
+            <p>Chưa có link Google Meet.</p>
+          )}
+        </label>
+        <label className="wide-field">
+          <span>Mô tả</span>
+          {admin ? <textarea value={draft.description || ""} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /> : <p>{course.info.description}</p>}
+        </label>
+        <label className="wide-field">
+          <span>Quy định</span>
+          {admin ? <textarea value={draft.rules || ""} onChange={(event) => setDraft({ ...draft, rules: event.target.value })} /> : <p>{course.info.rules || "Chưa có quy định."}</p>}
+        </label>
+      </div>
+      <section
+        className={`class-gallery-section ${galleryDragActive ? "drag-active" : ""}`}
+        onDragOver={(event) => {
+          if (!admin) return;
+          event.preventDefault();
+          setGalleryDragActive(true);
+        }}
+        onDragLeave={(event) => {
+          if (event.currentTarget.contains(event.relatedTarget)) return;
+          setGalleryDragActive(false);
+        }}
+        onDrop={(event) => {
+          if (!admin) return;
+          event.preventDefault();
+          addGalleryFiles(event.dataTransfer.files);
+        }}
+        onPaste={(event) => {
+          if (!admin) return;
+          addGalleryFiles(event.clipboardData.files);
+        }}
+        tabIndex={admin ? 0 : undefined}
+      >
+        <div className="class-gallery-head">
+          <div>
+            <strong>Gallery</strong>
+            <small>{galleryImages.length ? `${galleryImages.length} ảnh` : "Chưa có ảnh."}</small>
+          </div>
+          {admin && <span>Browse, kéo thả hoặc Ctrl+V để thêm ảnh.</span>}
+        </div>
+        <div className="class-gallery-strip" aria-label="Gallery lớp học">
+          {galleryImages.map((image, index) => (
+            <button className="class-gallery-thumb" type="button" key={image.id || `${image.fileName}-${index}`} onClick={() => openLightbox(index)}>
+              {galleryImageSrc(image) ? <img src={galleryImageSrc(image)} alt={image.caption || image.fileName} /> : <span>Không thể xem trước</span>}
+              <small>{image.caption || image.fileName}</small>
+            </button>
+          ))}
+          {admin && (
+            <>
+              <button className="class-gallery-add" type="button" onClick={() => galleryInputRef.current?.click()} disabled={galleryUploading}>
+                {galleryUploading ? <span className="button-spinner" /> : <Plus size={28} />}
+                <span>Thêm ảnh</span>
+              </button>
+              <input
+                ref={galleryInputRef}
+                hidden
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(event) => addGalleryFiles(event.target.files)}
+              />
+            </>
+          )}
+        </div>
+        {galleryUploading && <UploadStatus label="Đang upload ảnh vào Gallery..." />}
+        {galleryError && <p className="error-text">{galleryError}</p>}
+      </section>
+      {activeImage && (
+        <div className="gallery-lightbox" role="dialog" aria-modal="true" onClick={(event) => { if (event.target === event.currentTarget) closeLightbox(); }}>
+          <section className="gallery-lightbox-card">
+            <header className="gallery-lightbox-toolbar">
+              <div>
+                <strong>{activeImage.caption || activeImage.fileName}</strong>
+                <small>{lightboxIndex + 1}/{galleryImages.length}</small>
+              </div>
+              <div className="gallery-lightbox-actions">
+                <button className="secondary-action compact icon-only" type="button" title="Thu nhỏ" aria-label="Thu nhỏ" onClick={() => zoomLightbox(-0.2)}>
+                  <ZoomOut size={17} />
+                </button>
+                <button className="secondary-action compact icon-only" type="button" title="Phóng to" aria-label="Phóng to" onClick={() => zoomLightbox(0.2)}>
+                  <ZoomIn size={17} />
+                </button>
+                <a className="secondary-action compact icon-only" href={galleryImageDownloadUrl(activeImage)} target="_blank" rel="noreferrer" download title="Download" aria-label="Download">
+                  <Download size={17} />
+                </a>
+                {admin && (
+                  <button className="icon-danger" type="button" title="Delete" aria-label="Delete" onClick={() => deleteGalleryImage(lightboxIndex)}>
+                    <Trash2 size={17} />
+                  </button>
+                )}
+                <button className="secondary-action compact icon-only" type="button" title="Đóng" aria-label="Đóng" onClick={closeLightbox}>
+                  <X size={18} />
+                </button>
+              </div>
+            </header>
+            <div
+              className="gallery-lightbox-stage"
+              onWheel={(event) => {
+                event.preventDefault();
+                zoomLightbox(event.deltaY < 0 ? 0.2 : -0.2);
+              }}
+              onPointerDown={handleLightboxPointerDown}
+              onPointerMove={handleLightboxPointerMove}
+              onPointerUp={handleLightboxPointerUp}
+              onPointerCancel={() => { lightboxDragRef.current = null; }}
+            >
+              {galleryImages.length > 1 && (
+                <button className="gallery-lightbox-nav prev" type="button" aria-label="Ảnh trước" onClick={() => moveLightbox(-1)}>
+                  <ChevronLeft size={28} />
+                </button>
+              )}
+              {activeImageSrc ? (
+                <img
+                  className={`gallery-lightbox-image ${lightboxDirection > 0 ? "slide-next" : lightboxDirection < 0 ? "slide-prev" : ""} ${lightboxZoom > 1 ? "is-zoomed" : ""}`}
+                  key={activeImage.id || activeImage.fileName}
+                  src={activeImageSrc}
+                  alt={activeImage.caption || activeImage.fileName}
+                  draggable={false}
+                  style={{ transform: `translate(${lightboxPan.x}px, ${lightboxPan.y}px) scale(${lightboxZoom})` }}
+                  onDoubleClick={() => {
+                    setLightboxZoom((current) => current > 1 ? 1 : 2);
+                    setLightboxPan({ x: 0, y: 0 });
+                  }}
+                />
+              ) : (
+                <div className="gallery-lightbox-empty">Không thể xem trước ảnh này.</div>
+              )}
+              {galleryImages.length > 1 && (
+                <button className="gallery-lightbox-nav next" type="button" aria-label="Ảnh sau" onClick={() => moveLightbox(1)}>
+                  <ChevronRight size={28} />
+                </button>
+              )}
+            </div>
+            <div className="gallery-caption-row">
+              <label>
+                <span>Caption</span>
+                {admin ? (
+                  <input
+                    value={captionDraft}
+                    onChange={(event) => setCaptionDraft(event.target.value)}
+                    onBlur={() => saveGalleryCaption(lightboxIndex, captionDraft)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.currentTarget.blur();
+                    }}
+                    placeholder="Nhập caption..."
+                  />
+                ) : (
+                  <p>{activeImage.caption || "Chưa có caption."}</p>
+                )}
+              </label>
+              <span>{Math.round(lightboxZoom * 100)}%</span>
+            </div>
+          </section>
+        </div>
+      )}
     </>
   );
 }
@@ -3865,6 +4314,341 @@ function sanitizeScheduleHtml(html = "") {
 
   cleanNode(container);
   return container.innerHTML;
+}
+
+function DutySchedulesCard({ admin, course, updateCourse }) {
+  const requestConfirm = useConfirmAction();
+  const addPopoverRef = useRef(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [openScheduleId, setOpenScheduleId] = useState("");
+  const scheduleListSignature = jsonSignature(course.dutySchedules || []);
+  const schedules = useMemo(() => normalizeDutySchedules(course.dutySchedules), [scheduleListSignature]);
+  const openSchedule = schedules.find((schedule) => schedule.id === openScheduleId) || null;
+
+  useOutsideClick(addPopoverRef, addOpen, () => setAddOpen(false));
+
+  useEffect(() => {
+    if (openScheduleId && !schedules.some((schedule) => schedule.id === openScheduleId)) {
+      setOpenScheduleId("");
+    }
+  }, [openScheduleId, schedules]);
+
+  function createSchedule() {
+    const title = titleDraft.trim();
+    if (!title) return;
+    const nextSchedule = createDutySchedule(title, schedules.length);
+    updateCourse((current) => ({
+      ...current,
+      dutySchedules: [
+        ...normalizeDutySchedules(current.dutySchedules).map(normalizeDutyScheduleForSave),
+        normalizeDutyScheduleForSave(nextSchedule)
+      ]
+    }), {
+      toast: "Đã tạo lịch trực.",
+      writeMembers: false,
+      writeSummary: false,
+      classFields: ["dutySchedules"]
+    });
+    setTitleDraft("");
+    setAddOpen(false);
+    setOpenScheduleId(nextSchedule.id);
+  }
+
+  function deleteSchedule(schedule) {
+    if (openScheduleId === schedule.id) setOpenScheduleId("");
+    updateCourse((current) => ({
+      ...current,
+      dutySchedules: normalizeDutySchedules(current.dutySchedules)
+        .filter((item) => item.id !== schedule.id)
+        .map(normalizeDutyScheduleForSave)
+    }), {
+      toast: "Đã xóa lịch trực.",
+      writeMembers: false,
+      writeSummary: false,
+      classFields: ["dutySchedules"]
+    });
+  }
+
+  if (openSchedule) {
+    return (
+      <DutySchedulePage
+        schedule={openSchedule}
+        onBack={() => setOpenScheduleId("")}
+        updateCourse={updateCourse}
+      />
+    );
+  }
+
+  return (
+    <>
+      <PanelTitle
+        title="Lịch trực"
+        action={admin && (
+          <div className="panel-actions">
+            <div className="duty-add-wrap" ref={addPopoverRef}>
+              <button className="primary-action compact" type="button" onClick={() => setAddOpen((current) => !current)}>
+                <Plus size={15} /> Add
+              </button>
+              {addOpen && (
+                <div className="material-add-popover duty-add-popover">
+                  <label className="duty-title-field">
+                    <span>Title</span>
+                    <input
+                      value={titleDraft}
+                      onChange={(event) => setTitleDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") createSchedule();
+                      }}
+                      placeholder="Tên lịch trực"
+                      autoFocus
+                    />
+                  </label>
+                  <button className="primary-action compact" type="button" onClick={createSchedule} disabled={!titleDraft.trim()}>
+                    Create
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      />
+      {schedules.length === 0 ? (
+        <div className="empty-state compact-empty">Chưa có lịch trực.</div>
+      ) : (
+        <div className="duty-card-list">
+          {schedules.map((schedule) => (
+            <article className="duty-card-item" key={schedule.id}>
+              <button className="duty-card-button" type="button" onClick={() => setOpenScheduleId(schedule.id)}>
+                <Clock size={17} />
+                <span>
+                  <strong>{schedule.title}</strong>
+                  <small>{schedule.rows.length} dòng</small>
+                </span>
+              </button>
+              {admin && (
+                <button className="icon-danger" type="button" onClick={() => requestConfirm({
+                  title: "Xóa lịch trực?",
+                  message: `Bạn có chắc muốn xóa lịch trực "${schedule.title}" không?`,
+                  confirmLabel: "Xóa lịch trực"
+                }, () => deleteSchedule(schedule))} aria-label={`Xóa ${schedule.title}`}>
+                  <X size={15} />
+                </button>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function DutySchedulePage({ schedule, onBack, updateCourse }) {
+  const requestConfirm = useConfirmAction();
+  const [rows, setRows] = useState(() => normalizeDutyScheduleRows(schedule.rows));
+  const scheduleSignature = jsonSignature(schedule);
+  const savedRows = normalizeDutyScheduleRows(schedule.rows).map(normalizeDutyScheduleRowForSave);
+  const draftRows = rows.map(normalizeDutyScheduleRowForSave);
+  const dutyDirty = jsonSignature(draftRows) !== jsonSignature(savedRows);
+
+  useEffect(() => {
+    setRows(normalizeDutyScheduleRows(schedule.rows));
+  }, [scheduleSignature]);
+
+  function updateRow(rowId, patch) {
+    setRows((current) => current.map((row) => row.id === rowId ? { ...row, ...patch } : row));
+  }
+
+  function insertRow(afterIndex = rows.length - 1) {
+    setRows((current) => {
+      const insertIndex = Math.min(Math.max(afterIndex + 1, 0), current.length);
+      const nextRows = [...current];
+      nextRows.splice(insertIndex, 0, createDutyScheduleRow(insertIndex));
+      return nextRows;
+    });
+  }
+
+  function removeRow(rowId) {
+    setRows((current) => current.filter((row) => row.id !== rowId));
+  }
+
+  function saveDutySchedule() {
+    const nextSchedule = normalizeDutyScheduleForSave({ ...schedule, rows: draftRows });
+    return updateCourse((current) => ({
+      ...current,
+      dutySchedules: normalizeDutySchedules(current.dutySchedules).map((item) => (
+        item.id === schedule.id ? nextSchedule : normalizeDutyScheduleForSave(item)
+      ))
+    }), {
+      toast: true,
+      writeMembers: false,
+      writeSummary: false,
+      classFields: ["dutySchedules"]
+    });
+  }
+
+  return (
+    <section className="duty-page">
+      <div className="duty-page-head">
+        <button className="secondary-action compact" type="button" onClick={onBack}>
+          <ChevronLeft size={15} /> Back
+        </button>
+        <h3>{schedule.title}</h3>
+        <div className="panel-actions">
+          <button className="primary-action compact" type="button" onClick={() => insertRow(rows.length - 1)}>
+            <Plus size={15} /> Dòng
+          </button>
+          <SaveButton className="compact" dirty={dutyDirty} onClick={saveDutySchedule} />
+        </div>
+      </div>
+      <div className="duty-table-wrap">
+        <table className="data-table duty-table">
+          <colgroup>
+            <col className="duty-stt-col" />
+            <col className="duty-time-col" />
+            <col className="duty-person-col" />
+            <col className="duty-content-col" />
+            <col className="duty-note-col" />
+            <col className="duty-action-col" />
+          </colgroup>
+          <thead>
+            <tr><th>STT</th><th>Thời gian</th><th>Người thực hiện</th><th>Nội dung</th><th>Ghi chú</th><th></th></tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan="6">
+                  <div className="duty-empty-row">
+                    <span>Chưa có dòng.</span>
+                    <button className="primary-action compact" type="button" onClick={() => insertRow(-1)}>
+                      <Plus size={15} /> Thêm dòng
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ) : rows.map((row, index) => (
+              <tr key={row.id}>
+                <td>{index + 1}</td>
+                <td>
+                  <input
+                    value={row.time}
+                    onChange={(event) => updateRow(row.id, { time: event.target.value })}
+                    placeholder="Thời gian"
+                    aria-label={`Thời gian dòng ${index + 1}`}
+                  />
+                </td>
+                <td>
+                  <input
+                    value={row.assignee}
+                    onChange={(event) => updateRow(row.id, { assignee: event.target.value })}
+                    placeholder="Người thực hiện"
+                    aria-label={`Người thực hiện dòng ${index + 1}`}
+                  />
+                </td>
+                <td>
+                  <textarea
+                    value={row.content}
+                    onChange={(event) => updateRow(row.id, { content: event.target.value })}
+                    placeholder="Nội dung"
+                    aria-label={`Nội dung dòng ${index + 1}`}
+                  />
+                </td>
+                <td>
+                  <textarea
+                    value={row.note}
+                    onChange={(event) => updateRow(row.id, { note: event.target.value })}
+                    placeholder="Ghi chú"
+                    aria-label={`Ghi chú dòng ${index + 1}`}
+                  />
+                </td>
+                <td>
+                  <div className="duty-row-actions">
+                    <button className="icon-soft" type="button" onClick={() => insertRow(index)} title="Thêm dòng bên dưới" aria-label={`Thêm dòng sau dòng ${index + 1}`}>
+                      <Plus size={14} />
+                    </button>
+                    <button className="icon-danger" type="button" onClick={() => requestConfirm({
+                      title: "Xóa dòng?",
+                      message: `Bạn có chắc muốn xóa dòng ${index + 1} không?`,
+                      confirmLabel: "Xóa dòng"
+                    }, () => removeRow(row.id))} title="Xóa dòng" aria-label={`Xóa dòng ${index + 1}`}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="bottom-save-row">
+        <SaveButton className="compact" dirty={dutyDirty} onClick={saveDutySchedule} />
+      </div>
+    </section>
+  );
+}
+
+function normalizeDutySchedules(schedules) {
+  return (Array.isArray(schedules) ? schedules : []).map((schedule, index) => ({
+    id: schedule.id || `duty-${index + 1}`,
+    title: String(schedule.title || "").trim() || `Lịch trực ${index + 1}`,
+    rows: normalizeDutyScheduleRows(schedule.rows)
+  }));
+}
+
+function createDutySchedule(title, index = 0) {
+  return {
+    id: `duty-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+    title,
+    rows: [createDutyScheduleRow(0)]
+  };
+}
+
+function normalizeDutyScheduleForSave(schedule) {
+  return {
+    id: schedule.id,
+    title: String(schedule.title || "").trim(),
+    rows: normalizeDutyScheduleRows(schedule.rows).map(normalizeDutyScheduleRowForSave)
+  };
+}
+
+function normalizeDutyScheduleRows(rows) {
+  return (Array.isArray(rows) ? rows : [defaultDutyScheduleRow()]).map((row, index) => ({
+    id: row.id || `row-${index + 1}`,
+    time: String(row.time || ""),
+    assignee: String(row.assignee || row.person || row.performer || ""),
+    content: String(row.content || ""),
+    note: String(row.note || row.remarks || "")
+  }));
+}
+
+function createDutyScheduleRow(index = 0) {
+  return {
+    id: `duty-row-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+    time: "",
+    assignee: "",
+    content: "",
+    note: ""
+  };
+}
+
+function defaultDutyScheduleRow() {
+  return {
+    id: "row-1",
+    time: "",
+    assignee: "",
+    content: "",
+    note: ""
+  };
+}
+
+function normalizeDutyScheduleRowForSave(row) {
+  return {
+    id: row.id,
+    time: String(row.time || ""),
+    assignee: String(row.assignee || ""),
+    content: String(row.content || ""),
+    note: String(row.note || "")
+  };
 }
 
 function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
@@ -11419,6 +12203,7 @@ function prepareCourseForSave(course, user) {
   const lecturers = existing ? buildCourseLecturers({ ...course, ownerEmail, ownerName }) : [{ email: ownerEmail, name: ownerName, role: "owner" }];
   return {
     ...course,
+    info: normalizeClassInfo(course.info),
     announcementPostPermission: getAnnouncementPostPermission(course),
     ownerEmail,
     ownerName,
@@ -11428,7 +12213,7 @@ function prepareCourseForSave(course, user) {
 }
 
 function NewClassModal({ existing, user, onClose, onSave }) {
-  const [form, setForm] = useState(() => existing || { id: crypto.randomUUID(), name: "", description: "", code: "", pinned: false, announcementPostPermission: ANNOUNCEMENT_POST_PERMISSIONS.everyone, info: { title: "", size: 0, time: "", room: "", description: "", rules: "", zaloGroupUrl: "", googleMeetUrl: "" }, scheduleRows: defaultScheduleRows(), members: [], announcements: [], groupTopics: [], intergroupTopics: [], personalTopics: [], materials: [], assignments: [], gradebooks: [], peerReviews: [], extraCards: [], hiddenCards: [], pinnedCards: [], cardOrder: [] });
+  const [form, setForm] = useState(() => existing || { id: crypto.randomUUID(), name: "", description: "", code: "", pinned: false, announcementPostPermission: ANNOUNCEMENT_POST_PERMISSIONS.everyone, info: { title: "", size: 0, time: "", room: "", description: "", rules: "", zaloGroupUrl: "", googleMeetUrl: "", gallery: [] }, scheduleRows: defaultScheduleRows(), dutySchedules: [], members: [], announcements: [], groupTopics: [], intergroupTopics: [], personalTopics: [], materials: [], assignments: [], gradebooks: [], peerReviews: [], extraCards: [], hiddenCards: [], pinnedCards: [], cardOrder: [] });
   const classFormDirty = existing ? jsonSignature(form) !== jsonSignature(existing) : true;
   return (
     <Modal title={existing ? "Chỉnh sửa lớp học" : "Thêm lớp học mới"} onClose={onClose}>

@@ -325,12 +325,13 @@ function canUploadToCourse(email, course, member, folderPath = "") {
 
   const permission = normalizeAnnouncementPostPermission(course.announcementPostPermission);
   if (permission === "everyone") return true;
+  if (permission === "everyone_no_files") return false;
   if (permission === "lecturers_leaders") return member?.classLeader === true || member?.role === "classLeader";
   return false;
 }
 
 function normalizeAnnouncementPostPermission(value) {
-  return ["lecturers", "lecturers_leaders", "everyone"].includes(String(value || ""))
+  return ["lecturers", "lecturers_leaders", "everyone", "everyone_no_files"].includes(String(value || ""))
     ? String(value)
     : "everyone";
 }
