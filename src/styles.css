@@ -410,6 +410,45 @@ textarea { min-height: 88px; resize: vertical; }
   color: #172033;
   white-space: nowrap;
 }
+.account-language-row {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border-bottom: 1px solid #e6ebf2;
+  margin-bottom: 4px;
+}
+.account-language-row > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 900;
+}
+.language-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid #dbe5f1;
+  border-radius: 7px;
+  overflow: hidden;
+  background: #fff;
+}
+.account-menu .language-toggle button {
+  width: 100%;
+  min-height: 30px;
+  justify-content: center;
+  border-radius: 0;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 900;
+}
+.account-menu .language-toggle button + button {
+  border-left: 1px solid #dbe5f1;
+}
+.account-menu .language-toggle button.active {
+  background: #172033;
+  color: #fff;
+}
 .account-box { position: relative; margin-top: auto; }
 .account-row {
   display: grid;

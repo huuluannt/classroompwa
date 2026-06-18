@@ -684,6 +684,7 @@ export async function syncUserProfile(user, options = {}) {
       displayName: user.displayName || user.email,
       photoURL: user.photoURL || "",
       studentId: user.studentId || "",
+      language: ["vi", "en"].includes(user.language) ? user.language : "vi",
       pinnedClassIds: Array.isArray(user.pinnedClassIds) ? user.pinnedClassIds : loadLocalClassPins(user.email),
       archivedClassIds: Array.isArray(user.archivedClassIds) ? user.archivedClassIds : loadLocalClassArchives(user.email)
     };
@@ -698,6 +699,11 @@ export async function syncUserProfile(user, options = {}) {
     displayName: preserveExisting ? (existingProfile.displayName || user.displayName || user.email) : (user.displayName || user.email),
     photoURL: user.photoURL || existingProfile.photoURL || "",
     studentId: preserveExisting ? (existingProfile.studentId || user.studentId || "") : (user.studentId || ""),
+    language: preserveExisting
+      ? (["vi", "en"].includes(existingProfile.language)
+        ? existingProfile.language
+        : (["vi", "en"].includes(user.language) ? user.language : "vi"))
+      : (["vi", "en"].includes(user.language) ? user.language : "vi"),
     updatedAt: serverTimestamp()
   };
   if (Array.isArray(user.pinnedClassIds)) {
@@ -716,6 +722,7 @@ export async function syncUserProfile(user, options = {}) {
     displayName: profile.displayName,
     photoURL: profile.photoURL,
     studentId: profile.studentId,
+    language: profile.language,
     pinnedClassIds: profile.pinnedClassIds,
     archivedClassIds: profile.archivedClassIds
   };

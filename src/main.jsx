@@ -22,6 +22,7 @@ import {
   EyeOff,
   FilePlus2,
   GraduationCap,
+  Languages,
   LogOut,
   Menu,
   MoreVertical,
@@ -149,11 +150,175 @@ const ANNOUNCEMENT_POST_PERMISSIONS = {
 };
 
 const ANNOUNCEMENT_POST_PERMISSION_OPTIONS = [
-  { value: ANNOUNCEMENT_POST_PERMISSIONS.lecturers, label: "Giảng viên" },
-  { value: ANNOUNCEMENT_POST_PERMISSIONS.lecturersLeaders, label: "Giảng viên + Lớp trưởng" },
-  { value: ANNOUNCEMENT_POST_PERMISSIONS.everyone, label: "Tất cả mọi người" },
-  { value: ANNOUNCEMENT_POST_PERMISSIONS.everyoneNoFiles, label: "Tất cả mọi người (No Files)" }
+  { value: ANNOUNCEMENT_POST_PERMISSIONS.lecturers, label: "Giảng viên", labelEn: "Lecturers" },
+  { value: ANNOUNCEMENT_POST_PERMISSIONS.lecturersLeaders, label: "Giảng viên + Lớp trưởng", labelEn: "Lecturers + Class leaders" },
+  { value: ANNOUNCEMENT_POST_PERMISSIONS.everyone, label: "Tất cả mọi người", labelEn: "Everyone" },
+  { value: ANNOUNCEMENT_POST_PERMISSIONS.everyoneNoFiles, label: "Tất cả mọi người (No Files)", labelEn: "Everyone (No Files)" }
 ];
+
+const UI_LANGUAGES = {
+  vi: "VIE",
+  en: "ENG"
+};
+const LANGUAGE_STORAGE_PREFIX = "classroompwa-language:";
+const UI_TEXT = {
+  vi: {
+    profile: "Profile",
+    manageLecturers: "Manage Lecturers",
+    signOut: "Sign out",
+    language: "Ngôn ngữ",
+    searchClass: "Tìm lớp học",
+    addClass: "Thêm lớp học mới",
+    joinClass: "Tham gia lớp học",
+    classList: "Danh sách lớp học",
+    archived: "Archived",
+    mainClass: "Mainclass",
+    noArchivedClasses: "Chưa có lớp Archived.",
+    noMainClasses: "Chưa có lớp trong Mainclass.",
+    noMoreCards: "Không còn card để thêm",
+    newNotifications: "Thông báo mới",
+    recentPosts: "bài đăng gần nhất",
+    noPosts: "Chưa có bài đăng",
+    noNewNotifications: "Chưa có thông báo mới.",
+    newBadge: "Mới",
+    announcementContentPlaceholder: "Nhập nội dung đăng tin...",
+    publishAsMaterial: "Tài liệu",
+    schedulePost: "Hẹn giờ",
+    schedulePostAria: "Hẹn giờ đăng",
+    postAnnouncement: "Đăng tin",
+    postingAnnouncement: "Đang đăng",
+    postPermission: "Quyền đăng tin",
+    noVisibleClass: "Chưa có lớp học hiển thị",
+    pendingClassHint: "Người học cần nhập mã lớp và chờ admin accept trước khi xem nội dung.",
+    joinRequestSent: "Yêu cầu tham gia lớp đã được gửi. Bạn sẽ xem được nội dung sau khi admin accept.",
+    statusPendingAccept: "Trạng thái: Chờ accept",
+    newNotification: "Có thông báo mới",
+    notifications: "Thông báo",
+    onlySupremeClasses: "Chỉ hiện lớp của Đấng tối cao",
+    showAllClasses: "Hiện tất cả lớp",
+    backToClassList: "Quay lại danh sách lớp",
+    backToCardList: "Quay lại danh sách thẻ",
+    backToTeacherView: "Quay lại góc nhìn giảng viên",
+    viewAsVirtualStudent: "Xem lớp như học viên ảo",
+    noVirtualStudent: "Chưa có học viên ảo trong lớp",
+    virtualStudent: "học viên ảo",
+    viewAs: "View as",
+    openGoogleMeet: "Mở Google Meet",
+    classCode: "Mã lớp",
+    cardMenu: "menu",
+    pin: "Pin",
+    unpin: "Unpin",
+    delete: "Delete",
+    edit: "Edit",
+    unarchive: "UnArchived",
+    cardLabels: {
+      announcements: "Thông báo",
+      members: "Thành viên",
+      info: "Thông tin lớp học",
+      schedule: "Lịch học (TKB)",
+      groupTopic: "Topic Nhóm",
+      materials: "Tài liệu",
+      assignments: "Bài tập",
+      grades: "Bảng điểm",
+      exams: "Đề thi (only Lecturer)",
+      intergroupTopic: "Topic Liên nhóm",
+      personalTopic: "Topic Cá nhân",
+      dutySchedules: "Lịch trực"
+    },
+    literal: {}
+  },
+  en: {
+    profile: "Profile",
+    manageLecturers: "Manage Lecturers",
+    signOut: "Sign out",
+    language: "Language",
+    searchClass: "Search classes",
+    addClass: "Add new class",
+    joinClass: "Join class",
+    classList: "Class list",
+    archived: "Archived",
+    mainClass: "Mainclass",
+    noArchivedClasses: "No archived classes.",
+    noMainClasses: "No classes in Mainclass.",
+    noMoreCards: "No more cards to add",
+    newNotifications: "New notifications",
+    recentPosts: "recent posts",
+    noPosts: "No posts yet",
+    noNewNotifications: "No new notifications.",
+    newBadge: "New",
+    announcementContentPlaceholder: "Write an announcement...",
+    publishAsMaterial: "Material",
+    schedulePost: "Schedule",
+    schedulePostAria: "Schedule announcement",
+    postAnnouncement: "Post",
+    postingAnnouncement: "Posting",
+    postPermission: "Post permission",
+    noVisibleClass: "No visible classes",
+    pendingClassHint: "Learners need to enter a class code and wait for admin approval before viewing content.",
+    joinRequestSent: "Your join request has been sent. You can view the class after admin approval.",
+    statusPendingAccept: "Status: Pending approval",
+    newNotification: "New notifications",
+    notifications: "Notifications",
+    onlySupremeClasses: "Only show Supreme's classes",
+    showAllClasses: "Show all classes",
+    backToClassList: "Back to class list",
+    backToCardList: "Back to card list",
+    backToTeacherView: "Back to lecturer view",
+    viewAsVirtualStudent: "View class as virtual student",
+    noVirtualStudent: "No virtual students in this class",
+    virtualStudent: "virtual student",
+    viewAs: "View as",
+    openGoogleMeet: "Open Google Meet",
+    classCode: "Class code",
+    cardMenu: "menu",
+    pin: "Pin",
+    unpin: "Unpin",
+    delete: "Delete",
+    edit: "Edit",
+    unarchive: "Unarchive",
+    cardLabels: {
+      announcements: "Announcements",
+      members: "Members",
+      info: "Class info",
+      schedule: "Schedule",
+      groupTopic: "Group Topics",
+      materials: "Materials",
+      assignments: "Assignments",
+      grades: "Grades",
+      exams: "Exams (Lecturer only)",
+      intergroupTopic: "Intergroup Topics",
+      personalTopic: "Personal Topics",
+      dutySchedules: "Duty schedules"
+    },
+    literal: {
+      "Thông báo": "Announcements",
+      "Thành viên": "Members",
+      "Thông tin lớp học": "Class info",
+      "Lịch học (TKB)": "Schedule",
+      "Topic Nhóm": "Group Topics",
+      "Topic Liên nhóm": "Intergroup Topics",
+      "Topic Cá nhân": "Personal Topics",
+      "Tài liệu": "Materials",
+      "Bài tập": "Assignments",
+      "Bảng điểm": "Grades",
+      "Đề thi": "Exams",
+      "Đề thi (only Lecturer)": "Exams (Lecturer only)",
+      "Lịch trực": "Duty schedules",
+      "Người học chấm điểm": "Learner grading",
+      "Profile": "Profile",
+      "Manage Lecturers": "Manage Lecturers",
+      "Thêm lớp học mới": "Add new class",
+      "Chỉnh sửa lớp học": "Edit class",
+      "Tham gia lớp học": "Join class",
+      "Mã lớp": "Class code",
+      "Xác nhận xóa": "Confirm delete",
+      "Xóa": "Delete",
+      "Hủy": "Cancel",
+      "Save": "Save",
+      "Gallery": "Gallery"
+    }
+  }
+};
 
 const MOBILE_MEDIA_QUERY = "(max-width: 760px)";
 const MOBILE_VIEWS = {
@@ -163,6 +328,7 @@ const MOBILE_VIEWS = {
 };
 const ANNOUNCEMENT_SEEN_PREFIX = "classroompwa-announcement-seen:";
 const ConfirmContext = React.createContext((options, onConfirm) => onConfirm?.());
+const LanguageContext = React.createContext("vi");
 const LECTURER_ONLY_CARD_IDS = new Set(["exams"]);
 const MAX_INLINE_EXAM_TEMPLATE_BYTES = 850 * 1024;
 const MAX_VIRTUAL_MEMBERS = 100;
@@ -275,6 +441,10 @@ function useConfirmAction() {
   return React.useContext(ConfirmContext);
 }
 
+function useUiLanguage() {
+  return React.useContext(LanguageContext);
+}
+
 function notificationSeenKey(email) {
   return `${ANNOUNCEMENT_SEEN_PREFIX}${normalizeEmail(email)}`;
 }
@@ -298,6 +468,47 @@ function saveAnnouncementSeenAt(email, timestamp) {
   } catch {
     // Local notification state is best-effort.
   }
+}
+
+function normalizeLanguage(value) {
+  return value === "en" ? "en" : "vi";
+}
+
+function languageStorageKey(email) {
+  return `${LANGUAGE_STORAGE_PREFIX}${normalizeEmail(email || "default")}`;
+}
+
+function loadPreferredLanguage(email) {
+  try {
+    return normalizeLanguage(localStorage.getItem(languageStorageKey(email)));
+  } catch {
+    return "vi";
+  }
+}
+
+function savePreferredLanguage(email, language) {
+  try {
+    localStorage.setItem(languageStorageKey(email), normalizeLanguage(language));
+  } catch {
+    // Language preference is best-effort when storage is unavailable.
+  }
+}
+
+function uiText(language, key, fallback = "") {
+  return UI_TEXT[normalizeLanguage(language)]?.[key] || UI_TEXT.vi[key] || fallback || key;
+}
+
+function uiCardLabel(language, cardId, fallback = "") {
+  const normalizedLanguage = normalizeLanguage(language);
+  return UI_TEXT[normalizedLanguage]?.cardLabels?.[cardId]
+    || UI_TEXT.vi.cardLabels?.[cardId]
+    || fallback
+    || cardId;
+}
+
+function uiLiteral(language, value) {
+  if (typeof value !== "string") return value;
+  return UI_TEXT[normalizeLanguage(language)]?.literal?.[value] || value;
 }
 
 function getAnnouncementPostPermission(course) {
@@ -716,6 +927,7 @@ function App() {
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [language, setLanguage] = useState(() => loadPreferredLanguage(""));
   const [showJoin, setShowJoin] = useState(false);
   const [pendingJoinCode, setPendingJoinCode] = useState(readJoinCodeParam);
   const [showNewClass, setShowNewClass] = useState(false);
@@ -782,6 +994,7 @@ function App() {
         displayName: nextUser.displayName || nextUser.email,
         email: nextUser.email,
         photoURL: nextUser.photoURL,
+        language: loadPreferredLanguage(nextUser.email),
         isDemo: false
       } : null;
       setUser(nextUser ? {
@@ -789,17 +1002,22 @@ function App() {
         email: nextUser.email,
         photoURL: nextUser.photoURL,
         studentId: "",
+        language: loadPreferredLanguage(nextUser.email),
         isDemo: false
       } : null);
+      if (nextUser?.email) setLanguage(loadPreferredLanguage(nextUser.email));
       if (nextProfile) {
         syncUserProfile(nextProfile)
           .then((profile) => {
             if (!profile) return;
             if (Array.isArray(profile.pinnedClassIds)) setSidebarPinnedClassIds(profile.pinnedClassIds);
             if (Array.isArray(profile.archivedClassIds)) setSidebarArchivedClassIds(profile.archivedClassIds);
+            const nextLanguage = normalizeLanguage(profile.language || loadPreferredLanguage(profile.email));
+            savePreferredLanguage(profile.email, nextLanguage);
+            setLanguage(nextLanguage);
             setUser((current) => (
               current?.email === profile.email
-                ? { ...current, displayName: profile.displayName || current.displayName, photoURL: profile.photoURL || current.photoURL, studentId: profile.studentId || "" }
+                ? { ...current, displayName: profile.displayName || current.displayName, photoURL: profile.photoURL || current.photoURL, studentId: profile.studentId || "", language: nextLanguage }
                 : current
             ));
           })
@@ -1015,10 +1233,13 @@ function App() {
       const nextUser = mode === "admin"
         ? { displayName: "Huỳnh Hữu Luân", email: "hhluan@hcmus.edu.vn", photoURL: "", isDemo: true }
         : await signInWithGoogle();
+      const nextLanguage = loadPreferredLanguage(nextUser.email);
+      setLanguage(nextLanguage);
       setUser({
         displayName: nextUser.displayName || nextUser.email,
         email: nextUser.email,
         photoURL: nextUser.photoURL,
+        language: nextLanguage,
         isDemo: nextUser.isDemo
       });
     } catch (nextError) {
@@ -1102,7 +1323,8 @@ function App() {
       email: user.email,
       displayName: profile.displayName.trim() || user.email,
       photoURL: user.photoURL || profile.photoURL || "",
-      studentId: profile.studentId.trim()
+      studentId: profile.studentId.trim(),
+      language: normalizeLanguage(user.language || language)
     };
     try {
       const savedProfile = await syncUserProfile(nextProfile, { preserveExisting: false });
@@ -1118,11 +1340,28 @@ function App() {
     }
   }
 
+  async function handleLanguageChange(nextLanguageValue) {
+    const nextLanguage = normalizeLanguage(nextLanguageValue);
+    setLanguage(nextLanguage);
+    if (user?.email) savePreferredLanguage(user.email, nextLanguage);
+    setUser((current) => current ? { ...current, language: nextLanguage } : current);
+    try {
+      if (user?.email) {
+        await syncUserProfile({ ...user, language: nextLanguage }, { preserveExisting: false });
+      }
+      showSaveToast(nextLanguage === "en" ? "Language changed to English." : "Đã chuyển sang tiếng Việt.");
+    } catch (nextError) {
+      console.error(nextError);
+      setError(nextError.message || "Không thể lưu ngôn ngữ.");
+    }
+  }
+
   if (loading) return <LoadingScreen />;
   if (!user) return <LoginScreen onLogin={handleLogin} loginError={loginError} />;
 
   return (
     <ConfirmContext.Provider value={requestConfirm}>
+      <LanguageContext.Provider value={language}>
       <main className={`app-shell ${isMobile ? `mobile-flow mobile-view-${mobileView}` : ""}`}>
       <Sidebar
         canCreateClass={primaryLecturer}
@@ -1176,6 +1415,8 @@ function App() {
         onNotificationsSeen={markNotificationsSeen}
         onNotificationSelect={handleNotificationSelect}
         user={user}
+        language={language}
+        onLanguageChange={handleLanguageChange}
         onProfile={() => {
           setShowProfile(true);
           setAccountOpen(false);
@@ -1212,6 +1453,7 @@ function App() {
           virtualStudentMember={selectedClassVirtualMember}
           virtualStudentCount={selectedClassVirtualMembers.length}
           onToggleVirtualStudentView={toggleVirtualStudentView}
+          language={language}
           canDeleteClass={selectedClassCanDelete}
           canManageCourseLecturers={selectedClassCanManageLecturers}
           user={effectiveUser}
@@ -1350,6 +1592,7 @@ function App() {
           onConfirm={runConfirmedAction}
         />
       )}
+      </LanguageContext.Provider>
     </ConfirmContext.Provider>
   );
 }
@@ -1502,8 +1745,9 @@ function LoginScreen({ onLogin, loginError }) {
   );
 }
 
-function NotificationPanel({ items, onSelect }) {
+function NotificationPanel({ items, onSelect, language }) {
   const [nowMillis, setNowMillis] = useState(Date.now());
+  const t = (key, fallback = "") => uiText(language, key, fallback);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMillis(Date.now()), 60 * 1000);
@@ -1513,12 +1757,12 @@ function NotificationPanel({ items, onSelect }) {
   return (
     <div className="notification-panel">
       <div className="notification-panel-head">
-        <strong>Thông báo mới</strong>
-        <small>{items.length ? `${items.length} bài đăng gần nhất` : "Chưa có bài đăng"}</small>
+        <strong>{t("newNotifications")}</strong>
+        <small>{items.length ? `${items.length} ${t("recentPosts")}` : t("noPosts")}</small>
       </div>
       <div className="notification-list">
         {items.length === 0 && (
-          <div className="notification-empty">Chưa có thông báo mới.</div>
+          <div className="notification-empty">{t("noNewNotifications")}</div>
         )}
         {items.map((item) => (
           <button
@@ -1533,7 +1777,7 @@ function NotificationPanel({ items, onSelect }) {
             {item.courseCode && <span className="notification-code">{item.courseCode}</span>}
             <span className="notification-preview">{item.content}</span>
             <time>{formatNotificationTime(item, nowMillis)}</time>
-            {item.unread && <span className="notification-badge">Mới</span>}
+            {item.unread && <span className="notification-badge">{t("newBadge")}</span>}
           </button>
         ))}
       </div>
@@ -1570,6 +1814,8 @@ function Sidebar(props) {
     onNotificationsSeen,
     onNotificationSelect,
     user,
+    language,
+    onLanguageChange,
     onProfile,
     onManageLecturers,
     onLogout
@@ -1577,6 +1823,7 @@ function Sidebar(props) {
   const [notificationOpen, setNotificationOpen] = useState(false);
   const accountRef = useRef(null);
   const notificationRef = useRef(null);
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   useOutsideClick(accountRef, accountOpen, () => setAccountOpen(false));
   useOutsideClick(notificationRef, notificationOpen, () => setNotificationOpen(false));
 
@@ -1597,36 +1844,37 @@ function Sidebar(props) {
         <>
           <label className="search-box">
             <Search size={16} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm lớp học" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("searchClass")} />
           </label>
           {canCreateClass && (
             <button className="primary-action" onClick={onNewClass}>
               <Plus size={16} />
-              Thêm lớp học mới
+              {t("addClass")}
             </button>
           )}
           <button className="join-action" onClick={onJoin}>
             <UserPlus size={16} />
-            Tham gia lớp học
+            {t("joinClass")}
           </button>
           <div className="class-list-header">
-            <span>{classListMode === "archived" ? "Archived" : "Danh sách lớp học"}</span>
+            <span>{classListMode === "archived" ? t("archived") : t("classList")}</span>
             <button
               type="button"
               className={classListMode === "archived" ? "active" : ""}
               onClick={() => onClassListModeChange(classListMode === "archived" ? "main" : "archived")}
             >
-              {classListMode === "archived" ? "Mainclass" : "Archived"}
+              {classListMode === "archived" ? t("mainClass") : t("archived")}
             </button>
           </div>
           <nav className="class-list">
             {classes.length === 0 && (
               <div className="class-list-empty-row">
                 <div className="class-list-empty">
-                  {classListMode === "archived" ? "Chưa có lớp Archived." : "Chưa có lớp trong Mainclass."}
+                  {classListMode === "archived" ? t("noArchivedClasses") : t("noMainClasses")}
                 </div>
                 {showSupremeClassScopeToggle && (
                   <SupremeClassScopeButton
+                    language={language}
                     expanded={supremeShowAllClasses}
                     onToggle={onToggleSupremeClassScope}
                   />
@@ -1640,6 +1888,7 @@ function Sidebar(props) {
                     <div className="class-sidebar-heading">{group.label}</div>
                     {showSupremeClassScopeToggle && groupIndex === 0 && (
                       <SupremeClassScopeButton
+                        language={language}
                         expanded={supremeShowAllClasses}
                         onToggle={onToggleSupremeClassScope}
                       />
@@ -1661,6 +1910,7 @@ function Sidebar(props) {
                     canDelete={canDeleteCourse(user, course)}
                     onSelect={() => selectClass(course.id)}
                     onAction={onClassAction}
+                    language={language}
                   />
                 ))}
               </div>
@@ -1682,20 +1932,21 @@ function Sidebar(props) {
                 <button
                   className={`notification-button ${notificationUnread ? "unread" : ""}`}
                   type="button"
-                title={notificationUnread ? "Có thông báo mới" : "Thông báo"}
-                aria-label={notificationUnread ? "Có thông báo mới" : "Thông báo"}
+                  title={notificationUnread ? t("newNotification") : t("notifications")}
+                  aria-label={notificationUnread ? t("newNotification") : t("notifications")}
                   onClick={() => {
                     const nextOpen = !notificationOpen;
                     setNotificationOpen(nextOpen);
                     setAccountOpen(false);
                     if (nextOpen) onNotificationsSeen?.();
                   }}
-              >
+                >
                   {notificationUnread ? <BellDot size={19} /> : <Bell size={19} />}
                 </button>
                 {notificationOpen && (
                   <NotificationPanel
                     items={notificationItems}
+                    language={language}
                     onSelect={(item) => {
                       onNotificationSelect?.(item);
                       setNotificationOpen(false);
@@ -1706,19 +1957,34 @@ function Sidebar(props) {
             </div>
             {accountOpen && (
               <div className="account-menu">
+                <div className="account-language-row" role="group" aria-label={t("language")}>
+                  <span><Languages size={15} /> {t("language")}</span>
+                  <div className="language-toggle">
+                    {Object.entries(UI_LANGUAGES).map(([value, label]) => (
+                      <button
+                        className={normalizeLanguage(language) === value ? "active" : ""}
+                        type="button"
+                        key={value}
+                        onClick={() => onLanguageChange?.(value)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <button onClick={onProfile}>
                   <UserRound size={15} />
-                  Profile
+                  {t("profile")}
                 </button>
                 {canManageLecturers && (
                   <button onClick={onManageLecturers}>
                     <UserPlus size={15} />
-                    Manage Lecturers
+                    {t("manageLecturers")}
                   </button>
                 )}
                 <button onClick={onLogout}>
                   <LogOut size={15} />
-                  Sign out
+                  {t("signOut")}
                 </button>
               </div>
             )}
@@ -1732,8 +1998,8 @@ function Sidebar(props) {
               <button
                 className={`notification-button ${notificationUnread ? "unread" : ""}`}
                 type="button"
-                title={notificationUnread ? "Có thông báo mới" : "Thông báo"}
-                aria-label={notificationUnread ? "Có thông báo mới" : "Thông báo"}
+                title={notificationUnread ? t("newNotification") : t("notifications")}
+                aria-label={notificationUnread ? t("newNotification") : t("notifications")}
                 onClick={() => {
                   const nextOpen = !notificationOpen;
                   setNotificationOpen(nextOpen);
@@ -1746,6 +2012,7 @@ function Sidebar(props) {
               {notificationOpen && (
                 <NotificationPanel
                   items={notificationItems}
+                  language={language}
                   onSelect={(item) => {
                     onNotificationSelect?.(item);
                     setNotificationOpen(false);
@@ -1757,7 +2024,7 @@ function Sidebar(props) {
               className="account-icon-trigger"
               type="button"
               title={user.displayName || user.email}
-              aria-label="Mở menu account"
+              aria-label={`${t("profile")} menu`}
               onClick={() => {
                 setNotificationOpen(false);
                 setAccountOpen(!accountOpen);
@@ -1768,19 +2035,34 @@ function Sidebar(props) {
           </div>
           {accountOpen && (
             <div className="account-menu">
+              <div className="account-language-row" role="group" aria-label={t("language")}>
+                <span><Languages size={15} /> {t("language")}</span>
+                <div className="language-toggle">
+                  {Object.entries(UI_LANGUAGES).map(([value, label]) => (
+                    <button
+                      className={normalizeLanguage(language) === value ? "active" : ""}
+                      type="button"
+                      key={value}
+                      onClick={() => onLanguageChange?.(value)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <button onClick={onProfile}>
                 <UserRound size={15} />
-                Profile
+                {t("profile")}
               </button>
               {canManageLecturers && (
                 <button onClick={onManageLecturers}>
                   <UserPlus size={15} />
-                  Manage Lecturers
+                  {t("manageLecturers")}
                 </button>
               )}
               <button onClick={onLogout}>
                 <LogOut size={15} />
-                Sign out
+                {t("signOut")}
               </button>
             </div>
           )}
@@ -1802,13 +2084,14 @@ function groupClassesForSidebar(classes, groupByOwner) {
   return [...groups.values()].sort((first, second) => first.label.localeCompare(second.label, "vi", { sensitivity: "base" }));
 }
 
-function SupremeClassScopeButton({ expanded, onToggle }) {
+function SupremeClassScopeButton({ expanded, onToggle, language }) {
+  const title = expanded ? uiText(language, "onlySupremeClasses") : uiText(language, "showAllClasses");
   return (
     <button
       className={`supreme-class-scope-button ${expanded ? "active" : ""}`}
       type="button"
-      title={expanded ? "Chỉ hiện lớp của Đấng tối cao" : "Hiện tất cả lớp"}
-      aria-label={expanded ? "Chỉ hiện lớp của Đấng tối cao" : "Hiện tất cả lớp"}
+      title={title}
+      aria-label={title}
       onClick={onToggle}
     >
       {expanded ? <Eye size={16} /> : <EyeOff size={16} />}
@@ -1842,11 +2125,12 @@ function buildCourseLecturers(course) {
   });
 }
 
-function ClassRow({ course, selected, pinned, archived, archivedMode, owned, canPin, canArchive, canEdit, canDelete, onSelect, onAction }) {
+function ClassRow({ course, selected, pinned, archived, archivedMode, owned, canPin, canArchive, canEdit, canDelete, onSelect, onAction, language }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
   useOutsideClick(menuRef, open, () => setOpen(false));
   const hasMenu = canPin || canArchive || canEdit || canDelete;
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   return (
     <div className={`class-row ${selected ? "selected" : ""} ${owned ? "owner-class" : ""}`}>
       <button onClick={onSelect}>
@@ -1863,15 +2147,15 @@ function ClassRow({ course, selected, pinned, archived, archivedMode, owned, can
           </button>
           {open && (
             <div className="mini-menu">
-              {canPin && <button onClick={() => { onAction("pin", course); setOpen(false); }}><Pin size={14} /> {pinned ? "Unpin" : "Pin"}</button>}
+              {canPin && <button onClick={() => { onAction("pin", course); setOpen(false); }}><Pin size={14} /> {pinned ? t("unpin") : t("pin")}</button>}
               {canArchive && (
                 <button onClick={() => { onAction("archive", course); setOpen(false); }}>
                   {archivedMode || archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-                  {archivedMode || archived ? "UnArchived" : "Archived"}
+                  {archivedMode || archived ? t("unarchive") : t("archived")}
                 </button>
               )}
-              {canEdit && <button onClick={() => { onAction("edit", course); setOpen(false); }}>Edit</button>}
-              {canDelete && <button onClick={() => { onAction("delete", course); setOpen(false); }}><Trash2 size={14} /> Delete</button>}
+              {canEdit && <button onClick={() => { onAction("edit", course); setOpen(false); }}>{t("edit")}</button>}
+              {canDelete && <button onClick={() => { onAction("delete", course); setOpen(false); }}><Trash2 size={14} /> {t("delete")}</button>}
             </div>
           )}
         </div>
@@ -1887,6 +2171,7 @@ function ClassPane({
   virtualStudentMember,
   virtualStudentCount = 0,
   onToggleVirtualStudentView,
+  language,
   canManageCourseLecturers,
   user,
   course,
@@ -1915,13 +2200,18 @@ function ClassPane({
   const classLeader = isClassLeaderForCourse(course, user);
   const canEditMembers = admin || classLeader;
   const canEditTopics = admin || classLeader;
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const hiddenCards = course.hiddenCards || [];
   const pinnedCards = course.pinnedCards || [];
   const extraCards = (course.extraCards || []).filter((id) => extraCardLabels[id]);
   const visibleBaseCards = baseCards.filter((card) => admin || !LECTURER_ONLY_CARD_IDS.has(card.id));
-  const cardLabels = new Map([...baseCards.map((card) => [card.id, card.label]), ...Object.entries(extraCardLabels)]);
+  const cardLabels = new Map([
+    ...baseCards.map((card) => [card.id, uiCardLabel(language, card.id, card.label)]),
+    ...Object.entries(extraCardLabels).map(([id, label]) => [id, uiCardLabel(language, id, label)])
+  ]);
   const cards = orderCards(
     [...visibleBaseCards, ...extraCards.map((id) => ({ id, label: extraCardLabels[id] }))]
+      .map((card) => ({ ...card, label: uiCardLabel(language, card.id, card.label) }))
       .filter((card) => !LECTURER_ONLY_CARD_IDS.has(card.id) || admin)
       .filter((card) => !hiddenCards.includes(card.id)),
     course.cardOrder,
@@ -1996,7 +2286,7 @@ function ClassPane({
     <section className="rightpane">
       <div className="class-header">
         {isMobile && (
-          <button className="mobile-back-button" type="button" onClick={onMobileBackToClasses} aria-label="Quay lại danh sách lớp">
+          <button className="mobile-back-button" type="button" onClick={onMobileBackToClasses} aria-label={t("backToClassList")}>
             <ChevronLeft size={22} />
           </button>
         )}
@@ -2012,28 +2302,28 @@ function ClassPane({
               onClick={onToggleVirtualStudentView}
               disabled={!viewingAsVirtualStudent && virtualStudentCount === 0}
               title={viewingAsVirtualStudent
-                ? "Quay lại góc nhìn giảng viên"
-                : (virtualStudentCount > 0 ? "Xem lớp như học viên ảo" : "Chưa có học viên ảo trong lớp")}
-              aria-label={viewingAsVirtualStudent ? "Quay lại góc nhìn giảng viên" : "Xem lớp như học viên ảo"}
+                ? t("backToTeacherView")
+                : (virtualStudentCount > 0 ? t("viewAsVirtualStudent") : t("noVirtualStudent"))}
+              aria-label={viewingAsVirtualStudent ? t("backToTeacherView") : t("viewAsVirtualStudent")}
               aria-pressed={viewingAsVirtualStudent}
             >
               {viewingAsVirtualStudent ? <Eye size={16} /> : <EyeOff size={16} />}
-              <span>{viewingAsVirtualStudent ? `As ${virtualStudentMember?.name || "học viên ảo"}` : "View as"}</span>
+              <span>{viewingAsVirtualStudent ? `As ${virtualStudentMember?.name || t("virtualStudent")}` : t("viewAs")}</span>
             </button>
           )}
           {googleMeetUrl && (
             <button
               className="class-meet-button"
               type="button"
-              title="Mở Google Meet"
-              aria-label="Mở Google Meet"
+              title={t("openGoogleMeet")}
+              aria-label={t("openGoogleMeet")}
               onClick={() => openExternalUrl(googleMeetUrl)}
             >
               <Video size={17} />
             </button>
           )}
           <button className="class-code class-code-button" type="button" onClick={() => setShowClassCode(true)}>
-            Mã lớp: {course.code}
+            {t("classCode")}: {course.code}
           </button>
         </div>
       </div>
@@ -2044,6 +2334,7 @@ function ClassPane({
               key={card.id}
               admin={admin}
               card={card}
+              language={language}
               active={selectedCard === card.id}
               pinned={pinnedCards.includes(card.id)}
               draggable={admin}
@@ -2088,7 +2379,7 @@ function ClassPane({
               </button>
               {cardMenuOpen && (
                 <div className="add-card-menu">
-                  {addableCards.length === 0 && <span>Không còn card để thêm</span>}
+                  {addableCards.length === 0 && <span>{t("noMoreCards")}</span>}
                   {addableCards.map(([id, label]) => (
                     <button
                       key={id}
@@ -2105,7 +2396,7 @@ function ClassPane({
         <section className="detail-panel">
           {isMobile && (
             <div className="mobile-detail-header">
-              <button className="mobile-back-button" type="button" onClick={onMobileBackToCards} aria-label="Quay lại danh sách thẻ">
+              <button className="mobile-back-button" type="button" onClick={onMobileBackToCards} aria-label={t("backToCardList")}>
                 <ChevronLeft size={22} />
               </button>
               <strong>{selectedCardLabel}</strong>
@@ -2255,10 +2546,11 @@ function reorderCardIds(cardIds, sourceId, targetId) {
   return next;
 }
 
-function CardNavItem({ admin, card, active, pinned, draggable, dragging, dragOver, onSelect, onPin, onDelete, onDragStart, onDragOver, onDrop, onDragEnd }) {
+function CardNavItem({ admin, card, active, pinned, draggable, dragging, dragOver, onSelect, onPin, onDelete, onDragStart, onDragOver, onDrop, onDragEnd, language }) {
   const [open, setOpen] = useState(false);
   const menuRef = useRef(null);
   useOutsideClick(menuRef, open, () => setOpen(false));
+  const t = (key, fallback = "") => uiText(language, key, fallback);
 
   return (
     <div
@@ -2275,13 +2567,13 @@ function CardNavItem({ admin, card, active, pinned, draggable, dragging, dragOve
       </button>
       {admin && (
         <div className="left-card-menu-wrap" ref={menuRef}>
-          <button className="icon-button card-menu-trigger" onClick={() => setOpen(!open)} aria-label={`${card.label} menu`}>
+          <button className="icon-button card-menu-trigger" onClick={() => setOpen(!open)} aria-label={`${card.label} ${t("cardMenu")}`}>
             <MoreVertical size={15} />
           </button>
           {open && (
             <div className="mini-menu left-card-menu">
-              <button onClick={() => { onPin(); setOpen(false); }}><Pin size={14} /> {pinned ? "Unpin" : "Pin"}</button>
-              <button onClick={() => { onDelete(); setOpen(false); }}><Trash2 size={14} /> Delete</button>
+              <button onClick={() => { onPin(); setOpen(false); }}><Pin size={14} /> {pinned ? t("unpin") : t("pin")}</button>
+              <button onClick={() => { onDelete(); setOpen(false); }}><Trash2 size={14} /> {t("delete")}</button>
             </div>
           )}
         </div>
@@ -2308,9 +2600,10 @@ function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditM
 }
 
 function PanelTitle({ title, action }) {
+  const language = useUiLanguage();
   return (
     <div className="panel-title">
-      <h3>{title}</h3>
+      <h3>{uiLiteral(language, title)}</h3>
       {action}
     </div>
   );
@@ -3132,6 +3425,8 @@ function MemberNumberInput({ className, value, onCommit }) {
 
 function AnnouncementsCard({ admin, classLeader, user, course, showToast, updateCourse, onOpenAssignments, onOpenGrades, onOpenAssignmentReviewer }) {
   const requestConfirm = useConfirmAction();
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const [content, setContent] = useState("");
   const [files, setFiles] = useState([]);
   const [pinned, setPinned] = useState(false);
@@ -3392,14 +3687,14 @@ function AnnouncementsCard({ admin, classLeader, user, course, showToast, update
             </label>
             <select
               className="announcement-permission-select"
-              aria-label="Quyền đăng tin"
-              title="Quyền đăng tin"
+              aria-label={t("postPermission")}
+              title={t("postPermission")}
               value={explicitPostPermission || postPermission}
               onChange={(event) => updatePostPermission(event.target.value)}
             >
-              <option value="" disabled>Quyền đăng tin</option>
+              <option value="" disabled>{t("postPermission")}</option>
               {ANNOUNCEMENT_POST_PERMISSION_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
+                <option key={option.value} value={option.value}>{normalizeLanguage(language) === "en" ? option.labelEn : option.label}</option>
               ))}
             </select>
           </div>
@@ -3419,7 +3714,7 @@ function AnnouncementsCard({ admin, classLeader, user, course, showToast, update
             addFiles(event.clipboardData.files);
           }}
         >
-          <textarea disabled={posting} value={content} onChange={(event) => setContent(event.target.value)} placeholder="Nhập nội dung đăng tin..." />
+          <textarea disabled={posting} value={content} onChange={(event) => setContent(event.target.value)} placeholder={t("announcementContentPlaceholder")} />
           <div className="composer-tools">
             <div className="composer-left-tools">
               {canAttachAnnouncementFiles && (
@@ -3438,19 +3733,19 @@ function AnnouncementsCard({ admin, classLeader, user, course, showToast, update
               >
                 {pinned ? <PinOff size={17} /> : <Pin size={17} />}
               </button>
-              {admin && <label className="check-row"><input type="checkbox" disabled={posting} checked={publishAsMaterial} onChange={(event) => setPublishAsMaterial(event.target.checked)} /> Tài liệu</label>}
+              {admin && <label className="check-row"><input type="checkbox" disabled={posting} checked={publishAsMaterial} onChange={(event) => setPublishAsMaterial(event.target.checked)} /> {t("publishAsMaterial")}</label>}
               {canAttachAnnouncementFiles && files.length > 0 && <span>{`${files.length} file đã chọn`}</span>}
             </div>
             <div className="composer-right-tools">
               {canSchedulePost && (
                 <label className="composer-schedule">
-                  <span>Hẹn giờ</span>
+                  <span>{t("schedulePost")}</span>
                   <input
                     type="datetime-local"
                     disabled={posting}
                     value={scheduledAt}
                     onChange={(event) => setScheduledAt(event.target.value)}
-                    aria-label="Hẹn giờ đăng"
+                    aria-label={t("schedulePostAria")}
                   />
                 </label>
               )}
@@ -3458,7 +3753,7 @@ function AnnouncementsCard({ admin, classLeader, user, course, showToast, update
                 <ProfileAvatar user={user} label={user.displayName || user.email} small />
                 <button className="primary-action compact" onClick={submitPost} disabled={posting}>
                   {posting ? <span className="button-spinner" /> : <Send size={15} />}
-                  {posting ? "Đang đăng" : "Đăng tin"}
+                  {posting ? t("postingAnnouncement") : t("postAnnouncement")}
                 </button>
               </div>
             </div>
@@ -12273,22 +12568,24 @@ function ManageLecturersModal({ lecturers, onClose, onSave, onDelete }) {
 }
 
 function ConfirmModal({ title, message, confirmLabel, cancelLabel, onCancel, onConfirm }) {
+  const language = useUiLanguage();
   return (
     <Modal title={title} onClose={onCancel}>
       <p className="confirm-message">{message}</p>
       <div className="confirm-actions">
-        <button className="secondary-action" type="button" onClick={onCancel}>{cancelLabel}</button>
-        <button className="danger-action" type="button" onClick={onConfirm}>{confirmLabel}</button>
+        <button className="secondary-action" type="button" onClick={onCancel}>{uiLiteral(language, cancelLabel)}</button>
+        <button className="danger-action" type="button" onClick={onConfirm}>{uiLiteral(language, confirmLabel)}</button>
       </div>
     </Modal>
   );
 }
 
 function Modal({ title, children, onClose, className = "" }) {
+  const language = useUiLanguage();
   return (
     <div className="modal-backdrop">
       <section className={`modal ${className}`.trim()}>
-        <div className="panel-title"><h3>{title}</h3><button className="icon-button" onClick={onClose}><X size={18} /></button></div>
+        <div className="panel-title"><h3>{uiLiteral(language, title)}</h3><button className="icon-button" onClick={onClose}><X size={18} /></button></div>
         {children}
       </section>
     </div>
@@ -12296,27 +12593,29 @@ function Modal({ title, children, onClose, className = "" }) {
 }
 
 function EmptyState({ admin, onJoin, onNewClass }) {
+  const language = useUiLanguage();
   return (
     <section className="empty-state">
-      <h2>Chưa có lớp học hiển thị</h2>
-      <p>Người học cần nhập mã lớp và chờ admin accept trước khi xem nội dung.</p>
-      <button className="primary-action" onClick={admin ? onNewClass : onJoin}>{admin ? "Thêm lớp học mới" : "Tham gia lớp học"}</button>
+      <h2>{uiText(language, "noVisibleClass")}</h2>
+      <p>{uiText(language, "pendingClassHint")}</p>
+      <button className="primary-action" onClick={admin ? onNewClass : onJoin}>{admin ? uiText(language, "addClass") : uiText(language, "joinClass")}</button>
     </section>
   );
 }
 
 function PendingPane({ course, isMobile, onMobileBackToClasses }) {
+  const language = useUiLanguage();
   return (
     <section className="pending-pane">
       {isMobile && (
-        <button className="mobile-back-button pending-back-button" type="button" onClick={onMobileBackToClasses} aria-label="Quay lại danh sách lớp">
+        <button className="mobile-back-button pending-back-button" type="button" onClick={onMobileBackToClasses} aria-label={uiText(language, "backToClassList")}>
           <ChevronLeft size={22} />
         </button>
       )}
       <div>
         <h2>{course.name}</h2>
-        <p>Yêu cầu tham gia lớp đã được gửi. Bạn sẽ xem được nội dung sau khi admin accept.</p>
-        <span className="class-code">Trạng thái: Chờ accept</span>
+        <p>{uiText(language, "joinRequestSent")}</p>
+        <span className="class-code">{uiText(language, "statusPendingAccept")}</span>
       </div>
     </section>
   );
