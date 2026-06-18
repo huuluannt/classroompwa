@@ -279,7 +279,7 @@ const UI_TEXT = {
     cardLabels: {
       announcements: "Announcements",
       members: "Members",
-      info: "Class info",
+      info: "Class information",
       schedule: "Schedule",
       groupTopic: "Group Topics",
       materials: "Materials",
@@ -293,7 +293,7 @@ const UI_TEXT = {
     literal: {
       "Thông báo": "Announcements",
       "Thành viên": "Members",
-      "Thông tin lớp học": "Class info",
+      "Thông tin lớp học": "Class information",
       "Lịch học (TKB)": "Schedule",
       "Topic Nhóm": "Group Topics",
       "Topic Liên nhóm": "Intergroup Topics",
@@ -316,7 +316,46 @@ const UI_TEXT = {
       "Hủy": "Cancel",
       "Save": "Save",
       "Gallery": "Gallery"
-    }
+    },
+    membersLecturer: "Lecturer",
+    membersLecturerOwner: "Lecturer (owner)",
+    studentList: "Student list",
+    stt: "No.",
+    photo: "Photo",
+    fullName: "Full name",
+    name: "Name",
+    group: "Group",
+    studentId: "Student ID",
+    email: "Email",
+    personal: "Personal",
+    classLeader: "Class leader",
+    removeClassLeader: "Remove class leader",
+    promoteToLecturer: "Lecturer",
+    deleteLearner: "Delete learner",
+    classSize: "Class size",
+    classTime: "Time",
+    classroom: "Classroom",
+    zaloGroupLink: "Zalo group link",
+    googleMeetLink: "Google Meet link",
+    description: "Description",
+    rules: "Rules",
+    photoCount: "photos",
+    noPhotos: "No photos yet.",
+    galleryUploadHint: "Browse, drag and drop, or Ctrl+V to add photos.",
+    addPhoto: "Add photo",
+    noImagePreview: "Preview unavailable",
+    week: "Week",
+    date: "Date",
+    content: "Content",
+    addWeek: "Add week",
+    topic: "Topic",
+    enterTopicName: "Enter Topic name",
+    enterIntergroupTopicName: "Enter Intergroup Topic name",
+    noTopic: "No topic yet.",
+    intergroup: "Intergroup",
+    noIntergroup: "No intergroup",
+    noGroup: "No group",
+    groupMembersEmpty: "No members in this group."
   }
 };
 
@@ -509,6 +548,18 @@ function uiCardLabel(language, cardId, fallback = "") {
 function uiLiteral(language, value) {
   if (typeof value !== "string") return value;
   return UI_TEXT[normalizeLanguage(language)]?.literal?.[value] || value;
+}
+
+function uiGroupLabel(language, rawGroup) {
+  const value = String(rawGroup ?? "").trim();
+  if (!value) return uiText(language, "noGroup", "Chưa có nhóm");
+  return `${uiText(language, "group", "Nhóm")} ${value}`;
+}
+
+function uiIntergroupLabel(language, rawIntergroup) {
+  const value = String(rawIntergroup ?? "").trim();
+  if (!value) return uiText(language, "noIntergroup", "Chưa có liên nhóm");
+  return `${uiText(language, "intergroup", "Liên nhóm")} ${value}`;
 }
 
 function getAnnouncementPostPermission(course) {
@@ -2663,6 +2714,8 @@ function SaveButton({
 
 function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMembers, user, course, updateCourse }) {
   const requestConfirm = useConfirmAction();
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const [viewMode, setViewMode] = useState("personal");
   const [lecturerDraft, setLecturerDraft] = useState({ email: "", name: "" });
   const [lecturerAddOpen, setLecturerAddOpen] = useState(false);
@@ -2919,7 +2972,7 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
             return (
             <div key={profile.email}>
               <ProfileAvatar user={{ ...profile, photoURL: savedProfile.photoURL || profile.photoURL || (profile.email === user.email ? user.photoURL : "") }} label={teacherName} />
-              <strong>{profile.role === "owner" ? "Giảng viên (owner)" : "Giảng viên"}</strong>
+              <strong>{profile.role === "owner" ? t("membersLecturerOwner", "Giảng viên (owner)") : t("membersLecturer", "Giảng viên")}</strong>
               <small>{teacherName} - {profile.email}</small>
               {canManageCourseLecturers && profile.role !== "owner" && (
                 <LecturerActionsMenu
@@ -2958,7 +3011,7 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
         )}
         <div className="student-list-toolbar">
           <strong className="student-list-title">
-            Danh sách người học <span className="student-list-count">({accepted.length})</span>
+            {t("studentList", "Danh sách người học")} <span className="student-list-count">({accepted.length})</span>
           </strong>
           <div className="student-list-actions">
             {admin && (
@@ -3002,20 +3055,20 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
               </div>
             )}
             <div className="member-view-toggle" aria-label="Chế độ xem thành viên">
-              <button type="button" className={viewMode === "personal" ? "active" : ""} onClick={() => setViewMode("personal")}>Cá nhân</button>
-              <button type="button" className={viewMode === "group" ? "active" : ""} onClick={() => setViewMode("group")}>Nhóm</button>
+              <button type="button" className={viewMode === "personal" ? "active" : ""} onClick={() => setViewMode("personal")}>{t("personal", "Cá nhân")}</button>
+              <button type="button" className={viewMode === "group" ? "active" : ""} onClick={() => setViewMode("group")}>{t("group", "Nhóm")}</button>
             </div>
             {canEditMembers && <SaveButton className="compact" dirty={memberDraftDirty} onClick={saveMembers} />}
           </div>
         </div>
         {viewMode === "personal" ? (
-          <MembersTable admin={admin} canManageCourseLecturers={canManageCourseLecturers} canEditMembers={canEditMembers} course={course} members={orderedMembers} memberDrafts={memberDrafts} onDraftChange={updateMemberDraft} onPromoteToLecturer={promoteMemberToLecturer} updateCourse={updateCourse} />
+          <MembersTable admin={admin} canManageCourseLecturers={canManageCourseLecturers} canEditMembers={canEditMembers} course={course} members={orderedMembers} memberDrafts={memberDrafts} onDraftChange={updateMemberDraft} onPromoteToLecturer={promoteMemberToLecturer} updateCourse={updateCourse} language={language} />
         ) : (
           <div className="member-group-list">
             {groupedMembers.map((group) => (
               <section className="member-group-card" key={group.key}>
-                <h4>{group.label}</h4>
-                <MembersTable admin={admin} canManageCourseLecturers={canManageCourseLecturers} canEditMembers={canEditMembers} course={course} members={group.members} memberDrafts={memberDrafts} onDraftChange={updateMemberDraft} onPromoteToLecturer={promoteMemberToLecturer} updateCourse={updateCourse} />
+                <h4>{uiGroupLabel(language, group.rawGroup)}</h4>
+                <MembersTable admin={admin} canManageCourseLecturers={canManageCourseLecturers} canEditMembers={canEditMembers} course={course} members={group.members} memberDrafts={memberDrafts} onDraftChange={updateMemberDraft} onPromoteToLecturer={promoteMemberToLecturer} updateCourse={updateCourse} language={language} />
               </section>
             ))}
           </div>
@@ -3030,11 +3083,12 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
   );
 }
 
-function MembersTable({ admin, canManageCourseLecturers, canEditMembers, course, members, memberDrafts = {}, onDraftChange, onPromoteToLecturer, updateCourse }) {
+function MembersTable({ admin, canManageCourseLecturers, canEditMembers, course, members, memberDrafts = {}, onDraftChange, onPromoteToLecturer, updateCourse, language }) {
   const requestConfirm = useConfirmAction();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   return (
     <table className="data-table members-table">
-      <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ và tên</th><th>Nhóm</th><th>Mã số</th><th>Email</th>{admin && <th />}</tr></thead>
+      <thead><tr><th className="stt-col">{t("stt", "STT")}</th><th className="avatar-col">{t("photo", "Ảnh")}</th><th>{t("fullName", "Họ và tên")}</th><th>{t("group", "Nhóm")}</th><th>{t("studentId", "Mã số")}</th><th>{t("email", "Email")}</th>{admin && <th />}</tr></thead>
       <tbody>
         {members.map((member) => (
           <tr key={member.email}>
@@ -3046,7 +3100,7 @@ function MembersTable({ admin, canManageCourseLecturers, canEditMembers, course,
                   <span>{member.name}</span>
                   {isVirtualMember(member) && <VirtualMemberBadge />}
                 </span>
-                {isClassLeaderMember(member) && <span className="leader-badge"><Crown size={12} /> Lớp trưởng</span>}
+                {isClassLeaderMember(member) && <span className="leader-badge"><Crown size={12} /> {t("classLeader", "Lớp trưởng")}</span>}
               </span>
             </td>
             <td>{canEditMembers ? <input className="group-input" data-enter-group="member-group" inputMode="numeric" value={memberDrafts[member.email]?.group ?? String(member.group || "")} onKeyDown={(event) => focusNextInputOnEnter(event, "member-group")} onChange={(event) => onDraftChange(member.email, "group", event.target.value)} /> : member.group || ""}</td>
@@ -3058,6 +3112,7 @@ function MembersTable({ admin, canManageCourseLecturers, canEditMembers, course,
                   <MemberRoleMenu
                     member={member}
                     canPromoteToLecturer={canManageCourseLecturers}
+                    language={language}
                     onToggleClassLeader={() => setClassLeader(course, updateCourse, member.email)}
                     onPromoteToLecturer={() => onPromoteToLecturer(member)}
                     onDelete={() => requestConfirm({
@@ -3115,10 +3170,11 @@ function LecturerActionsMenu({ teacherName, onDemote, onDelete }) {
   );
 }
 
-function MemberRoleMenu({ member, canPromoteToLecturer, onToggleClassLeader, onPromoteToLecturer, onDelete }) {
+function MemberRoleMenu({ member, canPromoteToLecturer, language, onToggleClassLeader, onPromoteToLecturer, onDelete }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const classLeader = isClassLeaderMember(member);
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   useOutsideClick(ref, open, () => setOpen(false));
 
   return (
@@ -3139,21 +3195,21 @@ function MemberRoleMenu({ member, canPromoteToLecturer, onToggleClassLeader, onP
             onToggleClassLeader();
             setOpen(false);
           }}>
-            <Crown size={14} /> {classLeader ? "Bỏ lớp trưởng" : "Lớp trưởng"}
+            <Crown size={14} /> {classLeader ? t("removeClassLeader", "Bỏ lớp trưởng") : t("classLeader", "Lớp trưởng")}
           </button>
           {canPromoteToLecturer && (
             <button type="button" onClick={() => {
               onPromoteToLecturer();
               setOpen(false);
             }}>
-              <UserPlus size={14} /> Giảng viên
+              <UserPlus size={14} /> {t("promoteToLecturer", "Giảng viên")}
             </button>
           )}
           <button className="danger-menu-item" type="button" onClick={() => {
             onDelete();
             setOpen(false);
           }}>
-            <Trash2 size={14} /> Xóa người học
+            <Trash2 size={14} /> {t("deleteLearner", "Xóa người học")}
           </button>
         </div>
       )}
@@ -3909,9 +3965,11 @@ function materialTitleFromAnnouncement(content, materials) {
 
 
 function LegacyInfoCard({ admin, course, updateCourse }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const infoSignature = JSON.stringify(course.info || {});
   const [draft, setDraft] = useState(() => ({ rules: "", zaloGroupUrl: "", googleMeetUrl: "", ...course.info }));
-  const fields = [["title", "Title"], ["size", "Sĩ số"], ["time", "Thời gian"], ["room", "Phòng học"]];
+  const fields = [["title", "Title"], ["size", t("classSize", "Sĩ số")], ["time", t("classTime", "Thời gian")], ["room", t("classroom", "Phòng học")]];
   const zaloGroupUrl = normalizeExternalUrl(course.info?.zaloGroupUrl);
   const googleMeetUrl = normalizeExternalUrl(course.info?.googleMeetUrl);
   const normalizedInfoDraft = { rules: "", zaloGroupUrl: "", googleMeetUrl: "", ...draft };
@@ -3944,7 +4002,7 @@ function LegacyInfoCard({ admin, course, updateCourse }) {
           </label>
         ))}
         <label className="wide-field">
-          <span>Link nhóm Zalo</span>
+          <span>{t("zaloGroupLink", "Link nhóm Zalo")}</span>
           {admin ? (
             <input
               type="url"
@@ -3959,7 +4017,7 @@ function LegacyInfoCard({ admin, course, updateCourse }) {
           )}
         </label>
         <label className="wide-field">
-          <span>Link Google Meet</span>
+          <span>{t("googleMeetLink", "Link Google Meet")}</span>
           {admin ? (
             <input
               type="url"
@@ -3974,11 +4032,11 @@ function LegacyInfoCard({ admin, course, updateCourse }) {
           )}
         </label>
         <label className="wide-field">
-          <span>Mô tả</span>
+          <span>{t("description", "Mô tả")}</span>
           {admin ? <textarea value={draft.description || ""} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /> : <p>{course.info.description}</p>}
         </label>
         <label className="wide-field">
-          <span>Quy định</span>
+          <span>{t("rules", "Quy định")}</span>
           {admin ? <textarea value={draft.rules || ""} onChange={(event) => setDraft({ ...draft, rules: event.target.value })} /> : <p>{course.info.rules || "Chưa có quy định."}</p>}
         </label>
       </div>
@@ -3989,6 +4047,8 @@ function LegacyInfoCard({ admin, course, updateCourse }) {
 
 function InfoCard({ admin, course, updateCourse }) {
   const requestConfirm = useConfirmAction();
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const infoSignature = JSON.stringify(course.info || {});
   const [draft, setDraft] = useState(() => normalizeClassInfo(course.info));
   const [galleryUploading, setGalleryUploading] = useState(false);
@@ -4001,7 +4061,7 @@ function InfoCard({ admin, course, updateCourse }) {
   const [galleryDragActive, setGalleryDragActive] = useState(false);
   const galleryInputRef = useRef(null);
   const lightboxDragRef = useRef(null);
-  const fields = [["title", "Title"], ["size", "Sĩ số"], ["time", "Thời gian"], ["room", "Phòng học"]];
+  const fields = [["title", "Title"], ["size", t("classSize", "Sĩ số")], ["time", t("classTime", "Thời gian")], ["room", t("classroom", "Phòng học")]];
   const galleryImages = normalizeGalleryImages(draft);
   const savedInfo = normalizeClassInfo(course.info);
   const zaloGroupUrl = normalizeExternalUrl(course.info?.zaloGroupUrl);
@@ -4200,7 +4260,7 @@ function InfoCard({ admin, course, updateCourse }) {
           </label>
         ))}
         <label className="wide-field">
-          <span>Link nhóm Zalo</span>
+          <span>{t("zaloGroupLink", "Link nhóm Zalo")}</span>
           {admin ? (
             <input
               type="url"
@@ -4215,7 +4275,7 @@ function InfoCard({ admin, course, updateCourse }) {
           )}
         </label>
         <label className="wide-field">
-          <span>Link Google Meet</span>
+          <span>{t("googleMeetLink", "Link Google Meet")}</span>
           {admin ? (
             <input
               type="url"
@@ -4230,11 +4290,11 @@ function InfoCard({ admin, course, updateCourse }) {
           )}
         </label>
         <label className="wide-field">
-          <span>Mô tả</span>
+          <span>{t("description", "Mô tả")}</span>
           {admin ? <textarea value={draft.description || ""} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /> : <p>{course.info.description}</p>}
         </label>
         <label className="wide-field">
-          <span>Quy định</span>
+          <span>{t("rules", "Quy định")}</span>
           {admin ? <textarea value={draft.rules || ""} onChange={(event) => setDraft({ ...draft, rules: event.target.value })} /> : <p>{course.info.rules || "Chưa có quy định."}</p>}
         </label>
       </div>
@@ -4263,14 +4323,14 @@ function InfoCard({ admin, course, updateCourse }) {
         <div className="class-gallery-head">
           <div>
             <strong>Gallery</strong>
-            <small>{galleryImages.length ? `${galleryImages.length} ảnh` : "Chưa có ảnh."}</small>
+            <small>{galleryImages.length ? `${galleryImages.length} ${t("photoCount", "ảnh")}` : t("noPhotos", "Chưa có ảnh.")}</small>
           </div>
-          {admin && <span>Browse, kéo thả hoặc Ctrl+V để thêm ảnh.</span>}
+          {admin && <span>{t("galleryUploadHint", "Browse, kéo thả hoặc Ctrl+V để thêm ảnh.")}</span>}
         </div>
         <div className="class-gallery-strip" aria-label="Gallery lớp học">
           {galleryImages.map((image, index) => (
             <button className="class-gallery-thumb" type="button" key={image.id || `${image.fileName}-${index}`} onClick={() => openLightbox(index)}>
-              {galleryImageSrc(image) ? <img src={galleryImageSrc(image)} alt={image.caption || image.fileName} /> : <span>Không thể xem trước</span>}
+              {galleryImageSrc(image) ? <img src={galleryImageSrc(image)} alt={image.caption || image.fileName} /> : <span>{t("noImagePreview", "Không thể xem trước")}</span>}
               <small>{image.caption || image.fileName}</small>
             </button>
           ))}
@@ -4278,7 +4338,7 @@ function InfoCard({ admin, course, updateCourse }) {
             <>
               <button className="class-gallery-add" type="button" onClick={() => galleryInputRef.current?.click()} disabled={galleryUploading}>
                 {galleryUploading ? <span className="button-spinner" /> : <Plus size={28} />}
-                <span>Thêm ảnh</span>
+                <span>{t("addPhoto", "Thêm ảnh")}</span>
               </button>
               <input
                 ref={galleryInputRef}
@@ -4389,6 +4449,8 @@ function InfoCard({ admin, course, updateCourse }) {
 
 function ScheduleCard({ admin, course, updateCourse }) {
   const requestConfirm = useConfirmAction();
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const [rows, setRows] = useState(() => normalizeScheduleRows(course.scheduleRows));
   const activeEditorRef = useRef(null);
   const scheduleSignature = JSON.stringify(course.scheduleRows || []);
@@ -4441,7 +4503,7 @@ function ScheduleCard({ admin, course, updateCourse }) {
           <div className="panel-actions">
             <button className="secondary-action compact" type="button" onClick={() => applyFormat("bold")} title="In đậm"><strong>B</strong></button>
             <button className="secondary-action compact highlight-tool" type="button" onClick={() => applyFormat("highlight")} title="Highlight">A</button>
-            <button className="primary-action compact" type="button" onClick={addWeek}><Plus size={15} /> Thêm tuần</button>
+            <button className="primary-action compact" type="button" onClick={addWeek}><Plus size={15} /> {t("addWeek", "Thêm tuần")}</button>
             <SaveButton className="compact" dirty={scheduleDirty} onClick={saveSchedule} />
           </div>
         )}
@@ -4454,7 +4516,7 @@ function ScheduleCard({ admin, course, updateCourse }) {
             <col className="schedule-content-col" />
           </colgroup>
           <thead>
-            <tr><th>Tuần</th><th>Ngày</th><th>Nội dung</th></tr>
+            <tr><th>{t("week", "Tuần")}</th><th>{t("date", "Ngày")}</th><th>{t("content", "Nội dung")}</th></tr>
           </thead>
           <tbody>
             {rows.map((row) => (
@@ -4462,7 +4524,7 @@ function ScheduleCard({ admin, course, updateCourse }) {
                 <td>
                   {admin ? (
                     <label className="schedule-week-input">
-                      <span>Tuần</span>
+                      <span>{t("week", "Tuần")}</span>
                       <input
                         inputMode="numeric"
                         value={row.weekNumber}
@@ -4471,7 +4533,7 @@ function ScheduleCard({ admin, course, updateCourse }) {
                       />
                     </label>
                   ) : (
-                    <span>{`Tuần ${row.weekNumber || ""}`}</span>
+                    <span>{`${t("week", "Tuần")} ${row.weekNumber || ""}`}</span>
                   )}
                 </td>
                 <td>
@@ -4948,6 +5010,8 @@ function normalizeDutyScheduleRowForSave(row) {
 
 function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
   const requestConfirm = useConfirmAction();
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const addPopoverRef = useRef(null);
   const [addOpen, setAddOpen] = useState(false);
   const groupCards = useMemo(() => buildGroupTopicCards(course), [course.members, course.groupTopics]);
@@ -5072,9 +5136,9 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
               <div className="group-topic-header">
                 <div className="group-topic-bar">
                   <span className="group-topic-badge topic-group-title">
-                    <span>{group.label}</span>
+                    <span>{uiGroupLabel(language, group.rawGroup)}</span>
                     <span className="topic-inline-meta">
-                      <span>(STT:</span>
+                      <span>({t("stt", "STT")}:</span>
                       {canEdit ? (
                         <input
                           aria-label={`STT báo cáo ${group.label}`}
@@ -5089,7 +5153,7 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
                     </span>
                   </span>
                   <label className="group-topic-compact-field topic-intergroup-field">
-                    <span>Liên nhóm:</span>
+                    <span>{t("intergroup", "Liên nhóm")}:</span>
                     {canEdit ? (
                       <input
                         inputMode="numeric"
@@ -5118,15 +5182,15 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
                       className="topic-line-input"
                       value={draftTopics[group.key] || ""}
                       onChange={(event) => setDraftTopics((current) => ({ ...current, [group.key]: event.target.value }))}
-                      placeholder="Nhập tên Topic"
+                      placeholder={t("enterTopicName", "Nhập tên Topic")}
                     />
                   ) : (
-                    <p>{group.topic?.topic || "Chưa có topic."}</p>
+                    <p>{group.topic?.topic || t("noTopic", "Chưa có topic.")}</p>
                   )}
                 </div>
               </div>
               <div className="group-topic-table-wrap">
-                <TopicMembersTable members={group.members} course={course} />
+                <TopicMembersTable members={group.members} course={course} language={language} />
               </div>
             </section>
           ))}
@@ -5234,13 +5298,14 @@ function nextNumericText(values) {
   return String((numbers.length ? Math.max(...numbers) : 0) + 1);
 }
 
-function TopicMembersTable({ members, course }) {
+function TopicMembersTable({ members, course, language }) {
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   return (
     <table className="data-table topic-members-table">
-      <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ tên</th><th>Email</th><th>Mã số</th></tr></thead>
+      <thead><tr><th className="stt-col">{t("stt", "STT")}</th><th className="avatar-col">{t("photo", "Ảnh")}</th><th>{t("name", "Họ tên")}</th><th>{t("email", "Email")}</th><th>{t("studentId", "Mã số")}</th></tr></thead>
       <tbody>
         {members.length === 0 ? (
-          <tr><td colSpan="5">Chưa có thành viên trong nhóm này.</td></tr>
+          <tr><td colSpan="5">{t("groupMembersEmpty", "Chưa có thành viên trong nhóm này.")}</td></tr>
         ) : members.map((member) => (
           <tr key={member.email}>
             <td>{member.order}</td>
@@ -5263,6 +5328,8 @@ function TopicMembersTable({ members, course }) {
 
 function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
   const requestConfirm = useConfirmAction();
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const addPopoverRef = useRef(null);
   const [addOpen, setAddOpen] = useState(false);
   const groupOptions = useMemo(() => buildGroupTopicCards(course), [course.members, course.groupTopics]);
@@ -5412,9 +5479,9 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
             <section className="group-topic-card topic-editor-card intergroup-topic-card" key={link.key}>
               <div className="group-topic-header">
                 <div className="group-topic-bar intergroup-topic-bar">
-                  <span className="group-topic-badge">{link.label}</span>
+                  <span className="group-topic-badge">{uiIntergroupLabel(language, link.rawIntergroup)}</span>
                   <label className="group-topic-compact-field intergroup-groups-field">
-                    <strong>{link.groups.length ? `(${link.groups.map((group) => group.label).join(", ")})` : "(Chưa có nhóm)"}</strong>
+                    <strong>{link.groups.length ? `(${link.groups.map((group) => uiGroupLabel(language, group.rawGroup)).join(", ")})` : `(${t("noGroup", "Chưa có nhóm")})`}</strong>
                   </label>
                   {canEdit && link.groups.every((group) => group.members.length === 0) && (
                     <button className="placeholder-delete-button" type="button" onClick={() => requestConfirm({
@@ -5433,18 +5500,18 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
                       className="topic-line-input"
                       value={draftTopics[link.key] || ""}
                       onChange={(event) => setDraftTopics((current) => ({ ...current, [link.key]: event.target.value }))}
-                      placeholder="Nhập tên Topic liên nhóm"
+                      placeholder={t("enterIntergroupTopicName", "Nhập tên Topic liên nhóm")}
                     />
                   ) : (
-                    <p>{link.topic?.topic || "Chưa có topic."}</p>
+                    <p>{link.topic?.topic || t("noTopic", "Chưa có topic.")}</p>
                   )}
                 </div>
               </div>
               <div className="intergroup-member-list intergroup-topic-members">
                 {link.groups.map((group) => (
                   <section className="intergroup-member-section" key={group.key}>
-                    <h5>{group.label}</h5>
-                    <TopicMembersTable members={group.members} course={course} />
+                    <h5>{uiGroupLabel(language, group.rawGroup)}</h5>
+                    <TopicMembersTable members={group.members} course={course} language={language} />
                   </section>
                 ))}
               </div>
@@ -11802,6 +11869,8 @@ function formatScoreNumber(value) {
 
 
 function PersonalTopicCard({ admin, canEdit, course, updateCourse }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const members = course.members.filter((member) => member.status === "accepted").sort(compareMemberOrder);
   const topicSignature = [
     members.map((member) => member.email).join(","),
@@ -11831,7 +11900,7 @@ function PersonalTopicCard({ admin, canEdit, course, updateCourse }) {
     <>
       <PanelTitle title="Topic Cá nhân" action={canEdit && <SaveButton className="compact" dirty={personalTopicDirty} onClick={savePersonalTopics} />} />
       <table className="data-table personal-topic-table">
-        <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ và tên</th><th>Topic</th><th>Mã số</th><th>Email</th></tr></thead>
+        <thead><tr><th className="stt-col">{t("stt", "STT")}</th><th className="avatar-col">{t("photo", "Ảnh")}</th><th>{t("fullName", "Họ và tên")}</th><th>{t("topic", "Topic")}</th><th>{t("studentId", "Mã số")}</th><th>{t("email", "Email")}</th></tr></thead>
         <tbody>
           {members.map((member) => (
             <tr key={member.email}>
@@ -11842,7 +11911,7 @@ function PersonalTopicCard({ admin, canEdit, course, updateCourse }) {
                 {canEdit ? (
                   <input value={draftTopics[member.email] || ""} onChange={(event) => setDraftTopics((current) => ({ ...current, [member.email]: event.target.value }))} />
                 ) : (
-                  draftTopics[member.email] || "Chưa có topic."
+                  draftTopics[member.email] || t("noTopic", "Chưa có topic.")
                 )}
               </td>
               <td>{member.studentId}</td>
