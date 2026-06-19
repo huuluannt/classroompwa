@@ -355,7 +355,59 @@ const UI_TEXT = {
     intergroup: "Intergroup",
     noIntergroup: "No intergroup",
     noGroup: "No group",
-    groupMembersEmpty: "No members in this group."
+    groupMembersEmpty: "No members in this group.",
+    assignmentGuideFiles: "Instruction files",
+    assignmentGuideFilesHint: "Browse, drag and drop, or Ctrl+V to add multiple files/images.",
+    uploaded: "Uploaded",
+    unsaved: "Unsaved",
+    dueDate: "Deadline",
+    ratio: "Weight",
+    noDeadline: "No deadline",
+    viewSubmissionResults: "View submissions",
+    assignmentName: "Name",
+    assignment: "Assignment",
+    file: "File",
+    noSubmission: "No submissions yet.",
+    exam: "Exam",
+    selectExam: "Select exam",
+    questions: "questions",
+    noExamInExamCard: "No exams in the Exams card yet.",
+    scoreFormat: "Score format",
+    scoreStats: "Reviewer score statistics",
+    hideLearnerScores: "Hide learner scores",
+    viewLearnerScores: "View learner scores",
+    allReviewedScores: "All submitted scores",
+    yourReviewedScores: "Your submitted scores",
+    scoreGiven: "Score",
+    noLearnerScores: "No learner scores yet.",
+    noYourScores: "You have not submitted any scores for this assignment.",
+    saving: "Saving...",
+    late: "Late",
+    summaryGradebookTitle: "SUMMARY GRADEBOOK",
+    assignmentsLower: "assignments",
+    noAssignments: "No assignments yet",
+    draft: "Draft",
+    published: "Published",
+    noPublishedGradebooks: "No published gradebooks yet.",
+    noSummaryGradeAssignments: "No assignments to calculate the summary gradebook.",
+    noEligibleLearners: "No eligible learners.",
+    noEligibleGroups: "No eligible groups.",
+    noEligibleIntergroups: "No eligible intergroups.",
+    noScore: "No score yet",
+    gradePrefix: "Grade",
+    weight: "Weight",
+    score: "Score",
+    finalScore: "Final Score",
+    representative: "Representative",
+    correctAnswers: "Correct answers",
+    answer: "Answer",
+    total: "Total",
+    part: "Part",
+    question: "Question",
+    gradeExam: "Grade",
+    noExamSelectedForAssignment: "No exam selected for this assignment.",
+    noExamQuestions: "No questions in this exam.",
+    noSubmissionAvailable: "No submission yet."
   }
 };
 
@@ -7218,24 +7270,26 @@ const ASSIGNMENT_FORMATS = [
   { value: "simple", label: "Simple" }
 ];
 const ASSIGNMENT_REVIEWER_OPTIONS = [
-  { value: "none", label: "Không sử dụng" },
-  { value: "personal", label: "Cá nhân" },
-  { value: "group", label: "Nhóm" },
-  { value: "intergroup", label: "Liên nhóm" }
+  { value: "none", label: "Không sử dụng", labelEn: "Not used" },
+  { value: "personal", label: "Cá nhân", labelEn: "Personal" },
+  { value: "group", label: "Nhóm", labelEn: "Group" },
+  { value: "intergroup", label: "Liên nhóm", labelEn: "Intergroup" }
 ];
 const ASSIGNMENT_DISCUSSION_TOPIC_OPTIONS = ASSIGNMENT_REVIEWER_OPTIONS.filter((option) => option.value !== "none");
 const ASSIGNMENT_ASSIGNEE_OPTIONS = [
-  { value: "personal", label: "Cá nhân" },
-  { value: "group", label: "Nhóm" },
-  { value: "intergroup", label: "Liên nhóm" },
-  { value: "personalTopic", label: "Cá nhân (Topic)" },
-  { value: "groupTopic", label: "Nhóm (Topic)" },
-  { value: "intergroupTopic", label: "Liên nhóm (Topic)" }
+  { value: "personal", label: "Cá nhân", labelEn: "Personal" },
+  { value: "group", label: "Nhóm", labelEn: "Group" },
+  { value: "intergroup", label: "Liên nhóm", labelEn: "Intergroup" },
+  { value: "personalTopic", label: "Cá nhân (Topic)", labelEn: "Personal (Topic)" },
+  { value: "groupTopic", label: "Nhóm (Topic)", labelEn: "Group (Topic)" },
+  { value: "intergroupTopic", label: "Liên nhóm (Topic)", labelEn: "Intergroup (Topic)" }
 ];
 const ASSIGNMENT_EXAM_SESSION_PREFIX = "classroompwa-active-exam-session:";
 
 function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerOpenConsumed, updateCourse }) {
   const requestConfirm = useConfirmAction();
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const addPopoverRef = useRef(null);
   const [addOpen, setAddOpen] = useState(false);
   const [draft, setDraft] = useState({ title: "", content: "", type: "personal", format: "uploadFile", reviewerType: "none" });
@@ -7683,8 +7737,8 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
                     />
                   </label>
                   <div className="assignment-attachment-copy">
-                    <strong>File hướng dẫn</strong>
-                    <span>Browse, kéo thả hoặc Ctrl+V để thêm nhiều file/hình.</span>
+                    <strong>{t("assignmentGuideFiles", "File hướng dẫn")}</strong>
+                    <span>{t("assignmentGuideFilesHint", "Browse, kéo thả hoặc Ctrl+V để thêm nhiều file/hình.")}</span>
                   </div>
                 </div>
                 {assignmentFilesDraft.length > 0 && (
@@ -7719,7 +7773,7 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
                       onChange={(event) => setDraft({ ...draft, type: event.target.value })}
                     >
                       {ASSIGNMENT_ASSIGNEE_OPTIONS.map((option) => (
-                        <option value={option.value} key={option.value}>{option.label}</option>
+                        <option value={option.value} key={option.value}>{optionLanguageLabel(option, language)}</option>
                       ))}
                     </select>
                   </label>
@@ -7750,7 +7804,7 @@ function AssignmentsCard({ admin, user, course, reviewerOpenRequest, onReviewerO
                         onChange={(event) => setDraft({ ...draft, reviewerType: event.target.value })}
                       >
                         {ASSIGNMENT_DISCUSSION_TOPIC_OPTIONS.map((option) => (
-                          <option value={option.value} key={option.value}>{option.label}</option>
+                          <option value={option.value} key={option.value}>{optionLanguageLabel(option, language)}</option>
                         ))}
                       </select>
                     </label>
@@ -7809,6 +7863,8 @@ function assignmentEditDraft(assignment) {
 
 function AssignmentItem({ admin, course, assignment, assignmentIndex, assignmentCount, user, updateCourse, activeExamState, onStartExam, onShowExam, onOpenReviewer, onOpenScoreStats }) {
   const requestConfirm = useConfirmAction();
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editDraft, setEditDraft] = useState(() => assignmentEditDraft(assignment));
@@ -8096,8 +8152,8 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                   />
                 </label>
                 <div className="assignment-attachment-copy">
-                  <strong>File hướng dẫn</strong>
-                  <span>Browse, kéo thả hoặc Ctrl+V để thêm nhiều file/hình.</span>
+                  <strong>{t("assignmentGuideFiles", "File hướng dẫn")}</strong>
+                  <span>{t("assignmentGuideFilesHint", "Browse, kéo thả hoặc Ctrl+V để thêm nhiều file/hình.")}</span>
                 </div>
               </div>
               {((editDraft.attachments || []).length > 0 || editFilesDraft.length > 0) && (
@@ -8106,7 +8162,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                     <div className="assignment-draft-file-row" key={`${fileItem.fileName}-${index}`}>
                       <div className="assignment-draft-file-info">
                         <strong>{fileItem.fileName || "file"}</strong>
-                        <small>{draftFileTypeLabel(fileItem)} · Đã upload</small>
+                        <small>{draftFileTypeLabel(fileItem)} · {t("uploaded", "Đã upload")}</small>
                       </div>
                       <button
                         type="button"
@@ -8123,7 +8179,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                     <div className="assignment-draft-file-row" key={`${fileItem.name}-${fileItem.size}-${fileItem.lastModified}-${index}`}>
                       <div className="assignment-draft-file-info">
                         <strong>{fileItem.name}</strong>
-                        <small>{[draftFileTypeLabel(fileItem), formatFileSize(fileItem.size), "Chưa lưu"].filter(Boolean).join(" · ")}</small>
+                        <small>{[draftFileTypeLabel(fileItem), formatFileSize(fileItem.size), t("unsaved", "Chưa lưu")].filter(Boolean).join(" · ")}</small>
                       </div>
                       <button
                         type="button"
@@ -8147,7 +8203,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                     onChange={(event) => setEditDraft((current) => ({ ...current, type: event.target.value }))}
                   >
                     {ASSIGNMENT_ASSIGNEE_OPTIONS.map((option) => (
-                      <option value={option.value} key={option.value}>{option.label}</option>
+                      <option value={option.value} key={option.value}>{optionLanguageLabel(option, language)}</option>
                     ))}
                   </select>
                 </label>
@@ -8172,13 +8228,13 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                       onChange={(event) => setEditDraft((current) => ({ ...current, reviewerType: event.target.value }))}
                     >
                       {ASSIGNMENT_DISCUSSION_TOPIC_OPTIONS.map((option) => (
-                        <option value={option.value} key={option.value}>{option.label}</option>
+                        <option value={option.value} key={option.value}>{optionLanguageLabel(option, language)}</option>
                       ))}
                     </select>
                   </label>
                 )}
                 <label className="assignment-edit-due-label">
-                  <span>Hạn nộp</span>
+                  <span>{t("dueDate", "Hạn nộp")}</span>
                   <input
                     type="datetime-local"
                     disabled={savingEdit}
@@ -8187,7 +8243,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                   />
                 </label>
                 <label className="assignment-edit-ratio-label">
-                  <span>Tỉ lệ</span>
+                  <span>{t("ratio", "Tỉ lệ")}</span>
                   <div className="assignment-edit-ratio-field">
                     <input
                       className="ratio-input"
@@ -8238,7 +8294,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
           {!editing && <div className="assignment-meta-row">
             <div className="assignment-format-row">
               <span>Assignee:</span>
-              <strong>{gradebookTypeLabels[assignmentType]}</strong>
+              <strong>{gradebookTypeLabel(assignmentType, language)}</strong>
             </div>
             <div className="assignment-format-row">
               <span>Format:</span>
@@ -8247,15 +8303,15 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
             {isReviewerTopicFormat(assignmentFormat) && reviewerType !== "none" && (
               <div className="assignment-format-row">
                 <span>Topic:</span>
-                <strong>{assignmentReviewerLabel(reviewerType)}</strong>
+                <strong>{assignmentReviewerLabel(reviewerType, language)}</strong>
               </div>
             )}
             <div className="assignment-deadline-row">
-              <span>Hạn nộp:</span>
-              <strong>{assignmentDeadlineLabel(assignment) || "Không giới hạn"}</strong>
+              <span>{t("dueDate", "Hạn nộp")}:</span>
+              <strong>{assignmentDeadlineLabel(assignment) || t("noDeadline", "Không giới hạn")}</strong>
             </div>
             <div className="assignment-ratio-row">
-              <span>Tỉ lệ:</span>
+              <span>{t("ratio", "Tỉ lệ")}:</span>
               <input className="ratio-input" value={assignment.ratio || "0"} disabled readOnly />
               <strong>%</strong>
             </div>
@@ -8273,7 +8329,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
             )}
             {admin && canHaveSubmissions && (
               <button className="join-action compact assignment-results-toggle" onClick={() => setShowResults(!showResults)}>
-                Xem kết quả nộp bài
+                {t("viewSubmissionResults", "Xem kết quả nộp bài")}
               </button>
             )}
           </div>}
@@ -8281,7 +8337,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
             <div className="assignment-reviewer-panel">
               <div className="assignment-reviewer-panel-head">
                 <strong>Topic</strong>
-                <span>Assignee: {gradebookTypeLabels[assignmentType]}</span>
+                <span>Assignee: {gradebookTypeLabel(assignmentType, language)}</span>
               </div>
               <div className="assignment-reviewer-topic-list">
                 {reviewerTargets.map((target) => (
@@ -8311,21 +8367,21 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
           )}
           {!editing && assignmentFormat === "exam" && admin && (
             <div className="assignment-exam-picker-row">
-              <label htmlFor={`assignment-exam-${assignment.id}`}>Đề thi:</label>
+              <label htmlFor={`assignment-exam-${assignment.id}`}>{t("exam", "Đề thi")}:</label>
               <select
                 id={`assignment-exam-${assignment.id}`}
                 value={assignment.examId || ""}
                 onChange={(event) => updateAssignmentExam(updateCourse, assignment.id, event.target.value, availableExams)}
               >
-                <option value="">Chọn đề thi</option>
+                <option value="">{t("selectExam", "Chọn đề thi")}</option>
                 {availableExams.map((exam) => (
                   <option value={exam.id} key={exam.id}>{exam.title}</option>
                 ))}
               </select>
               {adminSelectedExam && (
-                <small>{examTotalQuestionCount(adminSelectedExam)} câu · {formatExamDurationLabel(adminSelectedExam.duration)}</small>
+                <small>{examTotalQuestionCount(adminSelectedExam)} {t("questions", "câu")} · {formatExamDurationLabel(adminSelectedExam.duration, language)}</small>
               )}
-              {availableExams.length === 0 && <small>Chưa có đề thi trong card Đề thi.</small>}
+              {availableExams.length === 0 && <small>{t("noExamInExamCard", "Chưa có đề thi trong card Đề thi.")}</small>}
             </div>
           )}
           {!editing && assignmentFormat === "exam" && !admin && (
@@ -8357,10 +8413,10 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
           )}
           {!editing && canHaveSubmissions && (admin ? showResults : true) && (
             <table className="data-table compact-table assignment-submissions-table">
-              <thead><tr><th>Họ tên</th><th>File</th><th>Thời gian</th><th>Email</th></tr></thead>
+              <thead><tr><th>{t("assignmentName", "Họ tên")}</th><th>{t("file", "File")}</th><th>{t("classTime", "Thời gian")}</th><th>{t("email", "Email")}</th></tr></thead>
               <tbody>
                 {visibleSubmissions.length === 0 ? (
-                  <tr><td colSpan="4">Chưa có bài nộp.</td></tr>
+                  <tr><td colSpan="4">{t("noSubmission", "Chưa có bài nộp.")}</td></tr>
                 ) : visibleSubmissions.map((submission, index) => {
                   const previewUrl = filePreviewUrl(submission);
                   const downloadUrl = fileDownloadUrl(submission);
@@ -8393,7 +8449,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                       <td>
                         <div className="submission-time-cell">
                           <span>{submission.submittedAt || ""}</span>
-                          {isLate && <span className="late-badge">Trễ</span>}
+                          {isLate && <span className="late-badge">{t("late", "Trễ")}</span>}
                         </div>
                       </td>
                       <td>{submission.email}</td>
@@ -8433,6 +8489,8 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
 }
 
 function AssignmentReviewerScorePanel({ admin, user, course, assignment, targets, updateCourse, submissionsPublic = false, onOpenStats }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const targetOptions = useMemo(() => targets.map((target) => ({
     key: target.key,
     label: formatAssignmentScoreTarget(target)
@@ -8558,13 +8616,13 @@ function AssignmentReviewerScorePanel({ admin, user, course, assignment, targets
       {admin ? (
         <div className="peer-score-admin-panel">
           <div className="peer-score-admin-head peer-score-actions-near-title">
-            <strong>Format chấm điểm</strong>
+            <strong>{t("scoreFormat", "Format chấm điểm")}</strong>
             <div className="peer-score-admin-actions">
               <button
                 className="icon-soft"
                 type="button"
-                title="Thống kê điểm reviewer"
-                aria-label="Thống kê điểm reviewer"
+                title={t("scoreStats", "Thống kê điểm reviewer")}
+                aria-label={t("scoreStats", "Thống kê điểm reviewer")}
                 onClick={onOpenStats}
               >
                 <ChartColumn size={17} />
@@ -8586,7 +8644,7 @@ function AssignmentReviewerScorePanel({ admin, user, course, assignment, targets
         <div className="review-form">
           <select value={topicKey} onChange={(event) => setTopicKey(event.target.value)} disabled={!targetOptions.length || submitting}>
             {targetOptions.length === 0 ? (
-              <option value="">Chưa có Topic</option>
+              <option value="">{t("noTopic", "Chưa có Topic")}</option>
             ) : targetOptions.map((target) => (
               <option value={target.key} key={target.key}>{target.label}</option>
             ))}
@@ -8596,27 +8654,27 @@ function AssignmentReviewerScorePanel({ admin, user, course, assignment, targets
             setSubmitError("");
             setSubmitStatus("");
           }} disabled={submitting || !targetOptions.length} />
-          <button onClick={submitReviewScore} disabled={!targetOptions.length || !hasScoreValue(score) || submitting}>{submitting ? "Đang lưu..." : "Submit"}</button>
+          <button onClick={submitReviewScore} disabled={!targetOptions.length || !hasScoreValue(score) || submitting}>{submitting ? t("saving", "Đang lưu...") : "Submit"}</button>
         </div>
       )}
       {submitStatus && <p className="success-text">{submitStatus}</p>}
       {submitError && <p className="error-text">{submitError}</p>}
       {admin && (
         <button className="review-results-toggle" type="button" onClick={() => setResultsOpen((current) => !current)}>
-        {resultsOpen ? "Ẩn điểm người học chấm" : "Xem điểm người học chấm"}
+        {resultsOpen ? t("hideLearnerScores", "Ẩn điểm người học chấm") : t("viewLearnerScores", "Xem điểm người học chấm")}
         </button>
       )}
       {resultsVisible && (
         <>
           <div className="review-results-head">
-            <strong>{admin || submissionsPublic ? "Tất cả điểm đã chấm" : "Điểm bạn đã chấm"}</strong>
+            <strong>{admin || submissionsPublic ? t("allReviewedScores", "Tất cả điểm đã chấm") : t("yourReviewedScores", "Điểm bạn đã chấm")}</strong>
             {admin && <button className="export-button" onClick={() => exportReview({ ...scoreReview, responses: visibleResponses })}>Export Excel</button>}
           </div>
           <table className="data-table compact-table review-results-table">
-            <thead><tr><th>STT</th><th>Họ và tên</th><th>Topic</th><th>Điểm chấm</th><th>Thời gian</th><th>Mã số</th><th>Email</th></tr></thead>
+            <thead><tr><th>{t("stt", "STT")}</th><th>{t("fullName", "Họ và tên")}</th><th>{t("topic", "Topic")}</th><th>{t("scoreGiven", "Điểm chấm")}</th><th>{t("classTime", "Thời gian")}</th><th>{t("studentId", "Mã số")}</th><th>{t("email", "Email")}</th></tr></thead>
             <tbody>
               {visibleResponses.length === 0 ? (
-                <tr><td colSpan="7">{admin ? "Chưa có người học chấm điểm." : "Bạn chưa chấm điểm trong bài tập này."}</td></tr>
+                <tr><td colSpan="7">{admin ? t("noLearnerScores", "Chưa có người học chấm điểm.") : t("noYourScores", "Bạn chưa chấm điểm trong bài tập này.")}</td></tr>
               ) : visibleResponses.map((row, index) => (
                 <tr key={row.id || `${row.email}-${row.topicKey || row.topic}-${row.score}-${index}`}>
                   <td>{index + 1}</td>
@@ -8773,12 +8831,14 @@ function AssignmentReviewerScoreStatsWorkspace({ course, assignment, targets, re
 }
 
 function AssignmentExamStartModal({ exam, onCancel, onStart }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   return (
     <Modal title="Bắt đầu làm bài" onClose={onCancel}>
       <div className="assignment-exam-start-summary">
-        <strong>{exam.title || "Đề thi"}</strong>
-        <span>Tổng cộng: {examTotalQuestionCount(exam)} câu</span>
-        <span>Thời gian làm bài: {formatExamDurationLabel(exam.duration)}</span>
+        <strong>{exam.title || t("exam", "Đề thi")}</strong>
+        <span>{normalizeLanguage(language) === "en" ? "Total" : "Tổng cộng"}: {examTotalQuestionCount(exam)} {t("questions", "câu")}</span>
+        <span>{normalizeLanguage(language) === "en" ? "Duration" : "Thời gian làm bài"}: {formatExamDurationLabel(exam.duration, language)}</span>
       </div>
       <div className="confirm-actions">
         <button className="secondary-action" type="button" onClick={onCancel}>Cancel</button>
@@ -8798,18 +8858,22 @@ function AssignmentExamLearnerPanel({
   submitError,
   onStart
 }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   if (!exam) {
-    return <div className="assignment-exam-empty">Chưa có đề thi được chọn.</div>;
+    return <div className="assignment-exam-empty">{normalizeLanguage(language) === "en" ? "No exam selected." : "Chưa có đề thi được chọn."}</div>;
   }
 
   const locked = Boolean(lockedMessage) || (submitted && !active);
-  const actionLabel = active ? "Tiếp tục làm bài" : (locked ? "Đã submit" : "Làm bài");
+  const actionLabel = active
+    ? (normalizeLanguage(language) === "en" ? "Continue" : "Tiếp tục làm bài")
+    : (locked ? (normalizeLanguage(language) === "en" ? "Submitted" : "Đã submit") : (normalizeLanguage(language) === "en" ? "Start" : "Làm bài"));
 
   return (
     <div className="assignment-exam-summary">
       <div>
-        <strong>Đề thi: {exam.title || "Đề thi"}</strong>
-        <small>{examTotalQuestionCount(exam)} câu · {formatExamDurationLabel(exam.duration)}</small>
+        <strong>{t("exam", "Đề thi")}: {exam.title || t("exam", "Đề thi")}</strong>
+        <small>{examTotalQuestionCount(exam)} {t("questions", "câu")} · {formatExamDurationLabel(exam.duration, language)}</small>
       </div>
       <button className="join-action compact" type="button" onClick={onStart} disabled={locked && !active}>
         <PlayCircle size={15} /> {actionLabel}
@@ -9449,6 +9513,8 @@ function AssignmentExamQuestion({ part, question, questionIndex, value, disabled
 }
 
 function GradesCard({ admin, user, course, updateCourse }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const automaticGradebooks = buildAutomaticGradebooks(course);
   const visibleGradebooks = admin ? automaticGradebooks : automaticGradebooks.filter(isGradebookPublished);
   const [gradingContext, setGradingContext] = useState(null);
@@ -9481,7 +9547,7 @@ function GradesCard({ admin, user, course, updateCourse }) {
 
   return (
     <>
-      <PanelTitle title="Bảng điểm" />
+      <PanelTitle title={uiCardLabel(language, "grades", "Bảng điểm")} />
       {gradingContext ? (
         <ExamGradingWorkspace
           course={course}
@@ -9499,7 +9565,7 @@ function GradesCard({ admin, user, course, updateCourse }) {
             <SummaryGradebookItem admin={admin} user={user} course={course} updateCourse={updateCourse} />
           )}
           {!admin && visibleGradebooks.length === 0 && !showSummaryGradebook && (
-            <div className="empty-state compact-empty">Chưa có bảng điểm được publish.</div>
+            <div className="empty-state compact-empty">{t("noPublishedGradebooks", "Chưa có bảng điểm được publish.")}</div>
           )}
           {visibleGradebooks.map((book) => (
             <GradebookItem
@@ -9660,6 +9726,10 @@ function assignmentFormatLabel(format) {
   return ASSIGNMENT_FORMATS.find((item) => item.value === normalizeAssignmentFormat(format))?.label || "Upload file";
 }
 
+function optionLanguageLabel(option, language) {
+  return normalizeLanguage(language) === "en" ? (option.labelEn || option.label) : option.label;
+}
+
 function normalizeAssignmentReviewerType(value) {
   return ASSIGNMENT_REVIEWER_OPTIONS.some((item) => item.value === value) ? value : "none";
 }
@@ -9681,8 +9751,10 @@ function updateAssignmentDraftFormat(draft, format) {
   };
 }
 
-function assignmentReviewerLabel(value) {
-  return ASSIGNMENT_REVIEWER_OPTIONS.find((item) => item.value === normalizeAssignmentReviewerType(value))?.label || "Không sử dụng";
+function assignmentReviewerLabel(value, language = "vi") {
+  const option = ASSIGNMENT_REVIEWER_OPTIONS.find((item) => item.value === normalizeAssignmentReviewerType(value));
+  if (!option) return normalizeLanguage(language) === "en" ? "Not used" : "Không sử dụng";
+  return optionLanguageLabel(option, language);
 }
 
 function findCourseMember(course, email) {
@@ -9953,9 +10025,9 @@ function parseExamDurationSeconds(duration) {
   return 0;
 }
 
-function formatExamDurationLabel(duration) {
+function formatExamDurationLabel(duration, language = "vi") {
   const seconds = parseExamDurationSeconds(duration);
-  return seconds ? formatCountdown(seconds) : "Không giới hạn";
+  return seconds ? formatCountdown(seconds) : uiText(language, "noDeadline", "Không giới hạn");
 }
 
 function examRemainingSeconds(exam, session) {
@@ -10154,6 +10226,20 @@ const gradebookTypeLabels = {
   groupTopic: "Nhóm (Topic)",
   intergroupTopic: "Liên nhóm (Topic)"
 };
+const gradebookTypeLabelsEn = {
+  personal: "Personal",
+  group: "Group",
+  intergroup: "Intergroup",
+  personalTopic: "Personal (Topic)",
+  groupTopic: "Group (Topic)",
+  intergroupTopic: "Intergroup (Topic)"
+};
+
+function gradebookTypeLabel(type, language = "vi", fallback = "Cá nhân") {
+  const normalizedType = normalizeGradebookType(type, "personal");
+  if (normalizeLanguage(language) === "en") return gradebookTypeLabelsEn[normalizedType] || fallback;
+  return gradebookTypeLabels[normalizedType] || fallback;
+}
 
 function normalizeGradebookType(type, fallback = "personal") {
   return gradebookTypeLabels[type] ? type : fallback;
@@ -10272,6 +10358,23 @@ function gradebookTitleWithRatio(book, course, bookType) {
   return `Điểm ${assignmentTitleWithRatio(assignment)} (${gradebookTypeLabels[bookType] || gradebookTypeLabels.personal})`;
 }
 
+function gradebookRatioLabel(ratio, language = "vi") {
+  const value = ratio || "0";
+  return normalizeLanguage(language) === "en" ? `(Weight ${value}%)` : `(Tỉ lệ ${value}%)`;
+}
+
+function gradebookAssignmentTitleWithRatio(assignment, language = "vi") {
+  if (!assignment) return normalizeLanguage(language) === "en" ? "assignment" : "bài tập";
+  return `${assignment.title || (normalizeLanguage(language) === "en" ? "Assignment" : "Bài tập")} ${gradebookRatioLabel(assignment.ratio, language)}`;
+}
+
+function gradebookDisplayTitleWithRatio(book, course, bookType, language = "vi") {
+  const assignment = (course.assignments || []).find((item) => item.id === book.assignmentId);
+  if (!assignment) return uiLiteral(language, book.title || "");
+  const typeLabel = gradebookTypeLabel(bookType, language);
+  return `${uiText(language, "gradePrefix", "Điểm")} ${gradebookAssignmentTitleWithRatio(assignment, language)} (${typeLabel})`;
+}
+
 function isGradebookPublished(book) {
   return book?.published === true;
 }
@@ -10298,6 +10401,8 @@ function createGradebook(course, updateCourse, assignmentId, type) {
 }
 
 function SummaryGradebookItem({ admin, user, course, updateCourse }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const [open, setOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState("");
@@ -10337,9 +10442,9 @@ function SummaryGradebookItem({ admin, user, course, updateCourse }) {
     <article className="expand-card summary-gradebook">
       <div className="assignment-head summary-grade-head">
         <button onClick={() => setOpen(!open)}>
-          <strong>BẢNG ĐIỂM TỔNG KẾT</strong>
-          <small>{assignments.length ? `${assignments.length} bài tập` : "Chưa có bài tập"}</small>
-          {admin && <small>{published ? "Đã publish" : "Nháp"}</small>}
+          <strong>{t("summaryGradebookTitle", "BẢNG ĐIỂM TỔNG KẾT")}</strong>
+          <small>{assignments.length ? `${assignments.length} ${t("assignmentsLower", "bài tập")}` : t("noAssignments", "Chưa có bài tập")}</small>
+          {admin && <small>{published ? t("published", "Đã publish") : t("draft", "Nháp")}</small>}
         </button>
         {admin && assignments.length > 0 && (
           <button className="export-button summary-export-button" type="button" onClick={() => exportSummaryGradebook(course, assignments, rows)}>
@@ -10360,31 +10465,31 @@ function SummaryGradebookItem({ admin, user, course, updateCourse }) {
       {publishError && <p className="error-text">{publishError}</p>}
       {open && (
         assignments.length === 0 ? (
-          <div className="empty-state compact-empty">Chưa có bài tập để tính điểm tổng kết.</div>
+          <div className="empty-state compact-empty">{t("noSummaryGradeAssignments", "Chưa có bài tập để tính điểm tổng kết.")}</div>
         ) : (
           <div className="summary-grade-scroll">
             <table className="data-table summary-grade-table">
               <thead>
                 <tr>
-                  <th className="stt-col">STT</th>
-                  <th>Họ tên</th>
-                  <th>Mã số</th>
+                  <th className="stt-col">{t("stt", "STT")}</th>
+                  <th>{t("fullName", "Họ tên")}</th>
+                  <th>{t("studentId", "Mã số")}</th>
                   {assignments.map((assignment) => {
                     const book = findSummaryGradebook(course, assignment.id, admin);
                     const bookType = gradebookTypeLabels[book?.type] ? book.type : "";
                     return (
                   <th key={assignment.id}>
                     <span>{assignment.title}</span>
-                    <small>{`(Tỉ lệ ${assignment.ratio || "0"}%)`}{bookType ? ` · ${gradebookTypeLabels[bookType]}` : ""}</small>
+                    <small>{gradebookRatioLabel(assignment.ratio, language)}{bookType ? ` · ${gradebookTypeLabel(bookType, language)}` : ""}</small>
                   </th>
                 );
               })}
-                  <th>Final Score</th>
+                  <th>{t("finalScore", "Final Score")}</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
-                  <tr><td colSpan={colSpan}>Chưa có học viên phù hợp.</td></tr>
+                  <tr><td colSpan={colSpan}>{t("noEligibleLearners", "Chưa có học viên phù hợp.")}</td></tr>
                 ) : rows.map((row) => (
                   <tr key={row.member.email}>
                     <td>{row.member.order}</td>
@@ -10407,6 +10512,8 @@ function SummaryGradebookItem({ admin, user, course, updateCourse }) {
 
 function GradebookItem({ admin, user, book, course, updateCourse, onOpenExamGrading }) {
   const requestConfirm = useConfirmAction();
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const [open, setOpen] = useState(false);
   const [draftRows, setDraftRows] = useState(book.rows || []);
   const [dirty, setDirty] = useState(false);
@@ -10513,9 +10620,9 @@ function GradebookItem({ admin, user, book, course, updateCourse, onOpenExamGrad
     <article className="expand-card" data-enter-scope="gradebook">
       <div className="assignment-head">
         <button onClick={() => setOpen(!open)}>
-          <strong>{gradebookTitleWithRatio(book, course, bookType)}</strong>
+          <strong>{gradebookDisplayTitleWithRatio(book, course, bookType, language)}</strong>
           <small>Format: {assignmentFormatLabel(assignmentFormat)}</small>
-          {admin && <small>{published ? "Đã publish" : "Nháp"}</small>}
+          {admin && <small>{published ? t("published", "Đã publish") : t("draft", "Nháp")}</small>}
         </button>
         {admin && open && !examGradebook && <SaveButton className="compact save-score-button" dirty={dirty} onClick={saveScores} />}
         {admin && (
@@ -10559,6 +10666,8 @@ function GradebookItem({ admin, user, book, course, updateCourse, onOpenExamGrad
 }
 
 function ExamGradebookPanel({ admin, user, course, assignment, book, exam, draftRows, onGrade }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const bookType = examGradebookType(book, assignment);
   const bookBaseType = baseGradebookType(bookType);
   const showTopic = gradebookTypeUsesTopic(bookType);
@@ -10568,7 +10677,7 @@ function ExamGradebookPanel({ admin, user, course, assignment, book, exam, draft
   if (!exam) {
     return (
       <div className="exam-gradebook-panel">
-        <div className="assignment-exam-empty">Chưa có đề thi được chọn cho bài tập này.</div>
+        <div className="assignment-exam-empty">{t("noExamSelectedForAssignment", "Chưa có đề thi được chọn cho bài tập này.")}</div>
       </div>
     );
   }
@@ -10577,17 +10686,17 @@ function ExamGradebookPanel({ admin, user, course, assignment, book, exam, draft
     <div className="exam-gradebook-panel">
       <div className="exam-gradebook-meta">
         <div>
-          <strong>Đề thi: {exam.title || "Đề thi"}</strong>
-          <small>{assignment?.title || book.title || "Bài tập"} · {examTotalQuestionCount(exam)} câu · {formatExamDurationLabel(exam.duration)}</small>
+          <strong>{t("exam", "Đề thi")}: {exam.title || t("exam", "Đề thi")}</strong>
+          <small>{assignment?.title || book.title || t("assignment", "Bài tập")} · {examTotalQuestionCount(exam)} {t("questions", "câu")} · {formatExamDurationLabel(exam.duration, language)}</small>
         </div>
         {admin && (
           <button className="primary-action compact exam-grade-action" type="button" onClick={onGrade}>
-            <Check size={15} /> Chấm điểm
+            <Check size={15} /> {t("gradeExam", "Chấm điểm")}
           </button>
         )}
       </div>
       {bookBaseType === "personal" ? (
-        <PersonalGradeTable admin={admin} user={user} course={course} draftRows={displayRows} readOnly emptyScoreLabel={admin ? "" : "Chưa có điểm"} showTopic={showTopic} />
+        <PersonalGradeTable admin={admin} user={user} course={course} draftRows={displayRows} readOnly emptyScoreLabel={admin ? "" : t("noScore", "Chưa có điểm")} showTopic={showTopic} />
       ) : bookBaseType === "intergroup" ? (
         <ExamAllocatedGradebookCards admin={admin} user={user} course={course} draftRows={displayRows} type="intergroup" showTopic={showTopic} />
       ) : (
@@ -10598,6 +10707,8 @@ function ExamGradebookPanel({ admin, user, course, assignment, book, exam, draft
 }
 
 function ExamGradingWorkspace({ course, assignment, book, exam, bookType = "personal", initialRows, onBack, onSave }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const gradingBaseType = baseGradebookType(bookType);
   const parts = normalizeExamParts(exam?.parts).filter((part) => normalizeExamQuestions(part.questions).length > 0);
   const firstPartId = parts[0]?.id || "total";
@@ -10639,12 +10750,12 @@ function ExamGradingWorkspace({ course, assignment, book, exam, bookType = "pers
           <ChevronLeft size={16} /> Back
         </button>
         <div>
-          <strong>{exam.title || "Đề thi"}</strong>
-          <span>{assignment?.title || book.title || "Bài tập"} · {examTotalQuestionCount(exam)} câu</span>
+          <strong>{exam.title || t("exam", "Đề thi")}</strong>
+          <span>{assignment?.title || book.title || t("assignment", "Bài tập")} · {examTotalQuestionCount(exam)} {t("questions", "câu")}</span>
         </div>
         <SaveButton className="compact" dirty={examGradingDirty} icon={<Check size={15} />} onClick={saveExamGrades} />
       </div>
-      <div className="exam-grading-tabs" role="tablist" aria-label="Các phần chấm điểm">
+      <div className="exam-grading-tabs" role="tablist" aria-label={normalizeLanguage(language) === "en" ? "Grading parts" : "Các phần chấm điểm"}>
         {parts.map((part, index) => (
           <button
             className={activeTab === part.id ? "active" : ""}
@@ -10654,7 +10765,7 @@ function ExamGradingWorkspace({ course, assignment, book, exam, bookType = "pers
             key={part.id}
             onClick={() => setActiveTab(part.id)}
           >
-            {parts.length > 1 ? `Phần ${toRomanNumeral(index + 1)}` : questionTypeLabel(part.questionType)}
+            {parts.length > 1 ? `${t("part", "Phần")} ${toRomanNumeral(index + 1)}` : questionTypeLabel(part.questionType)}
           </button>
         ))}
         <button
@@ -10664,7 +10775,7 @@ function ExamGradingWorkspace({ course, assignment, book, exam, bookType = "pers
           aria-selected={activeTab === "total"}
           onClick={() => setActiveTab("total")}
         >
-          Tổng điểm
+          {t("total", "Tổng điểm")}
         </button>
       </div>
       <div className="exam-grading-body">
@@ -10682,7 +10793,7 @@ function ExamGradingWorkspace({ course, assignment, book, exam, bookType = "pers
             onQuestionScoreChange={setQuestionScore}
           />
         ) : (
-          <div className="empty-state compact-empty">Chưa có câu hỏi trong đề thi.</div>
+          <div className="empty-state compact-empty">{t("noExamQuestions", "Chưa có câu hỏi trong đề thi.")}</div>
         )}
       </div>
       {saveStatus && <p className="success-text">{saveStatus}</p>}
@@ -10691,6 +10802,8 @@ function ExamGradingWorkspace({ course, assignment, book, exam, bookType = "pers
 }
 
 function ExamGradingPart({ course, part, partIndex, rows, type = "personal", activeQuestionKey, onActiveQuestionChange, onQuestionScoreChange }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const questions = normalizeExamQuestions(part.questions);
   const questionType = part.questionType || "multipleChoice";
   const writtenAnswer = isWrittenExamQuestionType(questionType);
@@ -10708,7 +10821,7 @@ function ExamGradingPart({ course, part, partIndex, rows, type = "personal", act
 
   return (
     <div className="exam-written-grading">
-      <aside className="exam-written-question-nav" aria-label="Danh sách câu hỏi">
+      <aside className="exam-written-question-nav" aria-label={normalizeLanguage(language) === "en" ? "Question list" : "Danh sách câu hỏi"}>
         {questions.map((question, index) => {
           const questionKey = examQuestionResponseKey(part, question);
           return (
@@ -10718,13 +10831,13 @@ function ExamGradingPart({ course, part, partIndex, rows, type = "personal", act
               key={questionKey}
               onClick={() => onActiveQuestionChange(questionKey)}
             >
-              Câu {index + 1}
+              {t("question", "Câu")} {index + 1}
             </button>
           );
         })}
       </aside>
       <div className="exam-written-grading-main">
-        <h4>{questionTypeLabel(questionType)} - Câu {questions.findIndex((question) => examQuestionResponseKey(part, question) === resolvedQuestionKey) + 1}: {activeQuestion?.text || "Câu hỏi"}</h4>
+        <h4>{questionTypeLabel(questionType)} - {t("question", "Câu")} {questions.findIndex((question) => examQuestionResponseKey(part, question) === resolvedQuestionKey) + 1}: {activeQuestion?.text || t("question", "Câu hỏi")}</h4>
         <ExamWrittenQuestionGradeTable
           course={course}
           rows={rows}
@@ -10740,6 +10853,8 @@ function ExamGradingPart({ course, part, partIndex, rows, type = "personal", act
 }
 
 function ExamAutoPartGradeTable({ course, rows, part, type = "personal" }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   if (type !== "personal") {
     return <ExamScopeAutoPartGradeTable rows={rows} part={part} type={type} />;
   }
@@ -10748,16 +10863,16 @@ function ExamAutoPartGradeTable({ course, rows, part, type = "personal" }) {
     <table className="data-table exam-auto-grade-table">
       <thead>
         <tr>
-          <th className="stt-col">STT</th>
-          <th className="avatar-col">Ảnh</th>
-          <th>Họ và tên</th>
-          <th>Số câu trả lời đúng</th>
-          <th>Điểm</th>
+          <th className="stt-col">{t("stt", "STT")}</th>
+          <th className="avatar-col">{t("photo", "Ảnh")}</th>
+          <th>{t("fullName", "Họ và tên")}</th>
+          <th>{t("correctAnswers", "Số câu trả lời đúng")}</th>
+          <th>{t("score", "Điểm")}</th>
         </tr>
       </thead>
       <tbody>
         {rows.length === 0 ? (
-          <tr><td colSpan="5">Chưa có học viên phù hợp.</td></tr>
+          <tr><td colSpan="5">{t("noEligibleLearners", "Chưa có học viên phù hợp.")}</td></tr>
         ) : rows.map((row) => {
           const partResult = row.partResults[part.id] || emptyExamPartResult(part);
           return (
@@ -10776,6 +10891,8 @@ function ExamAutoPartGradeTable({ course, rows, part, type = "personal" }) {
 }
 
 function ExamWrittenQuestionGradeTable({ course, rows, part, question, questionKey, type = "personal", onQuestionScoreChange }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   if (type !== "personal") {
     return <ExamScopeWrittenQuestionGradeTable rows={rows} part={part} question={question} questionKey={questionKey} type={type} onQuestionScoreChange={onQuestionScoreChange} />;
   }
@@ -10787,16 +10904,16 @@ function ExamWrittenQuestionGradeTable({ course, rows, part, question, questionK
     <table className="data-table exam-written-grade-table">
       <thead>
         <tr>
-          <th className="stt-col">STT</th>
-          <th className="avatar-col">Ảnh</th>
-          <th>Họ và tên</th>
-          <th>Trả lời</th>
-          <th>Điểm</th>
+          <th className="stt-col">{t("stt", "STT")}</th>
+          <th className="avatar-col">{t("photo", "Ảnh")}</th>
+          <th>{t("fullName", "Họ và tên")}</th>
+          <th>{t("answer", "Trả lời")}</th>
+          <th>{t("score", "Điểm")}</th>
         </tr>
       </thead>
       <tbody>
         {rows.length === 0 ? (
-          <tr><td colSpan="5">Chưa có học viên phù hợp.</td></tr>
+          <tr><td colSpan="5">{t("noEligibleLearners", "Chưa có học viên phù hợp.")}</td></tr>
         ) : rows.map((row) => {
           const answer = String(row.answers?.[questionKey] || "");
           const selectedScore = formatScoreNumber(parseScoreValue(row.questionScores?.[questionKey] ?? 0));
@@ -10813,7 +10930,7 @@ function ExamWrittenQuestionGradeTable({ course, rows, part, question, questionK
                 )}
               </td>
               <td>
-                <div className="exam-score-buttons" role="group" aria-label={`Điểm ${row.member.name || row.member.email}`}>
+                <div className="exam-score-buttons" role="group" aria-label={`${t("score", "Điểm")} ${row.member.name || row.member.email}`}>
                   {pointOptions.map((score) => {
                     const scoreLabel = formatScoreNumber(score);
                     return (
@@ -10838,6 +10955,8 @@ function ExamWrittenQuestionGradeTable({ course, rows, part, question, questionK
 }
 
 function ExamTotalGradeTable({ course, rows, parts, type = "personal" }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   if (type !== "personal") {
     return <ExamScopeTotalGradeTable rows={rows} parts={parts} type={type} />;
   }
@@ -10846,16 +10965,16 @@ function ExamTotalGradeTable({ course, rows, parts, type = "personal" }) {
     <table className="data-table exam-total-grade-table">
       <thead>
         <tr>
-          <th className="stt-col">STT</th>
-          <th className="avatar-col">Ảnh</th>
-          <th>Họ và tên</th>
-          {parts.map((part, index) => <th key={part.id}>Phần {toRomanNumeral(index + 1)}</th>)}
-          <th>Tổng</th>
+          <th className="stt-col">{t("stt", "STT")}</th>
+          <th className="avatar-col">{t("photo", "Ảnh")}</th>
+          <th>{t("fullName", "Họ và tên")}</th>
+          {parts.map((part, index) => <th key={part.id}>{t("part", "Phần")} {toRomanNumeral(index + 1)}</th>)}
+          <th>{t("total", "Tổng")}</th>
         </tr>
       </thead>
       <tbody>
         {rows.length === 0 ? (
-          <tr><td colSpan={parts.length + 4}>Chưa có học viên phù hợp.</td></tr>
+          <tr><td colSpan={parts.length + 4}>{t("noEligibleLearners", "Chưa có học viên phù hợp.")}</td></tr>
         ) : rows.map((row) => (
           <tr key={row.key}>
             <td>{row.member.order}</td>
@@ -10873,25 +10992,27 @@ function ExamTotalGradeTable({ course, rows, parts, type = "personal" }) {
 }
 
 function ExamScopeAutoPartGradeTable({ rows, part, type }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   return (
     <table className="data-table exam-auto-grade-table">
       <thead>
         <tr>
-          <th>{type === "intergroup" ? "Liên nhóm" : "Nhóm"}</th>
-          <th>Người đại diện</th>
-          <th>Số câu trả lời đúng</th>
-          <th>Điểm</th>
+          <th>{type === "intergroup" ? t("intergroup", "Liên nhóm") : t("group", "Nhóm")}</th>
+          <th>{t("representative", "Người đại diện")}</th>
+          <th>{t("correctAnswers", "Số câu trả lời đúng")}</th>
+          <th>{t("score", "Điểm")}</th>
         </tr>
       </thead>
       <tbody>
         {rows.length === 0 ? (
-          <tr><td colSpan="4">Chưa có nhóm phù hợp.</td></tr>
+          <tr><td colSpan="4">{type === "intergroup" ? t("noEligibleIntergroups", "Chưa có liên nhóm phù hợp.") : t("noEligibleGroups", "Chưa có nhóm phù hợp.")}</td></tr>
         ) : rows.map((row) => {
           const partResult = row.partResults[part.id] || emptyExamPartResult(part);
           return (
             <tr key={row.key}>
-              <td>{examScopeRowTitle(row, type)}</td>
-              <td>{examScopeRepresentativeLabel(row)}</td>
+              <td>{examScopeRowTitle(row, type, language)}</td>
+              <td>{examScopeRepresentativeLabel(row, language)}</td>
               <td>{partResult.correctCount}/{partResult.questionCount}</td>
               <td>{formatScoreNumber(partResult.score)}</td>
             </tr>
@@ -10903,11 +11024,13 @@ function ExamScopeAutoPartGradeTable({ rows, part, type }) {
 }
 
 function ExamScopeWrittenQuestionGradeTable({ rows, part, question, questionKey, type, onQuestionScoreChange }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const pointOptions = examWrittenPointOptions(part);
   const longAnswer = part.questionType === "longAnswer";
 
   if (rows.length === 0) {
-    return <div className="empty-state compact-empty">Chưa có nhóm phù hợp.</div>;
+    return <div className="empty-state compact-empty">{type === "intergroup" ? t("noEligibleIntergroups", "Chưa có liên nhóm phù hợp.") : t("noEligibleGroups", "Chưa có nhóm phù hợp.")}</div>;
   }
 
   return (
@@ -10919,9 +11042,9 @@ function ExamScopeWrittenQuestionGradeTable({ rows, part, question, questionKey,
           <section className="group-topic-card topic-editor-card exam-scope-grade-card" key={`${row.key}-${question?.id || questionKey}`}>
             <div className="group-topic-header">
               <div className={`group-topic-bar ${type === "intergroup" ? "intergroup-grade-bar" : "grade-topic-bar"}`}>
-                <span className="group-topic-badge topic-group-title">{examScopeRowTitle(row, type)}</span>
+                <span className="group-topic-badge topic-group-title">{examScopeRowTitle(row, type, language)}</span>
                 <label className="exam-scope-answer-field">
-                  <span>Trả lời:</span>
+                  <span>{t("answer", "Trả lời")}:</span>
                   {longAnswer ? (
                     <textarea className="exam-grade-answer-text long" value={answer} readOnly />
                   ) : (
@@ -10929,8 +11052,8 @@ function ExamScopeWrittenQuestionGradeTable({ rows, part, question, questionKey,
                   )}
                 </label>
                 <div className="exam-scope-score-field">
-                  <span>Điểm:</span>
-                  <div className="exam-score-buttons" role="group" aria-label={`Điểm ${row.label}`}>
+                  <span>{t("score", "Điểm")}:</span>
+                  <div className="exam-score-buttons" role="group" aria-label={`${t("score", "Điểm")} ${row.label}`}>
                     {pointOptions.map((score) => {
                       const scoreLabel = formatScoreNumber(score);
                       return (
@@ -10947,7 +11070,7 @@ function ExamScopeWrittenQuestionGradeTable({ rows, part, question, questionKey,
                   </div>
                 </div>
               </div>
-              <p className="exam-scope-representative">Đại diện: {examScopeRepresentativeLabel(row)}</p>
+              <p className="exam-scope-representative">{t("representative", "Đại diện")}: {examScopeRepresentativeLabel(row, language)}</p>
             </div>
           </section>
         );
@@ -10957,23 +11080,25 @@ function ExamScopeWrittenQuestionGradeTable({ rows, part, question, questionKey,
 }
 
 function ExamScopeTotalGradeTable({ rows, parts, type }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   return (
     <table className="data-table exam-total-grade-table">
       <thead>
         <tr>
-          <th>{type === "intergroup" ? "Liên nhóm" : "Nhóm"}</th>
-          <th>Người đại diện</th>
-          {parts.map((part, index) => <th key={part.id}>Phần {toRomanNumeral(index + 1)}</th>)}
-          <th>Tổng</th>
+          <th>{type === "intergroup" ? t("intergroup", "Liên nhóm") : t("group", "Nhóm")}</th>
+          <th>{t("representative", "Người đại diện")}</th>
+          {parts.map((part, index) => <th key={part.id}>{t("part", "Phần")} {toRomanNumeral(index + 1)}</th>)}
+          <th>{t("total", "Tổng")}</th>
         </tr>
       </thead>
       <tbody>
         {rows.length === 0 ? (
-          <tr><td colSpan={parts.length + 3}>Chưa có nhóm phù hợp.</td></tr>
+          <tr><td colSpan={parts.length + 3}>{type === "intergroup" ? t("noEligibleIntergroups", "Chưa có liên nhóm phù hợp.") : t("noEligibleGroups", "Chưa có nhóm phù hợp.")}</td></tr>
         ) : rows.map((row) => (
           <tr key={row.key}>
-            <td>{examScopeRowTitle(row, type)}</td>
-            <td>{examScopeRepresentativeLabel(row)}</td>
+            <td>{examScopeRowTitle(row, type, language)}</td>
+            <td>{examScopeRepresentativeLabel(row, language)}</td>
             {parts.map((part) => (
               <td className="score-cell" key={`${row.key}-${part.id}`}>{formatScoreNumber(row.partScores?.[part.id] || 0)}</td>
             ))}
@@ -10985,22 +11110,30 @@ function ExamScopeTotalGradeTable({ rows, parts, type }) {
   );
 }
 
-function examScopeRowTitle(row, type) {
-  if (type === "group" && row.reportOrder) return `${row.label} (STT: ${row.reportOrder})`;
-  return row.label || (type === "intergroup" ? "Liên nhóm" : "Nhóm");
+function examScopeRowTitle(row, type, language = "vi") {
+  if (type === "group" && row.reportOrder) {
+    const label = row.group ? uiGroupLabel(language, row.group) : uiLiteral(language, row.label || "Nhóm");
+    return `${label} (${uiText(language, "stt", "STT")}: ${row.reportOrder})`;
+  }
+  if (type === "group" && row.group) return uiGroupLabel(language, row.group);
+  if (type === "intergroup" && row.intergroup) return uiIntergroupLabel(language, row.intergroup);
+  return uiLiteral(language, row.label || (type === "intergroup" ? "Liên nhóm" : "Nhóm"));
 }
 
-function examScopeRepresentativeLabel(row) {
-  return row.representative?.name || row.representativeEmail || "Chưa có bài nộp";
+function examScopeRepresentativeLabel(row, language = "vi") {
+  return row.representative?.name || row.representativeEmail || uiText(language, "noSubmissionAvailable", "Chưa có bài nộp");
 }
 
 function PersonalGradeTable({ admin, user, course, draftRows, onScoreChange, readOnly = false, emptyScoreLabel = "Chưa có điểm", showTopic = false }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const rows = buildPersonalGradeRows(course, draftRows, showTopic).filter((row) => admin || row.member.email === user.email);
-  if (rows.length === 0) return <div className="empty-state compact-empty">Chưa có học viên phù hợp.</div>;
+  const resolvedEmptyScoreLabel = emptyScoreLabel === "Chưa có điểm" ? t("noScore", "Chưa có điểm") : emptyScoreLabel;
+  if (rows.length === 0) return <div className="empty-state compact-empty">{t("noEligibleLearners", "Chưa có học viên phù hợp.")}</div>;
 
   return (
     <table className="data-table grade-personal-table">
-      <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ và tên</th><th>Mã số</th>{showTopic && <th>Topic</th>}<th>Điểm</th><th>Email</th></tr></thead>
+      <thead><tr><th className="stt-col">{t("stt", "STT")}</th><th className="avatar-col">{t("photo", "Ảnh")}</th><th>{t("fullName", "Họ và tên")}</th><th>{t("studentId", "Mã số")}</th>{showTopic && <th>{t("topic", "Topic")}</th>}<th>{t("score", "Điểm")}</th><th>{t("email", "Email")}</th></tr></thead>
       <tbody>
         {rows.map((row) => (
           <tr key={row.key}>
@@ -11008,12 +11141,12 @@ function PersonalGradeTable({ admin, user, course, draftRows, onScoreChange, rea
             <td><ProfileAvatar user={{ ...row.member, photoURL: row.member.photoURL || course.profiles?.[row.member.email]?.photoURL || "" }} label={row.member.name || row.member.email} small /></td>
             <td>{row.member.name || row.member.email}</td>
             <td>{row.member.studentId}</td>
-            {showTopic && <td>{row.topicTitle || "Chưa có topic."}</td>}
+            {showTopic && <td>{row.topicTitle || t("noTopic", "Chưa có topic.")}</td>}
             <td>
               {admin && !readOnly ? (
                 <input className="score-input" data-enter-group="personal-grade-score" inputMode="decimal" value={row.score} onKeyDown={(event) => focusNextInputOnEnter(event, "personal-grade-score")} onChange={(event) => onScoreChange(row.key, event.target.value)} />
               ) : (
-                row.score || emptyScoreLabel
+                row.score || resolvedEmptyScoreLabel
               )}
             </td>
             <td>{row.member.email}</td>
@@ -11025,6 +11158,8 @@ function PersonalGradeTable({ admin, user, course, draftRows, onScoreChange, rea
 }
 
 function ExamAllocatedGradebookCards({ admin, user, course, draftRows, type = "group", showTopic = true }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const cards = type === "intergroup"
     ? buildIntergroupGradeCards(course, draftRows, showTopic)
       .map((card) => ({
@@ -11039,7 +11174,7 @@ function ExamAllocatedGradebookCards({ admin, user, course, draftRows, type = "g
       .filter((card) => card.visibleMembers.length > 0);
 
   if (cards.length === 0) {
-    return <div className="empty-state compact-empty">{type === "intergroup" ? "Chưa có liên nhóm phù hợp." : "Chưa có nhóm phù hợp."}</div>;
+    return <div className="empty-state compact-empty">{type === "intergroup" ? t("noEligibleIntergroups", "Chưa có liên nhóm phù hợp.") : t("noEligibleGroups", "Chưa có nhóm phù hợp.")}</div>;
   }
 
   return (
@@ -11049,32 +11184,32 @@ function ExamAllocatedGradebookCards({ admin, user, course, draftRows, type = "g
           <div className="group-topic-header">
             <div className={`group-topic-bar ${type === "intergroup" ? "intergroup-grade-bar" : "grade-topic-bar"}`}>
               <span className="group-topic-badge topic-group-title">
-                <span>{card.label}</span>
+                <span>{type === "intergroup" ? uiIntergroupLabel(language, card.rawIntergroup) : uiGroupLabel(language, card.rawGroup)}</span>
                 {type === "group" && (
                   <span className="topic-inline-meta">
-                    <span>(STT:</span>
+                    <span>({t("stt", "STT")}:</span>
                     <strong className="score-box read-only">{card.reportOrder || ""}</strong>
                     <span>)</span>
                   </span>
                 )}
               </span>
               <label className="group-topic-compact-field grade-score-field">
-                <span>Điểm:</span>
+                <span>{t("score", "Điểm")}:</span>
                 <strong className="score-box">{card.score || ""}</strong>
               </label>
             </div>
           </div>
           {showTopic && (
             <div className="group-topic-topic-row">
-              <span>Topic:</span>
-              <p>{card.topicTitle || "Chưa có topic."}</p>
+              <span>{t("topic", "Topic")}:</span>
+              <p>{card.topicTitle || t("noTopic", "Chưa có topic.")}</p>
             </div>
           )}
           {type === "intergroup" ? (
             <div className="intergroup-member-list grade-intergroup-list">
               {card.visibleGroups.map((group) => (
                 <section className="intergroup-member-section" key={group.key}>
-                  <h5>{group.label}</h5>
+                  <h5>{uiGroupLabel(language, group.rawGroup)}</h5>
                   <ExamAllocatedMembersTable members={group.visibleMembers} course={course} score={card.score} admin={admin} />
                 </section>
               ))}
@@ -11091,9 +11226,11 @@ function ExamAllocatedGradebookCards({ admin, user, course, draftRows, type = "g
 }
 
 function ExamAllocatedMembersTable({ members, course, score, admin }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   return (
     <table className="data-table topic-members-table grade-members-table exam-allocated-members-table">
-      <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ tên</th><th>Mã số</th><th>Điểm</th><th>Email</th></tr></thead>
+      <thead><tr><th className="stt-col">{t("stt", "STT")}</th><th className="avatar-col">{t("photo", "Ảnh")}</th><th>{t("fullName", "Họ tên")}</th><th>{t("studentId", "Mã số")}</th><th>{t("score", "Điểm")}</th><th>{t("email", "Email")}</th></tr></thead>
       <tbody>
         {members.map((member) => (
           <tr key={member.email}>
@@ -11101,7 +11238,7 @@ function ExamAllocatedMembersTable({ members, course, score, admin }) {
             <td><ProfileAvatar user={{ ...member, photoURL: member.photoURL || course.profiles?.[member.email]?.photoURL || "" }} label={member.name || member.email} small /></td>
             <td>{member.name}</td>
             <td>{member.studentId}</td>
-            <td><span className="score-box final-score">{score || (admin ? "" : "Chưa có điểm")}</span></td>
+            <td><span className="score-box final-score">{score || (admin ? "" : t("noScore", "Chưa có điểm"))}</span></td>
             <td>{member.email}</td>
           </tr>
         ))}
@@ -11111,10 +11248,12 @@ function ExamAllocatedMembersTable({ members, course, score, admin }) {
 }
 
 function GroupGradebookCards({ admin, user, course, draftRows, onScoreChange = () => {}, onBonusChange = () => {}, readOnly = false, showTopic = true }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const cards = buildGroupGradeCards(course, draftRows, showTopic)
     .map((card) => ({ ...card, visibleMembers: visibleGradeMembers(card.members, admin, user) }))
     .filter((card) => card.visibleMembers.length > 0);
-  if (cards.length === 0) return <div className="empty-state compact-empty">Chưa có nhóm phù hợp.</div>;
+  if (cards.length === 0) return <div className="empty-state compact-empty">{t("noEligibleGroups", "Chưa có nhóm phù hợp.")}</div>;
 
   return (
     <div className="grade-topic-list">
@@ -11123,15 +11262,15 @@ function GroupGradebookCards({ admin, user, course, draftRows, onScoreChange = (
           <div className="group-topic-header">
             <div className="group-topic-bar grade-topic-bar">
               <span className="group-topic-badge topic-group-title">
-                <span>{card.label}</span>
+                <span>{uiGroupLabel(language, card.rawGroup)}</span>
                 <span className="topic-inline-meta">
-                  <span>(STT:</span>
+                  <span>({t("stt", "STT")}:</span>
                   <strong className="score-box read-only">{card.reportOrder || ""}</strong>
                   <span>)</span>
                 </span>
               </span>
               <label className="group-topic-compact-field grade-score-field">
-                <span>Điểm:</span>
+                <span>{t("score", "Điểm")}:</span>
                 {admin && !readOnly ? (
                   <input className="score-input" data-enter-group="group-grade-score" inputMode="decimal" value={card.score} onKeyDown={(event) => focusNextInputOnEnter(event, "group-grade-score")} onChange={(event) => onScoreChange(card.gradeKey, event.target.value)} />
                 ) : (
@@ -11141,8 +11280,8 @@ function GroupGradebookCards({ admin, user, course, draftRows, onScoreChange = (
             </div>
             {showTopic && (
               <div className="group-topic-topic-row">
-                <span>Topic:</span>
-                <p>{card.topicTitle || "Chưa có topic."}</p>
+                <span>{t("topic", "Topic")}:</span>
+                <p>{card.topicTitle || t("noTopic", "Chưa có topic.")}</p>
               </div>
             )}
           </div>
@@ -11156,6 +11295,8 @@ function GroupGradebookCards({ admin, user, course, draftRows, onScoreChange = (
 }
 
 function IntergroupGradebookCards({ admin, user, course, draftRows, onScoreChange = () => {}, onBonusChange = () => {}, readOnly = false, showTopic = true }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const cards = buildIntergroupGradeCards(course, draftRows, showTopic)
     .map((card) => ({
       ...card,
@@ -11164,7 +11305,7 @@ function IntergroupGradebookCards({ admin, user, course, draftRows, onScoreChang
         .filter((group) => group.visibleMembers.length > 0)
     }))
     .filter((card) => card.visibleGroups.length > 0);
-  if (cards.length === 0) return <div className="empty-state compact-empty">Chưa có liên nhóm phù hợp.</div>;
+  if (cards.length === 0) return <div className="empty-state compact-empty">{t("noEligibleIntergroups", "Chưa có liên nhóm phù hợp.")}</div>;
 
   return (
     <div className="grade-topic-list">
@@ -11172,9 +11313,9 @@ function IntergroupGradebookCards({ admin, user, course, draftRows, onScoreChang
         <section className="group-topic-card topic-editor-card grade-topic-card" key={card.gradeKey}>
           <div className="group-topic-header">
             <div className="group-topic-bar intergroup-grade-bar">
-              <span className="group-topic-badge">{card.label}</span>
+              <span className="group-topic-badge">{uiIntergroupLabel(language, card.rawIntergroup)}</span>
               <label className="group-topic-compact-field grade-score-field">
-                <span>Điểm:</span>
+                <span>{t("score", "Điểm")}:</span>
                 {admin && !readOnly ? (
                   <input className="score-input" data-enter-group="intergroup-grade-score" inputMode="decimal" value={card.score} onKeyDown={(event) => focusNextInputOnEnter(event, "intergroup-grade-score")} onChange={(event) => onScoreChange(card.gradeKey, event.target.value)} />
                 ) : (
@@ -11184,15 +11325,15 @@ function IntergroupGradebookCards({ admin, user, course, draftRows, onScoreChang
             </div>
             {showTopic && (
               <div className="group-topic-topic-row">
-                <span>Topic:</span>
-                <p>{card.topicTitle || "Chưa có topic."}</p>
+                <span>{t("topic", "Topic")}:</span>
+                <p>{card.topicTitle || t("noTopic", "Chưa có topic.")}</p>
               </div>
             )}
           </div>
           <div className="intergroup-member-list grade-intergroup-list">
             {card.visibleGroups.map((group) => (
               <section className="intergroup-member-section" key={group.key}>
-                <h5>{group.label}</h5>
+                <h5>{uiGroupLabel(language, group.rawGroup)}</h5>
                 <GradeMembersTable admin={admin} members={group.visibleMembers} course={course} score={card.score} bonuses={card.bonuses} rowKey={card.gradeKey} onBonusChange={onBonusChange} readOnly={readOnly} />
               </section>
             ))}
@@ -11204,9 +11345,11 @@ function IntergroupGradebookCards({ admin, user, course, draftRows, onScoreChang
 }
 
 function GradeMembersTable({ admin, members, course, score, bonuses, rowKey, onBonusChange = () => {}, readOnly = false }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   return (
     <table className="data-table topic-members-table grade-members-table">
-      <thead><tr><th className="stt-col">STT</th><th className="avatar-col">Ảnh</th><th>Họ tên</th><th>Mã số</th><th>Bonus</th><th>Final</th><th>Email</th></tr></thead>
+      <thead><tr><th className="stt-col">{t("stt", "STT")}</th><th className="avatar-col">{t("photo", "Ảnh")}</th><th>{t("fullName", "Họ tên")}</th><th>{t("studentId", "Mã số")}</th><th>Bonus</th><th>Final</th><th>{t("email", "Email")}</th></tr></thead>
       <tbody>
         {members.map((member) => {
           const bonus = bonuses?.[member.email] || "";
@@ -11224,7 +11367,7 @@ function GradeMembersTable({ admin, members, course, score, bonuses, rowKey, onB
                   bonus || ""
                 )}
               </td>
-              <td><span className="score-box final-score">{finalScore || (admin ? "" : "Chưa có điểm")}</span></td>
+              <td><span className="score-box final-score">{finalScore || (admin ? "" : t("noScore", "Chưa có điểm"))}</span></td>
               <td>{member.email}</td>
             </tr>
           );
