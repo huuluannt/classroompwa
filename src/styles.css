@@ -4048,6 +4048,9 @@ textarea { min-height: 88px; resize: vertical; }
   font-weight: 800;
   white-space: nowrap;
 }
+.exam-points-field.with-mode {
+  grid-template-columns: 58px minmax(108px, auto) auto;
+}
 .exam-points-field input {
   width: 58px;
   min-height: 30px;
@@ -4057,6 +4060,16 @@ textarea { min-height: 88px; resize: vertical; }
   color: #172033;
   padding: 4px 6px;
   text-align: center;
+  font-weight: 800;
+}
+.exam-checkbox-point-mode {
+  min-height: 30px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #fff;
+  color: #42526b;
+  padding: 3px 24px 3px 7px;
+  font-size: 13px;
   font-weight: 800;
 }
 .exam-points-field strong {

@@ -6189,6 +6189,11 @@ const EXAM_QUESTION_TYPES = [
   { value: "checkbox", label: "Checkbox" }
 ];
 
+const EXAM_CHECKBOX_POINT_MODES = [
+  { value: "question", label: "pts/question" },
+  { value: "option", label: "pts/option" }
+];
+
 function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, updateCourse }) {
   const requestConfirm = useConfirmAction();
   const language = useUiLanguage();
@@ -6311,6 +6316,12 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
   function updatePartPoints(partId, pointsPerQuestion) {
     updateSelectedExamParts((parts) => parts.map((part) => (
       part.id === partId ? { ...part, pointsPerQuestion } : part
+    )));
+  }
+
+  function updatePartCheckboxPointMode(partId, checkboxPointMode) {
+    updateSelectedExamParts((parts) => parts.map((part) => (
+      part.id === partId ? { ...part, checkboxPointMode: normalizeCheckboxPointMode(checkboxPointMode) } : part
     )));
   }
 
@@ -6547,10 +6558,12 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
               const collapsed = Boolean(collapsedParts[part.id]);
               const questionCount = questions.length || Number(part.totalQuestions || part.selectedQuestions || 0);
               const writtenAnswer = isWrittenExamQuestionType(part.questionType);
+              const checkboxAnswer = part.questionType === "checkbox";
+              const checkboxPointMode = normalizeCheckboxPointMode(part.checkboxPointMode);
               const pointPerQuestion = writtenAnswer
                 ? maxWrittenPointOption(part.writtenPointOptions)
                 : Number(part.pointsPerQuestion || 0);
-              const partScore = formatPointValue(pointPerQuestion * questionCount);
+              const partScore = formatPointValue(pointPerQuestion * examPartMaxPointUnits(part, questions, questionCount));
               return (
               <section className={`exam-part-card ${collapsed ? "collapsed" : ""}`} key={part.id}>
                 <div
@@ -6602,7 +6615,7 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
                       <strong>({partScore} {t("pointsUnit", "đ")})</strong>
                     </label>
                   ) : (
-                    <label className="exam-points-field" onClick={(event) => event.stopPropagation()}>
+                    <label className={`exam-points-field ${checkboxAnswer ? "with-mode" : ""}`} onClick={(event) => event.stopPropagation()}>
                       <input
                         value={part.pointsPerQuestion || ""}
                         inputMode="decimal"
@@ -6610,7 +6623,20 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
                         placeholder="0"
                         aria-label={normalizeLanguage(language) === "en" ? `Points per question for part ${index + 1}` : `Điểm mỗi câu phần ${index + 1}`}
                       />
-                      <span>{t("pointsPerQuestion", "đ/câu")}</span>
+                      {checkboxAnswer ? (
+                        <select
+                          className="exam-checkbox-point-mode"
+                          value={checkboxPointMode}
+                          aria-label={normalizeLanguage(language) === "en" ? `Checkbox point mode for part ${index + 1}` : `Cách tính điểm checkbox phần ${index + 1}`}
+                          onChange={(event) => updatePartCheckboxPointMode(part.id, event.target.value)}
+                        >
+                          {EXAM_CHECKBOX_POINT_MODES.map((mode) => (
+                            <option value={mode.value} key={mode.value}>{mode.label}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span>{t("pointsPerQuestion", "đ/câu")}</span>
+                      )}
                       <strong>({partScore} {t("pointsUnit", "đ")})</strong>
                     </label>
                   )}
@@ -6876,6 +6902,7 @@ function normalizeExamParts(parts) {
       questionType,
       questions,
       pointsPerQuestion: part.pointsPerQuestion || "",
+      checkboxPointMode: normalizeCheckboxPointMode(part.checkboxPointMode || part.checkboxScoringMode || part.pointMode),
       writtenPointOptions: normalizeWrittenPointOptions(part, questionType),
       selectedQuestions: questions.length || Number(part.selectedQuestions || 0),
       totalQuestions: questions.length || Number(part.totalQuestions || 0)
@@ -6920,6 +6947,7 @@ function defaultExamPart() {
     questionType: "multipleChoice",
     questions: [],
     pointsPerQuestion: "",
+    checkboxPointMode: "question",
     writtenPointOptions: "",
     selectedQuestions: 0,
     totalQuestions: 0
@@ -6943,6 +6971,7 @@ function createExamPart(index) {
     questionType: "multipleChoice",
     questions: [],
     pointsPerQuestion: "",
+    checkboxPointMode: "question",
     writtenPointOptions: "",
     selectedQuestions: 0,
     totalQuestions: 0,
@@ -6980,6 +7009,19 @@ function formatPointValue(value) {
 
 function isWrittenExamQuestionType(questionType) {
   return questionType === "shortAnswer" || questionType === "longAnswer";
+}
+
+function normalizeCheckboxPointMode(mode) {
+  return mode === "option" ? "option" : "question";
+}
+
+function examPartMaxPointUnits(part, questions = normalizeExamQuestions(part?.questions), fallbackQuestionCount = questions.length) {
+  if (part?.questionType === "checkbox" && normalizeCheckboxPointMode(part?.checkboxPointMode) === "option") {
+    return questions.reduce((total, question) => (
+      total + normalizeExamAnswers(question.answers).filter((answer) => answer.correct).length
+    ), 0);
+  }
+  return Number(fallbackQuestionCount || questions.length || part?.totalQuestions || part?.selectedQuestions || 0);
 }
 
 function normalizeWrittenPointOptions(part, questionType) {
@@ -7198,6 +7240,7 @@ async function readExamDocxParagraphs(file) {
 
 function parseMultipleChoiceDocxParagraphs(paragraphs) {
   const usesExplicitList = paragraphs.some((paragraph) => paragraph.hasListLevel);
+  if (!usesExplicitList) return parsePlainChoiceDocxParagraphs(paragraphs);
   const sourceParagraphs = usesExplicitList ? paragraphs.filter((paragraph) => paragraph.hasListLevel) : paragraphs;
   const questions = [];
   let currentQuestion = null;
@@ -7225,6 +7268,49 @@ function parseMultipleChoiceDocxParagraphs(paragraphs) {
   return questions
     .map((question) => ({ ...question, answers: normalizeExamAnswers(question.answers) }))
     .filter((question) => question.text.trim() && question.answers.length > 0);
+}
+
+function parsePlainChoiceDocxParagraphs(paragraphs) {
+  const questions = [];
+  let currentQuestion = null;
+
+  paragraphs.forEach((paragraph) => {
+    const text = stripListPrefix(paragraph.text);
+    if (!text) return;
+    const questionLike = isPlainExamQuestionText(text);
+    const answerLike = isPlainExamAnswerText(text);
+    if (!currentQuestion || (questionLike && (!answerLike || currentQuestion.answers.length > 0))) {
+      currentQuestion = {
+        id: crypto.randomUUID(),
+        text,
+        answers: [],
+        order: questions.length + 1
+      };
+      questions.push(currentQuestion);
+      return;
+    }
+
+    currentQuestion.answers.push({
+      id: crypto.randomUUID(),
+      text,
+      correct: paragraph.bold,
+      order: currentQuestion.answers.length + 1
+    });
+  });
+
+  return questions
+    .map((question) => ({ ...question, answers: normalizeExamAnswers(question.answers) }))
+    .filter((question) => question.text.trim() && question.answers.length > 0);
+}
+
+function isPlainExamQuestionText(text = "") {
+  const value = String(text || "").trim();
+  return /^(?:câu(?:\s+hỏi)?|question|q\s*\d+|\d+\s*[\).:-])/i.test(value) || value.endsWith("?");
+}
+
+function isPlainExamAnswerText(text = "") {
+  const value = String(text || "").trim();
+  return /^(?:đáp\s*án|answer|option|[A-H]\s*[\).:-])/i.test(value);
 }
 
 function parseWrittenAnswerDocxParagraphs(paragraphs, questionType) {
@@ -10015,6 +10101,7 @@ function createAssignmentExamSnapshot(exam) {
       id: part.id || crypto.randomUUID(),
       questionType: part.questionType || "multipleChoice",
       pointsPerQuestion: part.pointsPerQuestion || "",
+      checkboxPointMode: normalizeCheckboxPointMode(part.checkboxPointMode),
       writtenPointOptions: part.writtenPointOptions || "",
       questions: normalizeExamQuestions(part.questions).map((question) => ({
         id: question.id || crypto.randomUUID(),
@@ -10906,7 +10993,7 @@ function ExamAutoPartGradeTable({ course, rows, part, type = "personal" }) {
               <td>{row.member.order}</td>
               <td><ProfileAvatar user={row.member} label={row.member.name || row.member.email} small /></td>
               <td>{row.member.name || row.member.email}</td>
-              <td>{partResult.correctCount}/{partResult.questionCount}</td>
+              <td>{examAutoCorrectSummary(part, partResult)}</td>
               <td>{formatScoreNumber(partResult.score)}</td>
             </tr>
           );
@@ -11039,7 +11126,7 @@ function ExamScopeAutoPartGradeTable({ rows, part, type }) {
             <tr key={row.key}>
               <td>{examScopeRowTitle(row, type, language)}</td>
               <td>{examScopeRepresentativeLabel(row, language)}</td>
-              <td>{partResult.correctCount}/{partResult.questionCount}</td>
+              <td>{examAutoCorrectSummary(part, partResult)}</td>
               <td>{formatScoreNumber(partResult.score)}</td>
             </tr>
           );
@@ -11902,6 +11989,8 @@ function gradeExamPart(part, answers, questionScores) {
   return {
     questionCount: questions.length,
     correctCount: writtenAnswer ? 0 : questionResults.filter((result) => result.correct).length,
+    correctOptionCount: questionResults.reduce((total, result) => total + Number(result.correctOptionCount || 0), 0),
+    optionCount: questionResults.reduce((total, result) => total + Number(result.optionCount || 0), 0),
     score,
     questionResults
   };
@@ -11911,9 +12000,18 @@ function emptyExamPartResult(part) {
   return {
     questionCount: normalizeExamQuestions(part?.questions).length,
     correctCount: 0,
+    correctOptionCount: 0,
+    optionCount: 0,
     score: 0,
     questionResults: []
   };
+}
+
+function examAutoCorrectSummary(part, partResult = emptyExamPartResult(part)) {
+  if (part?.questionType === "checkbox" && normalizeCheckboxPointMode(part?.checkboxPointMode) === "option") {
+    return `${Number(partResult.correctOptionCount || 0)}/${Number(partResult.optionCount || 0)}`;
+  }
+  return `${Number(partResult.correctCount || 0)}/${Number(partResult.questionCount || 0)}`;
 }
 
 function gradeAutoExamQuestion(part, question, response) {
@@ -11923,8 +12021,16 @@ function gradeAutoExamQuestion(part, question, response) {
   if (questionType === "checkbox") {
     const correctIds = answers.filter((answer) => answer.correct).map((answer) => String(answer.id)).sort();
     const responseIds = (Array.isArray(response) ? response : []).map((answerId) => String(answerId)).sort();
+    const responseIdSet = new Set(responseIds);
+    const correctOptionCount = correctIds.filter((answerId) => responseIdSet.has(answerId)).length;
     const correct = correctIds.length > 0 && sameStringList(correctIds, responseIds);
-    return { correct, score: correct ? points : 0 };
+    const optionMode = normalizeCheckboxPointMode(part?.checkboxPointMode) === "option";
+    return {
+      correct,
+      correctOptionCount,
+      optionCount: correctIds.length,
+      score: optionMode ? correctOptionCount * points : (correct ? points : 0)
+    };
   }
   const correctAnswer = answers.find((answer) => answer.correct);
   const correct = Boolean(correctAnswer?.id && String(response || "") === String(correctAnswer.id));
