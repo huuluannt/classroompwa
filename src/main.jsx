@@ -923,6 +923,88 @@ function focusNextInputOnEnter(event, group) {
   nextInput.select?.();
 }
 
+function focusInputInEnterGroup(currentTarget, group, targetIndex) {
+  const scope = currentTarget.closest("[data-enter-scope]") || currentTarget.closest(".detail-panel") || document;
+  const inputs = [...scope.querySelectorAll(`[data-enter-group="${group}"]`)]
+    .filter((input) => !input.disabled && input.offsetParent !== null);
+  const targetInput = inputs[targetIndex];
+  targetInput?.focus();
+  targetInput?.select?.();
+}
+
+function isBlankClipboardRow(row) {
+  return row.every((cell) => String(cell || "").trim() === "");
+}
+
+function clipboardScoreHeaderIndex(row, aliases = ["score", "grade", "grades", "diem"]) {
+  return row.findIndex((cell) => {
+    const label = String(cell || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\u0111/g, "d");
+    return aliases.some((alias) => label === alias || label.includes(alias));
+  });
+}
+
+function clipboardScoreValue(cell) {
+  const text = String(cell || "").trim();
+  if (!text) return "";
+  const score = sanitizeScoreInput(text);
+  if (!/^-?\d+(?:[.,]\d+)?$/.test(score)) return "";
+  const numericScore = Number(score.replace(",", "."));
+  if (!Number.isFinite(numericScore) || Math.abs(numericScore) > 1000) return "";
+  return score;
+}
+
+function clipboardRowScoreValue(row, scoreColumnIndex = -1) {
+  if (scoreColumnIndex >= 0) return clipboardScoreValue(row[scoreColumnIndex]);
+  if (row.length === 1) return clipboardScoreValue(row[0]);
+  const lastCell = row[row.length - 1];
+  if (String(lastCell || "").trim() === "") return "";
+  const lastCellScore = clipboardScoreValue(lastCell);
+  if (hasScoreValue(lastCellScore)) return lastCellScore;
+  const scoreCells = row.map(clipboardScoreValue).filter(hasScoreValue);
+  return scoreCells[scoreCells.length - 1] || "";
+}
+
+function parseClipboardScoreValues(text, headerAliases) {
+  const rows = String(text || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((row) => row.split("\t"));
+  while (rows.length && isBlankClipboardRow(rows[rows.length - 1])) rows.pop();
+  while (rows.length && isBlankClipboardRow(rows[0])) rows.shift();
+  if (!rows.length) return [];
+
+  let scoreColumnIndex = clipboardScoreHeaderIndex(rows[0], headerAliases);
+  if (scoreColumnIndex >= 0 || (!hasScoreValue(clipboardRowScoreValue(rows[0])) && rows[0].some((cell) => String(cell || "").trim()))) {
+    rows.shift();
+  } else {
+    scoreColumnIndex = -1;
+  }
+  return rows.map((row) => clipboardRowScoreValue(row, scoreColumnIndex));
+}
+
+function pasteGradeScoresFromClipboard(event, rows, startIndex, onScoreChange, enterGroup, keyForRow = (row) => row.key, headerAliases) {
+  const text = event.clipboardData?.getData("text/plain") || "";
+  const scores = parseClipboardScoreValues(text, headerAliases);
+  const bulkPaste = scores.length > 1 || text.includes("\t");
+  if (!bulkPaste || !scores.length) return;
+  event.preventDefault();
+  const appliedScores = scores.slice(0, Math.max(0, rows.length - startIndex));
+  appliedScores.forEach((score, offset) => {
+    const row = rows[startIndex + offset];
+    if (row) onScoreChange(keyForRow(row), score);
+  });
+  const currentTarget = event.currentTarget;
+  window.requestAnimationFrame(() => {
+    focusInputInEnterGroup(currentTarget, enterGroup, startIndex + appliedScores.length - 1);
+  });
+}
+
 function readJoinCodeParam() {
   if (typeof window === "undefined") return "";
   return (new URLSearchParams(window.location.search).get("join") || "").trim().toUpperCase();
@@ -11248,7 +11330,7 @@ function PersonalGradeTable({ admin, user, course, draftRows, onScoreChange, rea
     <table className="data-table grade-personal-table">
       <thead><tr><th className="stt-col">{t("stt", "STT")}</th><th className="avatar-col">{t("photo", "Ảnh")}</th><th>{t("fullName", "Họ và tên")}</th><th>{t("studentId", "Mã số")}</th>{showTopic && <th>{t("topic", "Topic")}</th>}<th>{t("score", "Điểm")}</th><th>{t("email", "Email")}</th></tr></thead>
       <tbody>
-        {rows.map((row) => (
+        {rows.map((row, rowIndex) => (
           <tr key={row.key}>
             <td>{row.member.order}</td>
             <td><ProfileAvatar user={{ ...row.member, photoURL: row.member.photoURL || course.profiles?.[row.member.email]?.photoURL || "" }} label={row.member.name || row.member.email} small /></td>
@@ -11257,7 +11339,7 @@ function PersonalGradeTable({ admin, user, course, draftRows, onScoreChange, rea
             {showTopic && <td>{row.topicTitle || t("noTopic", "Chưa có topic.")}</td>}
             <td>
               {admin && !readOnly ? (
-                <input className="score-input" data-enter-group="personal-grade-score" inputMode="decimal" value={row.score} onKeyDown={(event) => focusNextInputOnEnter(event, "personal-grade-score")} onChange={(event) => onScoreChange(row.key, event.target.value)} />
+                <input className="score-input" data-enter-group="personal-grade-score" inputMode="decimal" value={row.score} onPaste={(event) => pasteGradeScoresFromClipboard(event, rows, rowIndex, onScoreChange, "personal-grade-score")} onKeyDown={(event) => focusNextInputOnEnter(event, "personal-grade-score")} onChange={(event) => onScoreChange(row.key, event.target.value)} />
               ) : (
                 row.score || resolvedEmptyScoreLabel
               )}
@@ -11366,11 +11448,15 @@ function GroupGradebookCards({ admin, user, course, draftRows, onScoreChange = (
   const cards = buildGroupGradeCards(course, draftRows, showTopic)
     .map((card) => ({ ...card, visibleMembers: visibleGradeMembers(card.members, admin, user) }))
     .filter((card) => card.visibleMembers.length > 0);
+  const bonusPasteRows = cards.flatMap((card) => card.visibleMembers.map((member) => ({
+    rowKey: card.gradeKey,
+    member
+  })));
   if (cards.length === 0) return <div className="empty-state compact-empty">{t("noEligibleGroups", "Chưa có nhóm phù hợp.")}</div>;
 
   return (
     <div className="grade-topic-list">
-      {cards.map((card) => (
+      {cards.map((card, cardIndex) => (
         <section className="group-topic-card topic-editor-card grade-topic-card" key={card.gradeKey}>
           <div className="group-topic-header">
             <div className="group-topic-bar grade-topic-bar">
@@ -11385,7 +11471,7 @@ function GroupGradebookCards({ admin, user, course, draftRows, onScoreChange = (
               <label className="group-topic-compact-field grade-score-field">
                 <span>{t("score", "Điểm")}:</span>
                 {admin && !readOnly ? (
-                  <input className="score-input" data-enter-group="group-grade-score" inputMode="decimal" value={card.score} onKeyDown={(event) => focusNextInputOnEnter(event, "group-grade-score")} onChange={(event) => onScoreChange(card.gradeKey, event.target.value)} />
+                  <input className="score-input" data-enter-group="group-grade-score" inputMode="decimal" value={card.score} onPaste={(event) => pasteGradeScoresFromClipboard(event, cards, cardIndex, onScoreChange, "group-grade-score", (item) => item.gradeKey)} onKeyDown={(event) => focusNextInputOnEnter(event, "group-grade-score")} onChange={(event) => onScoreChange(card.gradeKey, event.target.value)} />
                 ) : (
                   <strong className="score-box">{card.score || ""}</strong>
                 )}
@@ -11399,7 +11485,7 @@ function GroupGradebookCards({ admin, user, course, draftRows, onScoreChange = (
             )}
           </div>
           <div className="group-topic-table-wrap">
-            <GradeMembersTable admin={admin} members={card.visibleMembers} course={course} score={card.score} bonuses={card.bonuses} rowKey={card.gradeKey} onBonusChange={onBonusChange} readOnly={readOnly} />
+            <GradeMembersTable admin={admin} members={card.visibleMembers} course={course} score={card.score} bonuses={card.bonuses} rowKey={card.gradeKey} onBonusChange={onBonusChange} readOnly={readOnly} bonusPasteRows={bonusPasteRows} />
           </div>
         </section>
       ))}
@@ -11418,11 +11504,17 @@ function IntergroupGradebookCards({ admin, user, course, draftRows, onScoreChang
         .filter((group) => group.visibleMembers.length > 0)
     }))
     .filter((card) => card.visibleGroups.length > 0);
+  const bonusPasteRows = cards.flatMap((card) => card.visibleGroups.flatMap((group) => (
+    group.visibleMembers.map((member) => ({
+      rowKey: card.gradeKey,
+      member
+    }))
+  )));
   if (cards.length === 0) return <div className="empty-state compact-empty">{t("noEligibleIntergroups", "Chưa có liên nhóm phù hợp.")}</div>;
 
   return (
     <div className="grade-topic-list">
-      {cards.map((card) => (
+      {cards.map((card, cardIndex) => (
         <section className="group-topic-card topic-editor-card grade-topic-card" key={card.gradeKey}>
           <div className="group-topic-header">
             <div className="group-topic-bar intergroup-grade-bar">
@@ -11430,7 +11522,7 @@ function IntergroupGradebookCards({ admin, user, course, draftRows, onScoreChang
               <label className="group-topic-compact-field grade-score-field">
                 <span>{t("score", "Điểm")}:</span>
                 {admin && !readOnly ? (
-                  <input className="score-input" data-enter-group="intergroup-grade-score" inputMode="decimal" value={card.score} onKeyDown={(event) => focusNextInputOnEnter(event, "intergroup-grade-score")} onChange={(event) => onScoreChange(card.gradeKey, event.target.value)} />
+                  <input className="score-input" data-enter-group="intergroup-grade-score" inputMode="decimal" value={card.score} onPaste={(event) => pasteGradeScoresFromClipboard(event, cards, cardIndex, onScoreChange, "intergroup-grade-score", (item) => item.gradeKey)} onKeyDown={(event) => focusNextInputOnEnter(event, "intergroup-grade-score")} onChange={(event) => onScoreChange(card.gradeKey, event.target.value)} />
                 ) : (
                   <strong className="score-box">{card.score || ""}</strong>
                 )}
@@ -11447,7 +11539,7 @@ function IntergroupGradebookCards({ admin, user, course, draftRows, onScoreChang
             {card.visibleGroups.map((group) => (
               <section className="intergroup-member-section" key={group.key}>
                 <h5>{uiGroupLabel(language, group.rawGroup)}</h5>
-                <GradeMembersTable admin={admin} members={group.visibleMembers} course={course} score={card.score} bonuses={card.bonuses} rowKey={card.gradeKey} onBonusChange={onBonusChange} readOnly={readOnly} />
+                <GradeMembersTable admin={admin} members={group.visibleMembers} course={course} score={card.score} bonuses={card.bonuses} rowKey={card.gradeKey} onBonusChange={onBonusChange} readOnly={readOnly} bonusPasteRows={bonusPasteRows} />
               </section>
             ))}
           </div>
@@ -11457,9 +11549,10 @@ function IntergroupGradebookCards({ admin, user, course, draftRows, onScoreChang
   );
 }
 
-function GradeMembersTable({ admin, members, course, score, bonuses, rowKey, onBonusChange = () => {}, readOnly = false }) {
+function GradeMembersTable({ admin, members, course, score, bonuses, rowKey, onBonusChange = () => {}, readOnly = false, bonusPasteRows = null }) {
   const language = useUiLanguage();
   const t = (key, fallback = "") => uiText(language, key, fallback);
+  const resolvedBonusPasteRows = bonusPasteRows || members.map((member) => ({ rowKey, member }));
   return (
     <table className="data-table topic-members-table grade-members-table">
       <thead><tr><th className="stt-col">{t("stt", "STT")}</th><th className="avatar-col">{t("photo", "Ảnh")}</th><th>{t("fullName", "Họ tên")}</th><th>{t("studentId", "Mã số")}</th><th>Bonus</th><th>Final</th><th>{t("email", "Email")}</th></tr></thead>
@@ -11467,6 +11560,10 @@ function GradeMembersTable({ admin, members, course, score, bonuses, rowKey, onB
         {members.map((member) => {
           const bonus = bonuses?.[member.email] || "";
           const finalScore = calculateFinalScore(score, bonus);
+          const bonusPasteIndex = resolvedBonusPasteRows.findIndex((item) => (
+            String(item.rowKey || "") === String(rowKey || "")
+              && normalizeEmail(item.member?.email || "") === normalizeEmail(member.email || "")
+          ));
           return (
             <tr key={member.email}>
               <td>{member.order}</td>
@@ -11475,7 +11572,7 @@ function GradeMembersTable({ admin, members, course, score, bonuses, rowKey, onB
               <td>{member.studentId}</td>
               <td>
                 {admin && !readOnly ? (
-                  <input className="bonus-input" data-enter-group="grade-bonus" inputMode="decimal" value={bonus} onKeyDown={(event) => focusNextInputOnEnter(event, "grade-bonus")} onChange={(event) => onBonusChange(rowKey, member.email, event.target.value)} />
+                  <input className="bonus-input" data-enter-group="grade-bonus" inputMode="decimal" value={bonus} onPaste={(event) => pasteGradeScoresFromClipboard(event, resolvedBonusPasteRows, Math.max(0, bonusPasteIndex), (item, value) => onBonusChange(item.rowKey, item.member.email, value), "grade-bonus", (item) => item, ["bonus", "diem cong"])} onKeyDown={(event) => focusNextInputOnEnter(event, "grade-bonus")} onChange={(event) => onBonusChange(rowKey, member.email, event.target.value)} />
                 ) : (
                   bonus || ""
                 )}
