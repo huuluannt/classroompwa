@@ -2273,7 +2273,7 @@ function ClassRow({ course, selected, pinned, archived, archivedMode, owned, can
                   {archivedMode || archived ? t("unarchive") : t("archived")}
                 </button>
               )}
-              {canEdit && <button onClick={() => { onAction("edit", course); setOpen(false); }}>{t("edit")}</button>}
+              {canEdit && <button onClick={() => { onAction("edit", course); setOpen(false); }}><Pencil size={14} /> {t("edit")}</button>}
               {canDelete && <button onClick={() => { onAction("delete", course); setOpen(false); }}><Trash2 size={14} /> {t("delete")}</button>}
             </div>
           )}
@@ -6655,6 +6655,7 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
             })}
             <div className="exam-add-part-row">
               <button className="exam-add-part-button" type="button" onClick={addPart}>+ {t("addPart", "Add Part")}</button>
+              <SaveButton className="compact exam-save-button" dirty={examsDirty} saving={savingExam} onClick={saveExams} />
             </div>
           </div>
         </div>
@@ -8102,7 +8103,7 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
     <article className="expand-card">
       <div className="assignment-head">
         <button onClick={() => setOpen(!open)}>
-          <strong>{assignmentTitleWithRatio(assignment)}</strong>
+          <strong>{assignmentTitleWithRatio(assignment, language)}</strong>
           {userSubmissions.length > 0 && <small>Đã nộp {userSubmissions.length} lần</small>}
         </button>
         {admin && (
@@ -10074,8 +10075,11 @@ function examQuestionResponseKey(part, question) {
   return `${part?.id || "part"}:${question?.id || "question"}`;
 }
 
-function assignmentTitleWithRatio(assignment) {
-  return `${assignment?.title || "Bài tập"} (Tỉ lệ ${assignment?.ratio || "0"}%)`;
+function assignmentTitleWithRatio(assignment, language = "vi") {
+  const normalizedLanguage = normalizeLanguage(language);
+  const title = assignment?.title || (normalizedLanguage === "en" ? "Assignment" : "Bài tập");
+  const ratioLabel = normalizedLanguage === "en" ? "Weight" : "Tỉ lệ";
+  return `${title} (${ratioLabel} ${assignment?.ratio || "0"}%)`;
 }
 
 function assignmentAnnouncementContent(assignment) {
