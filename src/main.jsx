@@ -407,7 +407,23 @@ const UI_TEXT = {
     gradeExam: "Grade",
     noExamSelectedForAssignment: "No exam selected for this assignment.",
     noExamQuestions: "No questions in this exam.",
-    noSubmissionAvailable: "No submission yet."
+    noSubmissionAvailable: "No submission yet.",
+    duration: "Duration",
+    totalQuestions: "Total",
+    noQuestionsCreated: "No questions created yet",
+    addPart: "Add Part",
+    createNewExam: "Create new exam...",
+    editExamName: "Edit exam name",
+    deleteExam: "Delete exam",
+    deletePart: "Delete part",
+    deleteQuestion: "Delete question",
+    pointsPerQuestion: "pts/question",
+    pointsUnit: "pts",
+    pointLevelsHint: "Point levels separated by commas",
+    enterQuestion: "Enter question...",
+    oneLineAnswerInput: "One-line answer input",
+    multiLineAnswerInput: "Multi-line answer input",
+    answerOption: "Answer"
   }
 };
 
@@ -6175,6 +6191,8 @@ const EXAM_QUESTION_TYPES = [
 
 function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, updateCourse }) {
   const requestConfirm = useConfirmAction();
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const [selectedExamId, setSelectedExamId] = useState(() => normalizeExams(course.exams)[0]?.id || "");
   const [draftExams, setDraftExams] = useState(() => normalizeExams(course.exams));
   const [collapsedParts, setCollapsedParts] = useState({});
@@ -6466,7 +6484,7 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
   return (
     <div className="exam-builder">
       <div className="exam-panel-head">
-        <h3>Đề thi (only Lecturer)</h3>
+        <h3>{uiCardLabel(language, "exams", "Đề thi (only Lecturer)")}</h3>
         <div className="exam-head-actions">
           <ExamDropdown
             exams={draftExams}
@@ -6508,7 +6526,7 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
             <div className="exam-detail-title-row">
               <h2>{selectedExam.title}</h2>
               <label className="exam-duration-field">
-                <span>Thời gian:</span>
+                <span>{t("duration", "Thời gian")}:</span>
                 <input
                   value={selectedExam.duration || ""}
                   onChange={(event) => updateSelectedExam({ duration: event.target.value })}
@@ -6548,11 +6566,11 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
                     }
                   }}
                 >
-                  {selectedParts.length > 1 && <strong>Phần {toRomanNumeral(index + 1)}.</strong>}
+                  {selectedParts.length > 1 && <strong>{t("part", "Phần")} {toRomanNumeral(index + 1)}.</strong>}
                   <select
                     className="exam-question-select"
                     value={part.questionType}
-                    aria-label={`Loại câu hỏi phần ${index + 1}`}
+                    aria-label={normalizeLanguage(language) === "en" ? `Question type for part ${index + 1}` : `Loại câu hỏi phần ${index + 1}`}
                     onClick={(event) => event.stopPropagation()}
                     onChange={(event) => updatePartType(part.id, event.target.value)}
                   >
@@ -6573,15 +6591,15 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
                     />
                   </label>
                   {writtenAnswer ? (
-                    <label className="exam-written-points-field" onClick={(event) => event.stopPropagation()} title="Các mức điểm cách nhau bằng dấu phẩy">
+                    <label className="exam-written-points-field" onClick={(event) => event.stopPropagation()} title={t("pointLevelsHint", "Các mức điểm cách nhau bằng dấu phẩy")}>
                       <input
                         value={part.writtenPointOptions || ""}
                         inputMode="text"
                         onChange={(event) => updatePartWrittenPointOptions(part.id, event.target.value)}
                         placeholder="0, 0.25, 0.5, 0.75"
-                        aria-label={`Các mức điểm phần ${index + 1}`}
+                        aria-label={normalizeLanguage(language) === "en" ? `Point levels for part ${index + 1}` : `Các mức điểm phần ${index + 1}`}
                       />
-                      <strong>({partScore} đ)</strong>
+                      <strong>({partScore} {t("pointsUnit", "đ")})</strong>
                     </label>
                   ) : (
                     <label className="exam-points-field" onClick={(event) => event.stopPropagation()}>
@@ -6590,18 +6608,18 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
                         inputMode="decimal"
                         onChange={(event) => updatePartPoints(part.id, event.target.value)}
                         placeholder="0"
-                        aria-label={`Điểm mỗi câu phần ${index + 1}`}
+                        aria-label={normalizeLanguage(language) === "en" ? `Points per question for part ${index + 1}` : `Điểm mỗi câu phần ${index + 1}`}
                       />
-                      <span>đ/câu</span>
-                      <strong>({partScore} đ)</strong>
+                      <span>{t("pointsPerQuestion", "đ/câu")}</span>
+                      <strong>({partScore} {t("pointsUnit", "đ")})</strong>
                     </label>
                   )}
-                  <span className="exam-total">Tổng số: {questionCount} câu</span>
+                  <span className="exam-total">{t("totalQuestions", "Tổng số")}: {questionCount} {t("questions", "câu")}</span>
                   <button
                     className="exam-part-delete"
                     type="button"
-                    title="Xóa part"
-                    aria-label={`Xóa part ${index + 1}`}
+                    title={t("deletePart", "Xóa part")}
+                    aria-label={normalizeLanguage(language) === "en" ? `Delete part ${index + 1}` : `Xóa part ${index + 1}`}
                     onClick={(event) => {
                       event.stopPropagation();
                       deletePart(part.id);
@@ -6613,7 +6631,7 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
                 {!collapsed && (
                   <div className="exam-part-body">
                     {questions.length === 0 ? (
-                      <div className="exam-empty-questions">Chưa có câu hỏi được tạo</div>
+                      <div className="exam-empty-questions">{t("noQuestionsCreated", "Chưa có câu hỏi được tạo")}</div>
                     ) : (
                       <div className="exam-question-list">
                         {questions.map((question, questionIndex) => (
@@ -6636,7 +6654,7 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
               );
             })}
             <div className="exam-add-part-row">
-              <button className="exam-add-part-button" type="button" onClick={addPart}>+ Add Part</button>
+              <button className="exam-add-part-button" type="button" onClick={addPart}>+ {t("addPart", "Add Part")}</button>
             </div>
           </div>
         </div>
@@ -6646,6 +6664,8 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
 }
 
 function ExamDropdown({ exams, selectedExam, onCreateExam, onSelectExam, onRenameExam, onDeleteExam }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const [open, setOpen] = useState(false);
   const [editingExamId, setEditingExamId] = useState("");
   const [titleDraft, setTitleDraft] = useState("");
@@ -6668,7 +6688,7 @@ function ExamDropdown({ exams, selectedExam, onCreateExam, onSelectExam, onRenam
   return (
     <div className="exam-dropdown" ref={dropdownRef}>
       <button className="exam-select-trigger" type="button" onClick={() => setOpen((current) => !current)} aria-haspopup="listbox" aria-expanded={open}>
-        <span>{selectedExam?.title || "Đề thi"}</span>
+        <span>{selectedExam?.title || t("exam", "Đề thi")}</span>
         <ChevronDown size={16} />
       </button>
       {open && (
@@ -6677,7 +6697,7 @@ function ExamDropdown({ exams, selectedExam, onCreateExam, onSelectExam, onRenam
             onCreateExam();
             setOpen(false);
           }}>
-            Tạo đề thi mới...
+            {t("createNewExam", "Tạo đề thi mới...")}
           </button>
           {exams.map((exam) => {
             const editing = editingExamId === exam.id;
@@ -6705,13 +6725,13 @@ function ExamDropdown({ exams, selectedExam, onCreateExam, onSelectExam, onRenam
                   </button>
                 )}
                 <div className="exam-dropdown-icons">
-                  <button type="button" title="Sửa tên đề thi" aria-label={`Sửa tên ${exam.title}`} onClick={(event) => {
+                  <button type="button" title={t("editExamName", "Sửa tên đề thi")} aria-label={normalizeLanguage(language) === "en" ? `Edit ${exam.title}` : `Sửa tên ${exam.title}`} onClick={(event) => {
                     event.stopPropagation();
                     startEditing(exam);
                   }}>
                     <Pencil size={14} />
                   </button>
-                  <button type="button" title="Xóa đề thi" aria-label={`Xóa ${exam.title}`} onClick={(event) => {
+                  <button type="button" title={t("deleteExam", "Xóa đề thi")} aria-label={normalizeLanguage(language) === "en" ? `Delete ${exam.title}` : `Xóa ${exam.title}`} onClick={(event) => {
                     event.stopPropagation();
                     setOpen(false);
                     onDeleteExam(exam);
@@ -6767,14 +6787,16 @@ function ExamFormTemplateMenu({ templates, supreme, uploadingType, onDownload, o
 }
 
 function ExamQuestionEditor({ part, question, questionIndex, onQuestionChange, onAnswerChange, onCorrectChange, onDelete }) {
+  const language = useUiLanguage();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   const answers = normalizeExamAnswers(question.answers);
   const multipleChoice = part.questionType === "multipleChoice";
   const writtenAnswer = part.questionType === "shortAnswer" || part.questionType === "longAnswer";
   return (
     <article className="exam-question-row">
       <div className="exam-question-head">
-        <strong>Câu {questionIndex + 1}</strong>
-        <button className="icon-danger" type="button" onClick={onDelete} title="Xóa câu hỏi" aria-label={`Xóa câu hỏi ${questionIndex + 1}`}>
+        <strong>{t("question", "Câu")} {questionIndex + 1}</strong>
+        <button className="icon-danger" type="button" onClick={onDelete} title={t("deleteQuestion", "Xóa câu hỏi")} aria-label={normalizeLanguage(language) === "en" ? `Delete question ${questionIndex + 1}` : `Xóa câu hỏi ${questionIndex + 1}`}>
           <Trash2 size={14} />
         </button>
       </div>
@@ -6782,7 +6804,7 @@ function ExamQuestionEditor({ part, question, questionIndex, onQuestionChange, o
         className="exam-question-text"
         value={question.text || ""}
         onChange={(event) => onQuestionChange({ text: event.target.value })}
-        placeholder="Nhập câu hỏi..."
+        placeholder={t("enterQuestion", "Nhập câu hỏi...")}
       />
       {writtenAnswer ? (
         <div className="exam-written-answer-preview">
@@ -6790,15 +6812,15 @@ function ExamQuestionEditor({ part, question, questionIndex, onQuestionChange, o
             <input
               className="exam-written-answer-input"
               readOnly
-              placeholder="Ô nhập câu trả lời 1 dòng"
-              aria-label="Ô nhập câu trả lời 1 dòng"
+              placeholder={t("oneLineAnswerInput", "Ô nhập câu trả lời 1 dòng")}
+              aria-label={t("oneLineAnswerInput", "Ô nhập câu trả lời 1 dòng")}
             />
           ) : (
             <textarea
               className="exam-written-answer-input long"
               readOnly
-              placeholder="Ô nhập câu trả lời nhiều dòng"
-              aria-label="Ô nhập câu trả lời nhiều dòng"
+              placeholder={t("multiLineAnswerInput", "Ô nhập câu trả lời nhiều dòng")}
+              aria-label={t("multiLineAnswerInput", "Ô nhập câu trả lời nhiều dòng")}
             />
           )}
         </div>
@@ -6816,7 +6838,7 @@ function ExamQuestionEditor({ part, question, questionIndex, onQuestionChange, o
               <input
                 value={answer.text || ""}
                 onChange={(event) => onAnswerChange(answer.id, { text: event.target.value })}
-                placeholder={`Đáp án ${answerIndex + 1}`}
+                placeholder={`${t("answerOption", "Đáp án")} ${answerIndex + 1}`}
               />
             </label>
           ))}
@@ -9094,7 +9116,7 @@ function AssignmentReviewerWorkspace({ admin, course, user, assignment, target, 
         <textarea
           value={questionDraft}
           onChange={(event) => setQuestionDraft(event.target.value)}
-          placeholder="Nhập câu hỏi..."
+          placeholder={t("enterQuestion", "Nhập câu hỏi...")}
           disabled={sendingQuestion}
         />
         <button className="primary-action compact" type="submit" disabled={sendingQuestion || !questionDraft.trim()}>
