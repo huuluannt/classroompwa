@@ -320,6 +320,18 @@ const UI_TEXT = {
     membersLecturer: "Lecturer",
     membersLecturerOwner: "Lecturer (owner)",
     studentList: "Student list",
+    add: "Add",
+    invite: "Invite",
+    lecturerEmailPlaceholder: "Enter lecturer email",
+    virtualLearnersTitle: "Virtual learners",
+    virtualLearnersInClass: "{current}/{max} virtual learners in class",
+    quantity: "Quantity",
+    virtualLearnerQuantityAria: "Number of virtual learners to add",
+    addVirtualLearners: "Add virtual learners",
+    removeVirtualLearners: "Remove virtual learners",
+    removeVirtualLearnersTitle: "Remove virtual learners?",
+    removeVirtualLearnersConfirm: "Are you sure you want to remove {count} virtual learners from this class? Their posts, submissions, and test data will also be removed.",
+    removeVirtualLearnersConfirmLabel: "Remove virtual learners",
     stt: "No.",
     photo: "Photo",
     fullName: "Full name",
@@ -3228,7 +3240,7 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
           canManageCourseLecturers && (
             <div className="material-add-wrap lecturer-invite-wrap" ref={lecturerAddRef}>
               <button className="material-add-button lecturer-add-button" type="button" onClick={() => setLecturerAddOpen((current) => !current)}>
-                <Plus size={14} /> Add
+                <Plus size={14} /> {t("add", "Thêm")}
               </button>
               {lecturerAddOpen && (
                 <div className="material-add-popover lecturer-invite-popover">
@@ -3238,11 +3250,11 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
                     onKeyDown={(event) => {
                       if (event.key === "Enter") addCourseLecturer();
                     }}
-                    placeholder="Nhập email giảng viên"
+                    placeholder={t("lecturerEmailPlaceholder", "Nhập email giảng viên")}
                   />
                   <div className="material-upload-actions">
                     <button className="primary-action compact dark-action" type="button" onClick={addCourseLecturer}>
-                      <UserPlus size={14} /> Invite
+                      <UserPlus size={14} /> {t("invite", "Mời")}
                     </button>
                   </div>
                 </div>
@@ -3304,36 +3316,36 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
             {admin && (
               <div className="material-add-wrap virtual-member-wrap" ref={virtualAddRef}>
                 <button className="material-add-button virtual-add-button" type="button" onClick={() => setVirtualAddOpen((current) => !current)}>
-                  <Plus size={14} /> Add
+                  <Plus size={14} /> {t("add", "Thêm")}
                 </button>
                 {virtualAddOpen && (
                   <div className="material-add-popover virtual-member-popover">
                     <div className="virtual-member-summary">
-                      <strong>Học viên ảo</strong>
-                      <small>{virtualMembers.length}/{MAX_VIRTUAL_MEMBERS} học viên ảo trong lớp</small>
+                      <strong>{t("virtualLearnersTitle", "Học viên ảo")}</strong>
+                      <small>{t("virtualLearnersInClass", "{current}/{max} học viên ảo trong lớp").replace("{current}", virtualMembers.length).replace("{max}", MAX_VIRTUAL_MEMBERS)}</small>
                     </div>
                     <label className="virtual-member-field">
-                      <span>Số lượng</span>
+                      <span>{t("quantity", "Số lượng")}</span>
                       <input
                         className="virtual-count-input"
                         inputMode="numeric"
                         value={virtualCountDraft}
                         onChange={(event) => updateVirtualCountDraft(event.target.value)}
                         disabled={virtualRemaining <= 0}
-                        aria-label="Số lượng học viên ảo muốn thêm"
+                        aria-label={t("virtualLearnerQuantityAria", "Số lượng học viên ảo muốn thêm")}
                       />
                     </label>
                     <div className="material-upload-actions virtual-member-popover-actions">
                       <button className="primary-action compact" type="button" onClick={addVirtualMembers} disabled={virtualRemaining <= 0 || !Number(cleanNumberText(virtualCountDraft))}>
-                        <Plus size={14} /> Thêm học viên ảo
+                        <Plus size={14} /> {t("addVirtualLearners", "Thêm học viên ảo")}
                       </button>
                       {virtualMembers.length > 0 && (
                         <button className="secondary-action compact virtual-remove-button" type="button" onClick={() => requestConfirm({
-                          title: "Remove học viên ảo?",
-                          message: `Bạn có chắc muốn remove ${virtualMembers.length} học viên ảo khỏi lớp không? Bài đăng, bài nộp và dữ liệu test của học viên ảo cũng sẽ bị xóa khỏi class.`,
-                          confirmLabel: "Remove học viên ảo"
+                          title: t("removeVirtualLearnersTitle", "Remove học viên ảo?"),
+                          message: t("removeVirtualLearnersConfirm", "Bạn có chắc muốn remove {count} học viên ảo khỏi lớp không? Bài đăng, bài nộp và dữ liệu test của học viên ảo cũng sẽ bị xóa khỏi class.").replace("{count}", virtualMembers.length),
+                          confirmLabel: t("removeVirtualLearnersConfirmLabel", "Remove học viên ảo")
                         }, removeVirtualMembers)}>
-                          <Trash2 size={14} /> Remove học viên ảo
+                          <Trash2 size={14} /> {t("removeVirtualLearners", "Remove học viên ảo")}
                         </button>
                       )}
                     </div>
