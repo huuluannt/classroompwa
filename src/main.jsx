@@ -936,16 +936,38 @@ function isBlankClipboardRow(row) {
   return row.every((cell) => String(cell || "").trim() === "");
 }
 
-function clipboardScoreHeaderIndex(row, aliases = ["score", "grade", "grades", "diem"]) {
+function clipboardRowsFromText(text) {
+  const rows = String(text || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((row) => row.split("\t"));
+  while (rows.length && isBlankClipboardRow(rows[rows.length - 1])) rows.pop();
+  while (rows.length && isBlankClipboardRow(rows[0])) rows.shift();
+  return rows;
+}
+
+function normalizeClipboardHeaderText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\u0111/g, "d")
+    .replace(/\u0110/g, "d");
+}
+
+function clipboardColumnHeaderIndex(row, aliases = []) {
+  const normalizedAliases = aliases.map(normalizeClipboardHeaderText).filter(Boolean);
+  if (!normalizedAliases.length) return -1;
   return row.findIndex((cell) => {
-    const label = String(cell || "")
-      .trim()
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/\u0111/g, "d");
-    return aliases.some((alias) => label === alias || label.includes(alias));
+    const label = normalizeClipboardHeaderText(cell);
+    return normalizedAliases.some((alias) => label === alias || label.includes(alias));
   });
+}
+
+function clipboardScoreHeaderIndex(row, aliases = ["score", "grade", "grades", "diem"]) {
+  return clipboardColumnHeaderIndex(row, aliases);
 }
 
 function clipboardScoreValue(cell) {
@@ -970,13 +992,7 @@ function clipboardRowScoreValue(row, scoreColumnIndex = -1) {
 }
 
 function parseClipboardScoreValues(text, headerAliases) {
-  const rows = String(text || "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .split("\n")
-    .map((row) => row.split("\t"));
-  while (rows.length && isBlankClipboardRow(rows[rows.length - 1])) rows.pop();
-  while (rows.length && isBlankClipboardRow(rows[0])) rows.shift();
+  const rows = clipboardRowsFromText(text);
   if (!rows.length) return [];
 
   let scoreColumnIndex = clipboardScoreHeaderIndex(rows[0], headerAliases);
@@ -986,6 +1002,127 @@ function parseClipboardScoreValues(text, headerAliases) {
     scoreColumnIndex = -1;
   }
   return rows.map((row) => clipboardRowScoreValue(row, scoreColumnIndex));
+}
+
+function clipboardPlainTextValue(cell) {
+  return String(cell || "").trim();
+}
+
+function clipboardNumberTextValue(cell) {
+  return cleanNumberText(cell);
+}
+
+function clipboardRowColumnValue(row, columnIndex = -1, valueForCell = clipboardPlainTextValue) {
+  if (columnIndex >= 0) return valueForCell(row[columnIndex]);
+  if (row.length === 1) return valueForCell(row[0]);
+  const lastNonEmpty = [...row].reverse().find((cell) => String(cell || "").trim() !== "");
+  return valueForCell(lastNonEmpty);
+}
+
+function parseClipboardColumnValues(text, headerAliases = [], valueForCell = clipboardPlainTextValue) {
+  const rows = clipboardRowsFromText(text);
+  if (!rows.length) return [];
+
+  let columnIndex = clipboardColumnHeaderIndex(rows[0], headerAliases);
+  if (columnIndex >= 0 || (!clipboardRowColumnValue(rows[0], -1, valueForCell) && rows[0].some((cell) => String(cell || "").trim()))) {
+    rows.shift();
+  } else {
+    columnIndex = -1;
+  }
+  return rows.map((row) => clipboardRowColumnValue(row, columnIndex, valueForCell));
+}
+
+function pasteColumnValuesFromClipboard(event, rows, startIndex, onValueChange, enterGroup, options = {}) {
+  const text = event.clipboardData?.getData("text/plain") || "";
+  const values = parseClipboardColumnValues(text, options.headerAliases, options.valueForCell);
+  const bulkPaste = values.length > 1 || text.includes("\t");
+  if (!bulkPaste || !values.length) return false;
+  event.preventDefault();
+  const appliedValues = values.slice(0, Math.max(0, rows.length - startIndex));
+  appliedValues.forEach((value, offset) => {
+    const row = rows[startIndex + offset];
+    if (row) onValueChange(row, value, startIndex + offset);
+  });
+  const currentTarget = event.currentTarget;
+  window.requestAnimationFrame(() => {
+    focusInputInEnterGroup(currentTarget, enterGroup, startIndex + appliedValues.length - 1);
+  });
+  return true;
+}
+
+const SCHEDULE_CLIPBOARD_FIELDS = {
+  weekNumber: ["week", "tuan"],
+  date: ["date", "ngay"],
+  content: ["content", "noi dung"]
+};
+
+function clipboardScheduleContentValue(value) {
+  const text = clipboardPlainTextValue(value);
+  if (typeof document === "undefined") return text;
+  const container = document.createElement("div");
+  container.textContent = text;
+  return container.innerHTML.replace(/\n/g, "<br>");
+}
+
+function scheduleClipboardHeaderIndexes(row) {
+  return {
+    weekNumber: clipboardColumnHeaderIndex(row, SCHEDULE_CLIPBOARD_FIELDS.weekNumber),
+    date: clipboardColumnHeaderIndex(row, SCHEDULE_CLIPBOARD_FIELDS.date),
+    content: clipboardColumnHeaderIndex(row, SCHEDULE_CLIPBOARD_FIELDS.content)
+  };
+}
+
+function scheduleClipboardPatchFromRow(row, headerIndexes, anchorField) {
+  const patch = {};
+  if (headerIndexes) {
+    if (headerIndexes.weekNumber >= 0) patch.weekNumber = clipboardNumberTextValue(row[headerIndexes.weekNumber]);
+    if (headerIndexes.date >= 0) patch.date = clipboardPlainTextValue(row[headerIndexes.date]);
+    if (headerIndexes.content >= 0) patch.content = clipboardScheduleContentValue(row[headerIndexes.content]);
+    return patch;
+  }
+
+  if (anchorField === "weekNumber") {
+    patch.weekNumber = clipboardNumberTextValue(row[0]);
+    if (row.length > 1) patch.date = clipboardPlainTextValue(row[1]);
+    if (row.length > 2) patch.content = clipboardScheduleContentValue(row.slice(2).join("\t"));
+    return patch;
+  }
+  if (anchorField === "date") {
+    patch.date = clipboardPlainTextValue(row[0]);
+    if (row.length > 1) patch.content = clipboardScheduleContentValue(row.slice(1).join("\t"));
+    return patch;
+  }
+  patch.content = clipboardScheduleContentValue(row.length > 1 ? clipboardRowColumnValue(row) : row[0]);
+  return patch;
+}
+
+function parseScheduleClipboardRows(text, anchorField) {
+  const rows = clipboardRowsFromText(text);
+  if (!rows.length) return [];
+  const headerIndexes = scheduleClipboardHeaderIndexes(rows[0]);
+  const hasHeader = Object.values(headerIndexes).some((index) => index >= 0);
+  if (hasHeader) rows.shift();
+  return rows
+    .map((row) => scheduleClipboardPatchFromRow(row, hasHeader ? headerIndexes : null, anchorField))
+    .filter((patch) => Object.values(patch).some((value) => String(value || "").trim() !== ""));
+}
+
+function pasteScheduleRowsFromClipboard(event, rows, startIndex, anchorField, onRowChange, enterGroup) {
+  const text = event.clipboardData?.getData("text/plain") || "";
+  const patches = parseScheduleClipboardRows(text, anchorField);
+  const bulkPaste = patches.length > 1 || text.includes("\t");
+  if (!bulkPaste || !patches.length) return false;
+  event.preventDefault();
+  const appliedPatches = patches.slice(0, Math.max(0, rows.length - startIndex));
+  appliedPatches.forEach((patch, offset) => {
+    const row = rows[startIndex + offset];
+    if (row) onRowChange(row, patch);
+  });
+  const currentTarget = event.currentTarget;
+  window.requestAnimationFrame(() => {
+    focusInputInEnterGroup(currentTarget, enterGroup, startIndex + appliedPatches.length - 1);
+  });
+  return true;
 }
 
 function pasteGradeScoresFromClipboard(event, rows, startIndex, onScoreChange, enterGroup, keyForRow = (row) => row.key, headerAliases) {
@@ -3240,9 +3377,9 @@ function MembersTable({ admin, canManageCourseLecturers, canEditMembers, course,
     <table className="data-table members-table">
       <thead><tr><th className="stt-col">{t("stt", "STT")}</th><th className="avatar-col">{t("photo", "Ảnh")}</th><th>{t("fullName", "Họ và tên")}</th><th>{t("group", "Nhóm")}</th><th>{t("studentId", "Mã số")}</th><th>{t("email", "Email")}</th>{admin && <th />}</tr></thead>
       <tbody>
-        {members.map((member) => (
+        {members.map((member, memberIndex) => (
           <tr key={member.email}>
-            <td>{canEditMembers ? <input className="order-input" data-enter-group="member-order" inputMode="numeric" value={memberDrafts[member.email]?.order ?? String(member.order || "")} onKeyDown={(event) => focusNextInputOnEnter(event, "member-order")} onChange={(event) => onDraftChange(member.email, "order", event.target.value)} /> : member.order}</td>
+            <td>{canEditMembers ? <input className="order-input" data-enter-group="member-order" inputMode="numeric" value={memberDrafts[member.email]?.order ?? String(member.order || "")} onPaste={(event) => pasteColumnValuesFromClipboard(event, members, memberIndex, (targetMember, value) => onDraftChange(targetMember.email, "order", value), "member-order", { headerAliases: ["stt", "no", "no.", "order"], valueForCell: clipboardNumberTextValue })} onKeyDown={(event) => focusNextInputOnEnter(event, "member-order")} onChange={(event) => onDraftChange(member.email, "order", event.target.value)} /> : member.order}</td>
             <td><ProfileAvatar user={{ ...member, photoURL: member.photoURL || course.profiles?.[member.email]?.photoURL || "" }} label={member.name || member.email} small /></td>
             <td>
               <span className="member-name-cell">
@@ -3253,7 +3390,7 @@ function MembersTable({ admin, canManageCourseLecturers, canEditMembers, course,
                 {isClassLeaderMember(member) && <span className="leader-badge"><Crown size={12} /> {t("classLeader", "Lớp trưởng")}</span>}
               </span>
             </td>
-            <td>{canEditMembers ? <input className="group-input" data-enter-group="member-group" inputMode="numeric" value={memberDrafts[member.email]?.group ?? String(member.group || "")} onKeyDown={(event) => focusNextInputOnEnter(event, "member-group")} onChange={(event) => onDraftChange(member.email, "group", event.target.value)} /> : member.group || ""}</td>
+            <td>{canEditMembers ? <input className="group-input" data-enter-group="member-group" inputMode="numeric" value={memberDrafts[member.email]?.group ?? String(member.group || "")} onPaste={(event) => pasteColumnValuesFromClipboard(event, members, memberIndex, (targetMember, value) => onDraftChange(targetMember.email, "group", value), "member-group", { headerAliases: ["group", "nhom"], valueForCell: clipboardNumberTextValue })} onKeyDown={(event) => focusNextInputOnEnter(event, "member-group")} onChange={(event) => onDraftChange(member.email, "group", event.target.value)} /> : member.group || ""}</td>
             <td>{member.studentId}</td>
             <td>{displayMemberEmail(member)}</td>
             {admin && (
@@ -4669,15 +4806,18 @@ function ScheduleCard({ admin, course, updateCourse }) {
             <tr><th>{t("week", "Tuần")}</th><th>{t("date", "Ngày")}</th><th>{t("content", "Nội dung")}</th></tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {rows.map((row, rowIndex) => (
               <tr key={row.id}>
                 <td>
                   {admin ? (
                     <label className="schedule-week-input">
                       <span>{t("week", "Tuần")}</span>
                       <input
+                        data-enter-group="schedule-week"
                         inputMode="numeric"
                         value={row.weekNumber}
+                        onPaste={(event) => pasteScheduleRowsFromClipboard(event, rows, rowIndex, "weekNumber", (targetRow, patch) => updateRow(targetRow.id, patch), "schedule-week")}
+                        onKeyDown={(event) => focusNextInputOnEnter(event, "schedule-week")}
                         onChange={(event) => updateRow(row.id, { weekNumber: event.target.value.replace(/\D/g, "") })}
                         aria-label="Số tuần"
                       />
@@ -4688,7 +4828,7 @@ function ScheduleCard({ admin, course, updateCourse }) {
                 </td>
                 <td>
                   {admin ? (
-                    <input className="schedule-date-input" value={row.date || ""} onChange={(event) => updateRow(row.id, { date: event.target.value })} placeholder="Ngày" />
+                    <input className="schedule-date-input" data-enter-group="schedule-date" value={row.date || ""} onPaste={(event) => pasteScheduleRowsFromClipboard(event, rows, rowIndex, "date", (targetRow, patch) => updateRow(targetRow.id, patch), "schedule-date")} onKeyDown={(event) => focusNextInputOnEnter(event, "schedule-date")} onChange={(event) => updateRow(row.id, { date: event.target.value })} placeholder="Ngày" />
                   ) : (
                     row.date || ""
                   )}
@@ -4698,7 +4838,9 @@ function ScheduleCard({ admin, course, updateCourse }) {
                     <RichTextCell
                       value={row.content || ""}
                       readOnly={!admin}
+                      enterGroup={admin ? "schedule-content" : ""}
                       onFocus={(element) => { activeEditorRef.current = element; }}
+                      onPaste={(event) => pasteScheduleRowsFromClipboard(event, rows, rowIndex, "content", (targetRow, patch) => updateRow(targetRow.id, patch), "schedule-content")}
                       onChange={(value) => updateRow(row.id, { content: value })}
                     />
                     {admin && (
@@ -4721,7 +4863,7 @@ function ScheduleCard({ admin, course, updateCourse }) {
   );
 }
 
-function RichTextCell({ value, readOnly, onFocus, onChange }) {
+function RichTextCell({ value, readOnly, enterGroup, onFocus, onPaste, onChange }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -4734,6 +4876,7 @@ function RichTextCell({ value, readOnly, onFocus, onChange }) {
     <div
       ref={ref}
       className={`rich-text-cell ${readOnly ? "readonly" : ""}`}
+      data-enter-group={enterGroup || undefined}
       contentEditable={!readOnly}
       suppressContentEditableWarning
       tabIndex={readOnly ? -1 : 0}
@@ -4745,6 +4888,7 @@ function RichTextCell({ value, readOnly, onFocus, onChange }) {
         onChange?.(sanitizedValue);
       }}
       onPaste={(event) => {
+        if (onPaste?.(event)) return;
         event.preventDefault();
         const text = event.clipboardData?.getData("text/plain") || "";
         document.execCommand("insertText", false, text);
@@ -12274,14 +12418,14 @@ function PersonalTopicCard({ admin, canEdit, course, updateCourse }) {
       <table className="data-table personal-topic-table">
         <thead><tr><th className="stt-col">{t("stt", "STT")}</th><th className="avatar-col">{t("photo", "Ảnh")}</th><th>{t("fullName", "Họ và tên")}</th><th>{t("topic", "Topic")}</th><th>{t("studentId", "Mã số")}</th><th>{t("email", "Email")}</th></tr></thead>
         <tbody>
-          {members.map((member) => (
+          {members.map((member, memberIndex) => (
             <tr key={member.email}>
               <td>{member.order}</td>
               <td><ProfileAvatar user={{ ...member, photoURL: member.photoURL || course.profiles?.[member.email]?.photoURL || "" }} label={member.name || member.email} small /></td>
               <td>{member.name}</td>
               <td>
                 {canEdit ? (
-                  <input value={draftTopics[member.email] || ""} onChange={(event) => setDraftTopics((current) => ({ ...current, [member.email]: event.target.value }))} />
+                  <input data-enter-group="personal-topic" value={draftTopics[member.email] || ""} onPaste={(event) => pasteColumnValuesFromClipboard(event, members, memberIndex, (targetMember, value) => setDraftTopics((current) => ({ ...current, [targetMember.email]: value })), "personal-topic", { headerAliases: ["topic", "chu de", "de tai"] })} onKeyDown={(event) => focusNextInputOnEnter(event, "personal-topic")} onChange={(event) => setDraftTopics((current) => ({ ...current, [member.email]: event.target.value }))} />
                 ) : (
                   draftTopics[member.email] || t("noTopic", "Chưa có topic.")
                 )}
