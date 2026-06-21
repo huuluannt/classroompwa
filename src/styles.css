@@ -1142,6 +1142,68 @@ textarea { min-height: 88px; resize: vertical; }
 .virtual-remove-button {
   color: #b91c1c;
 }
+.virtual-members-workspace {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.virtual-members-head {
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, auto);
+}
+.virtual-members-head-actions {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.virtual-members-insert-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #42526b;
+  font-size: 12px;
+  font-weight: 900;
+}
+.virtual-members-insert-field .virtual-count-input {
+  width: 68px;
+}
+.virtual-members-scroll {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  overflow: hidden;
+}
+.virtual-members-status {
+  display: grid;
+  gap: 4px;
+}
+.virtual-members-status p {
+  margin: 0;
+}
+.virtual-members-table-wrap {
+  min-height: 0;
+  overflow: auto;
+}
+.virtual-members-table {
+  min-width: 720px;
+  table-layout: fixed;
+}
+.virtual-members-table th:nth-child(1),
+.virtual-members-table td:nth-child(1) {
+  width: 38%;
+}
+.virtual-members-table th:nth-child(2),
+.virtual-members-table td:nth-child(2) {
+  width: 24%;
+}
+.virtual-members-table th:nth-child(3),
+.virtual-members-table td:nth-child(3) {
+  width: 38%;
+}
+.virtual-member-edit-input {
+  width: 100%;
+  min-width: 0;
+}
 .lecturer-list {
   display: grid;
   gap: 8px;
@@ -5941,6 +6003,17 @@ textarea {
   .assignment-reviewer-sticky-head,
   .assignment-reviewer-input-row {
     grid-template-columns: 1fr;
+  }
+  .virtual-members-head {
+    grid-template-columns: 1fr;
+  }
+  .virtual-members-head-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .virtual-members-insert-field {
+    width: 100%;
+    justify-content: space-between;
   }
   .assignment-reviewer-head-actions {
     justify-content: flex-start;

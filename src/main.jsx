@@ -107,8 +107,15 @@ function virtualMemberSerial(member) {
 }
 
 function displayMemberEmail(member) {
-  if (!isVirtualMember(member)) return member?.email || "";
-  return `v${virtualMemberSerial(member)}@${VIRTUAL_MEMBER_DOMAIN}`;
+  const email = member?.email || "";
+  if (!isVirtualMember(member)) return email;
+  if (member?.displayEmail) return member.displayEmail;
+  const normalizedEmail = normalizeEmail(email);
+  if (normalizedEmail.endsWith(`@${VIRTUAL_MEMBER_DOMAIN}`)) return normalizedEmail;
+  if (LEGACY_VIRTUAL_MEMBER_DOMAINS.some((domain) => normalizedEmail.endsWith(`@${domain}`))) {
+    return `v${virtualMemberSerial(member)}@${VIRTUAL_MEMBER_DOMAIN}`;
+  }
+  return email;
 }
 
 function userFromVirtualMember(member, realUser) {
@@ -453,6 +460,7 @@ const MAX_INLINE_EXAM_TEMPLATE_BYTES = 850 * 1024;
 const MAX_VIRTUAL_MEMBERS = 100;
 const VIRTUAL_MEMBER_DOMAIN = "ao.local";
 const LEGACY_VIRTUAL_MEMBER_DOMAINS = ["classroom.local"];
+const VIRTUAL_MEMBER_EDIT_FIELDS = ["name", "studentId", "displayEmail"];
 const VIRTUAL_VIETNAMESE_NAMES = [
   "Nguyễn An Nhiên",
   "Trần Gia Hân",
@@ -3019,6 +3027,7 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
   const [lecturerDraft, setLecturerDraft] = useState({ email: "", name: "" });
   const [lecturerAddOpen, setLecturerAddOpen] = useState(false);
   const [virtualAddOpen, setVirtualAddOpen] = useState(false);
+  const [virtualWorkspaceOpen, setVirtualWorkspaceOpen] = useState(false);
   const [virtualCountDraft, setVirtualCountDraft] = useState("10");
   const lecturerAddRef = useRef(null);
   const virtualAddRef = useRef(null);
@@ -3061,6 +3070,11 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
   function updateVirtualCountDraft(value) {
     const cleaned = cleanNumberText(value).slice(0, 3);
     setVirtualCountDraft(cleaned);
+  }
+
+  function openVirtualWorkspace() {
+    setVirtualAddOpen(false);
+    setVirtualWorkspaceOpen(true);
   }
 
   function addVirtualMembers() {
@@ -3232,6 +3246,17 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
     }
   }
 
+  if (virtualWorkspaceOpen) {
+    return (
+      <VirtualMembersWorkspace
+        course={course}
+        language={language}
+        updateCourse={updateCourse}
+        onBack={() => setVirtualWorkspaceOpen(false)}
+      />
+    );
+  }
+
   return (
     <>
       <PanelTitle
@@ -3336,6 +3361,9 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
                       />
                     </label>
                     <div className="material-upload-actions virtual-member-popover-actions">
+                      <button className="secondary-action compact" type="button" onClick={openVirtualWorkspace}>
+                        Advanced
+                      </button>
                       <button className="primary-action compact" type="button" onClick={addVirtualMembers} disabled={virtualRemaining <= 0 || !Number(cleanNumberText(virtualCountDraft))}>
                         <Plus size={14} /> {t("addVirtualLearners", "Thêm học viên ảo")}
                       </button>
@@ -3380,6 +3408,373 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
       </div>
     </>
   );
+}
+
+const VIRTUAL_MEMBER_CLIPBOARD_ALIASES = {
+  name: ["name", "full name", "fullname", "student name", "learner name", "ho ten", "ho va ten", "ten"],
+  studentId: ["student id", "studentid", "id", "mssv", "ma so", "ma sinh vien", "ma so sinh vien"],
+  displayEmail: ["email", "e-mail", "mail"]
+};
+
+function VirtualMembersWorkspace({ course, language, updateCourse, onBack }) {
+  const requestConfirm = useConfirmAction();
+  const t = (key, fallback = "") => uiText(language, key, fallback);
+  const initialDrafts = virtualMemberDraftsFromCourse(course);
+  const [drafts, setDrafts] = useState(initialDrafts);
+  const [baselineSignature, setBaselineSignature] = useState(() => virtualMemberDraftSignature(initialDrafts));
+  const [quantityDraft, setQuantityDraft] = useState("10");
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  const draftSignature = virtualMemberDraftSignature(drafts);
+  const dirty = draftSignature !== baselineSignature;
+  const remaining = Math.max(0, MAX_VIRTUAL_MEMBERS - drafts.length);
+
+  useEffect(() => {
+    const nextDrafts = virtualMemberDraftsFromCourse(course);
+    setDrafts(nextDrafts);
+    setBaselineSignature(virtualMemberDraftSignature(nextDrafts));
+    setNotice("");
+    setError("");
+  }, [course.id]);
+
+  function updateQuantityDraft(value) {
+    setQuantityDraft(cleanNumberText(value).slice(0, 3));
+  }
+
+  function appendVirtualDraftRows(currentDrafts, requestedCount) {
+    const count = Math.min(Math.max(0, requestedCount), Math.max(0, MAX_VIRTUAL_MEMBERS - currentDrafts.length));
+    if (count <= 0) return [];
+    const nonVirtualMembers = (course.members || []).filter((member) => !isVirtualMember(member));
+    return createVirtualMembers({ ...course, members: [...nonVirtualMembers, ...currentDrafts] }, count);
+  }
+
+  function insertVirtualDraftRows() {
+    const requested = Number(cleanNumberText(quantityDraft));
+    if (!Number.isFinite(requested) || requested <= 0 || remaining <= 0) return;
+    setNotice("");
+    setError("");
+    setDrafts((current) => [...current, ...appendVirtualDraftRows(current, requested)]);
+  }
+
+  function updateVirtualDraft(rowIndex, field, value) {
+    setNotice("");
+    setError("");
+    setDrafts((current) => current.map((row, index) => (
+      index === rowIndex ? { ...row, [field]: cleanVirtualMemberDraftValue(field, value) } : row
+    )));
+  }
+
+  function pasteVirtualDraftRows(event, rowIndex, field) {
+    const text = event.clipboardData?.getData("text/plain") || "";
+    const patchRows = parseVirtualMemberClipboardRows(text, field);
+    const bulkPaste = patchRows.length > 1 || text.includes("\t");
+    if (!bulkPaste || patchRows.length === 0) return false;
+
+    event.preventDefault();
+    setNotice("");
+    setError("");
+    setDrafts((current) => {
+      const neededRows = Math.max(0, rowIndex + patchRows.length - current.length);
+      const next = neededRows > 0
+        ? [...current, ...appendVirtualDraftRows(current, neededRows)]
+        : [...current];
+      patchRows.forEach((patch, offset) => {
+        const targetIndex = rowIndex + offset;
+        if (!next[targetIndex]) return;
+        next[targetIndex] = normalizeVirtualMemberDraft({ ...next[targetIndex], ...patch });
+      });
+      return next;
+    });
+
+    const currentTarget = event.currentTarget;
+    window.requestAnimationFrame(() => {
+      focusInputInEnterGroup(currentTarget, `virtual-${field}`, rowIndex + patchRows.length - 1);
+    });
+    return true;
+  }
+
+  function removeAllVirtualDrafts() {
+    if (drafts.length === 0) return;
+    requestConfirm({
+      title: "Remove all virtual learners?",
+      message: "This clears the Advanced draft. Click Save to remove them from the class.",
+      confirmLabel: "Remove all virtual learners"
+    }, () => {
+      setNotice("");
+      setError("");
+      setDrafts([]);
+    });
+  }
+
+  function requestBack() {
+    if (!dirty) {
+      onBack();
+      return;
+    }
+    requestConfirm({
+      title: "Discard unsaved changes?",
+      message: "Your Advanced virtual learner edits have not been saved.",
+      confirmLabel: "Discard changes"
+    }, onBack);
+  }
+
+  async function saveVirtualDrafts() {
+    setNotice("");
+    setError("");
+    const normalizedDrafts = drafts.map(normalizeVirtualMemberDraft);
+    const validationError = validateVirtualMemberDrafts(normalizedDrafts);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    const previousVirtualEmails = new Set((course.members || []).filter(isVirtualMember).map((member) => normalizeEmail(member.email)));
+    const nextVirtualEmails = new Set(normalizedDrafts.map((member) => normalizeEmail(member.email)));
+    const removedEmails = [...previousVirtualEmails].filter((email) => email && !nextVirtualEmails.has(email));
+    const shouldWriteActivityFields = removedEmails.length > 0;
+
+    try {
+      await updateCourse((current) => {
+        const currentVirtualByEmail = new Map((current.members || []).filter(isVirtualMember).map((member) => [normalizeEmail(member.email), member]));
+        const nextVirtualRows = normalizedDrafts.map((draft) => normalizeVirtualMemberDraft({
+          ...(currentVirtualByEmail.get(normalizeEmail(draft.email)) || {}),
+          ...draft,
+          status: "accepted",
+          isVirtual: true
+        }));
+        const currentRemovedEmails = new Set((current.members || [])
+          .filter(isVirtualMember)
+          .map((member) => normalizeEmail(member.email))
+          .filter((email) => email && !nextVirtualEmails.has(email)));
+        const nextCourse = {
+          ...current,
+          members: [
+            ...(current.members || []).filter((member) => !isVirtualMember(member)),
+            ...nextVirtualRows
+          ],
+          groupTopics: currentRemovedEmails.size > 0 ? removeVirtualEmailsFromTopics(current.groupTopics || [], currentRemovedEmails) : current.groupTopics,
+          intergroupTopics: currentRemovedEmails.size > 0 ? removeVirtualEmailsFromTopics(current.intergroupTopics || [], currentRemovedEmails) : current.intergroupTopics,
+          personalTopics: currentRemovedEmails.size > 0
+            ? (current.personalTopics || []).filter((item) => !currentRemovedEmails.has(normalizeEmail(item.email)))
+            : current.personalTopics
+        };
+        return currentRemovedEmails.size > 0 ? removeMemberGeneratedActivity(nextCourse, currentRemovedEmails) : nextCourse;
+      }, {
+        toast: "Saved virtual learners.",
+        writeMembers: true,
+        writeSummary: false,
+        writeClassDoc: shouldWriteActivityFields,
+        classFields: shouldWriteActivityFields ? ["groupTopics", "intergroupTopics", "personalTopics", "assignments", "peerReviews"] : null,
+        throwOnError: true
+      });
+
+      if (removedEmails.length > 0) {
+        await Promise.all(removedEmails.flatMap((email) => [
+          deleteMemberActivityFromCloud(course.id, email),
+          deleteMemberFromCloud(course.id, email)
+        ]));
+      }
+
+      setDrafts(normalizedDrafts);
+      setBaselineSignature(virtualMemberDraftSignature(normalizedDrafts));
+      setNotice("Saved virtual learners.");
+    } catch (nextError) {
+      console.error(nextError);
+      setError(nextError.message || "Could not save virtual learners.");
+    }
+  }
+
+  return (
+    <div className="assignment-reviewer-workspace virtual-members-workspace" data-enter-scope="virtual-members">
+      <div className="assignment-reviewer-sticky-head virtual-members-head">
+        <button className="secondary-action compact" type="button" onClick={requestBack}>
+          <ChevronLeft size={18} /> Back
+        </button>
+        <div>
+          <strong>Virtual learners Advanced</strong>
+          <small>{drafts.length}/{MAX_VIRTUAL_MEMBERS} virtual learners {dirty ? "with unsaved changes" : "saved"}</small>
+        </div>
+        <div className="virtual-members-head-actions">
+          <label className="virtual-members-insert-field">
+            <span>{t("quantity", "Quantity")}</span>
+            <input
+              className="virtual-count-input"
+              inputMode="numeric"
+              value={quantityDraft}
+              onChange={(event) => updateQuantityDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") insertVirtualDraftRows();
+              }}
+              disabled={remaining <= 0}
+              aria-label="Number of virtual learners to insert"
+            />
+          </label>
+          <button className="primary-action compact" type="button" onClick={insertVirtualDraftRows} disabled={remaining <= 0 || !Number(cleanNumberText(quantityDraft))}>
+            <Plus size={14} /> Insert
+          </button>
+          <button className="secondary-action compact virtual-remove-button" type="button" onClick={removeAllVirtualDrafts} disabled={drafts.length === 0}>
+            <Trash2 size={14} /> Remove all virtual learners
+          </button>
+          <SaveButton className="compact" dirty={dirty} onClick={saveVirtualDrafts} />
+        </div>
+      </div>
+      <div className="assignment-reviewer-scroll virtual-members-scroll">
+        {(notice || error) && (
+          <div className="virtual-members-status">
+            {notice && <p className="success-text">{notice}</p>}
+            {error && <p className="error-text">{error}</p>}
+          </div>
+        )}
+        <div className="virtual-members-table-wrap">
+          <table className="data-table virtual-members-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Student ID</th>
+                <th>Email</th>
+              </tr>
+            </thead>
+            <tbody>
+              {drafts.length === 0 ? (
+                <tr><td colSpan="3">No virtual learners yet. Enter a quantity and click Insert.</td></tr>
+              ) : drafts.map((member, memberIndex) => (
+                <tr key={member.email || memberIndex}>
+                  <td>
+                    <input
+                      className="virtual-member-edit-input"
+                      data-enter-group="virtual-name"
+                      value={member.name || ""}
+                      onPaste={(event) => pasteVirtualDraftRows(event, memberIndex, "name")}
+                      onKeyDown={(event) => focusNextInputOnEnter(event, "virtual-name")}
+                      onChange={(event) => updateVirtualDraft(memberIndex, "name", event.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="virtual-member-edit-input"
+                      data-enter-group="virtual-studentId"
+                      value={member.studentId || ""}
+                      onPaste={(event) => pasteVirtualDraftRows(event, memberIndex, "studentId")}
+                      onKeyDown={(event) => focusNextInputOnEnter(event, "virtual-studentId")}
+                      onChange={(event) => updateVirtualDraft(memberIndex, "studentId", event.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="virtual-member-edit-input"
+                      data-enter-group="virtual-displayEmail"
+                      value={member.displayEmail || ""}
+                      onPaste={(event) => pasteVirtualDraftRows(event, memberIndex, "displayEmail")}
+                      onKeyDown={(event) => focusNextInputOnEnter(event, "virtual-displayEmail")}
+                      onChange={(event) => updateVirtualDraft(memberIndex, "displayEmail", event.target.value)}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function virtualMemberDraftsFromCourse(course) {
+  return (course.members || [])
+    .filter(isVirtualMember)
+    .sort(compareMemberOrder)
+    .map(normalizeVirtualMemberDraft);
+}
+
+function normalizeVirtualMemberDraft(member) {
+  const email = normalizeEmail(member.email || "");
+  const hasDisplayEmail = Object.prototype.hasOwnProperty.call(member, "displayEmail");
+  const displayEmail = hasDisplayEmail ? member.displayEmail : displayMemberEmail(member);
+  return {
+    ...member,
+    order: String(member.order || ""),
+    name: String(member.name || "").trim(),
+    email,
+    displayEmail: String(displayEmail || "").trim(),
+    studentId: String(member.studentId || "").trim(),
+    group: String(member.group || ""),
+    status: "accepted",
+    isVirtual: true
+  };
+}
+
+function virtualMemberDraftSignature(rows) {
+  return jsonSignature((rows || []).map((row) => ({
+    order: row.order || "",
+    name: row.name || "",
+    email: normalizeEmail(row.email || ""),
+    displayEmail: row.displayEmail || "",
+    studentId: row.studentId || "",
+    group: row.group || ""
+  })));
+}
+
+function cleanVirtualMemberDraftValue(field, value) {
+  const text = String(value ?? "").trim();
+  if (field === "displayEmail") return text.replace(/\s+/g, "");
+  return text;
+}
+
+function parseVirtualMemberClipboardRows(text, startField) {
+  const rows = clipboardRowsFromText(text);
+  if (rows.length === 0) return [];
+
+  const headerIndexes = virtualMemberClipboardHeaderIndexes(rows[0]);
+  const hasHeader = Object.values(headerIndexes).some((index) => index >= 0);
+  if (hasHeader) {
+    rows.shift();
+    return rows.map((row) => {
+      const patch = {};
+      VIRTUAL_MEMBER_EDIT_FIELDS.forEach((field) => {
+        const columnIndex = headerIndexes[field];
+        if (columnIndex >= 0) patch[field] = cleanVirtualMemberDraftValue(field, row[columnIndex]);
+      });
+      return patch;
+    }).filter(hasVirtualMemberPatchValue);
+  }
+
+  const startIndex = Math.max(0, VIRTUAL_MEMBER_EDIT_FIELDS.indexOf(startField));
+  return rows.map((row) => {
+    const patch = {};
+    row.forEach((cell, offset) => {
+      const field = VIRTUAL_MEMBER_EDIT_FIELDS[startIndex + offset];
+      if (field) patch[field] = cleanVirtualMemberDraftValue(field, cell);
+    });
+    return patch;
+  }).filter(hasVirtualMemberPatchValue);
+}
+
+function virtualMemberClipboardHeaderIndexes(row) {
+  return Object.fromEntries(VIRTUAL_MEMBER_EDIT_FIELDS.map((field) => [
+    field,
+    virtualMemberClipboardHeaderIndex(row, VIRTUAL_MEMBER_CLIPBOARD_ALIASES[field] || [])
+  ]));
+}
+
+function virtualMemberClipboardHeaderIndex(row, aliases) {
+  const normalizedAliases = aliases.map(normalizeClipboardHeaderText).filter(Boolean);
+  return row.findIndex((cell) => normalizedAliases.includes(normalizeClipboardHeaderText(cell)));
+}
+
+function hasVirtualMemberPatchValue(patch) {
+  return VIRTUAL_MEMBER_EDIT_FIELDS.some((field) => String(patch[field] ?? "").trim() !== "");
+}
+
+function validateVirtualMemberDrafts(rows) {
+  if (rows.length > MAX_VIRTUAL_MEMBERS) return `Only ${MAX_VIRTUAL_MEMBERS} virtual learners are allowed.`;
+  const seen = new Set();
+  for (const row of rows) {
+    const email = normalizeEmail(row.email || "");
+    if (!email) return "A virtual learner is missing its internal email. Please remove all and insert again.";
+    if (seen.has(email)) return "Duplicate virtual learner rows were found. Please remove duplicates and save again.";
+    seen.add(email);
+  }
+  return "";
 }
 
 function MembersTable({ admin, canManageCourseLecturers, canEditMembers, course, members, memberDrafts = {}, onDraftChange, onPromoteToLecturer, updateCourse, language }) {
@@ -3557,6 +3952,7 @@ function createVirtualMembers(course, count) {
       order: String(nextOrder),
       name,
       email,
+      displayEmail: email,
       studentId: `VIRTUAL-${serialText}`,
       group: "",
       status: "accepted",
