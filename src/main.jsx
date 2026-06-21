@@ -3361,9 +3361,6 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
                       />
                     </label>
                     <div className="material-upload-actions virtual-member-popover-actions">
-                      <button className="secondary-action compact" type="button" onClick={openVirtualWorkspace}>
-                        Advanced
-                      </button>
                       <button className="primary-action compact" type="button" onClick={addVirtualMembers} disabled={virtualRemaining <= 0 || !Number(cleanNumberText(virtualCountDraft))}>
                         <Plus size={14} /> {t("addVirtualLearners", "Thêm học viên ảo")}
                       </button>
@@ -3376,6 +3373,9 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
                           <Trash2 size={14} /> {t("removeVirtualLearners", "Remove học viên ảo")}
                         </button>
                       )}
+                      <button className="secondary-action compact" type="button" onClick={openVirtualWorkspace}>
+                        Advanced
+                      </button>
                     </div>
                   </div>
                 )}
@@ -3462,6 +3462,12 @@ function VirtualMembersWorkspace({ course, language, updateCourse, onBack }) {
     setDrafts((current) => current.map((row, index) => (
       index === rowIndex ? { ...row, [field]: cleanVirtualMemberDraftValue(field, value) } : row
     )));
+  }
+
+  function removeVirtualDraft(rowIndex) {
+    setNotice("");
+    setError("");
+    setDrafts((current) => current.filter((_, index) => index !== rowIndex));
   }
 
   function pasteVirtualDraftRows(event, rowIndex, field) {
@@ -3632,11 +3638,12 @@ function VirtualMembersWorkspace({ course, language, updateCourse, onBack }) {
                 <th>Name</th>
                 <th>Student ID</th>
                 <th>Email</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {drafts.length === 0 ? (
-                <tr><td colSpan="3">No virtual learners yet. Enter a quantity and click Insert.</td></tr>
+                <tr><td colSpan="4">No virtual learners yet. Enter a quantity and click Insert.</td></tr>
               ) : drafts.map((member, memberIndex) => (
                 <tr key={member.email || memberIndex}>
                   <td>
@@ -3668,6 +3675,17 @@ function VirtualMembersWorkspace({ course, language, updateCourse, onBack }) {
                       onKeyDown={(event) => focusNextInputOnEnter(event, "virtual-displayEmail")}
                       onChange={(event) => updateVirtualDraft(memberIndex, "displayEmail", event.target.value)}
                     />
+                  </td>
+                  <td>
+                    <button
+                      className="icon-danger virtual-member-delete-button"
+                      type="button"
+                      onClick={() => removeVirtualDraft(memberIndex)}
+                      title="Xóa học viên ảo"
+                      aria-label={`Xóa học viên ảo ${member.name || member.displayEmail || memberIndex + 1}`}
+                    >
+                      <X size={14} />
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -5165,6 +5183,20 @@ function ScheduleCard({ admin, course, updateCourse }) {
     setRows((current) => [...current, createScheduleRow(current.length)]);
   }
 
+  function insertWeek(rowId, placement) {
+    setRows((current) => {
+      const rowIndex = current.findIndex((row) => row.id === rowId);
+      const baseIndex = rowIndex >= 0 ? rowIndex : current.length;
+      const insertIndex = Math.min(
+        Math.max(baseIndex + (placement === "below" ? 1 : 0), 0),
+        current.length
+      );
+      const nextRows = [...current];
+      nextRows.splice(insertIndex, 0, createScheduleRow(insertIndex));
+      return nextRows;
+    });
+  }
+
   function removeWeek(rowId) {
     setRows((current) => current.length <= 1 ? current : current.filter((row) => row.id !== rowId));
   }
@@ -5252,13 +5284,17 @@ function ScheduleCard({ admin, course, updateCourse }) {
                       onChange={(value) => updateRow(row.id, { content: value })}
                     />
                     {admin && (
-                      <button className="icon-danger schedule-delete-button" type="button" onClick={() => requestConfirm({
-                        title: "Xóa tuần?",
-                        message: `Bạn có chắc muốn xóa "${row.weekNumber ? `Tuần ${row.weekNumber}` : "tuần này"}" khỏi lịch học không?`,
-                        confirmLabel: "Xóa tuần"
-                      }, () => removeWeek(row.id))} title="Xóa tuần" aria-label="Xóa tuần">
-                        <X size={15} />
-                      </button>
+                      <ScheduleRowMenu
+                        rowLabel={row.weekNumber ? `Tuần ${row.weekNumber}` : `dòng ${rowIndex + 1}`}
+                        onInsertAbove={() => insertWeek(row.id, "above")}
+                        onInsertBelow={() => insertWeek(row.id, "below")}
+                        onDelete={() => requestConfirm({
+                          title: "Xóa hàng?",
+                          message: `Bạn có chắc muốn xóa "${row.weekNumber ? `Tuần ${row.weekNumber}` : `dòng ${rowIndex + 1}`}" khỏi lịch học không?`,
+                          confirmLabel: "Xóa hàng"
+                        }, () => removeWeek(row.id))}
+                        canDelete={rows.length > 1}
+                      />
                     )}
                   </div>
                 </td>
@@ -5268,6 +5304,50 @@ function ScheduleCard({ admin, course, updateCourse }) {
         </table>
       </div>
     </>
+  );
+}
+
+function ScheduleRowMenu({ rowLabel, onInsertAbove, onInsertBelow, onDelete, canDelete }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useOutsideClick(ref, open, () => setOpen(false));
+
+  return (
+    <div className="schedule-row-action-wrap member-role-wrap" ref={ref}>
+      <button
+        className={`row-menu-trigger schedule-row-menu-trigger ${open ? "active" : ""}`}
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        title={`Hành động với ${rowLabel}`}
+        aria-label={`Hành động với ${rowLabel}`}
+        aria-expanded={open}
+      >
+        <MoreVertical size={16} />
+      </button>
+      {open && (
+        <div className="mini-menu member-role-menu schedule-row-menu">
+          <button type="button" onClick={() => {
+            onInsertAbove();
+            setOpen(false);
+          }}>
+            <Plus size={14} /> Thêm 1 hàng phía trên
+          </button>
+          <button type="button" onClick={() => {
+            onInsertBelow();
+            setOpen(false);
+          }}>
+            <Plus size={14} /> Thêm 1 hàng phía dưới
+          </button>
+          <button className="danger-menu-item" type="button" disabled={!canDelete} onClick={() => {
+            if (!canDelete) return;
+            onDelete();
+            setOpen(false);
+          }}>
+            <Trash2 size={14} /> Xóa hàng
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

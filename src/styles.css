@@ -1190,19 +1190,28 @@ textarea { min-height: 88px; resize: vertical; }
 }
 .virtual-members-table th:nth-child(1),
 .virtual-members-table td:nth-child(1) {
-  width: 38%;
+  width: 36%;
 }
 .virtual-members-table th:nth-child(2),
 .virtual-members-table td:nth-child(2) {
-  width: 24%;
+  width: 22%;
 }
 .virtual-members-table th:nth-child(3),
 .virtual-members-table td:nth-child(3) {
-  width: 38%;
+  width: 36%;
+}
+.virtual-members-table th:nth-child(4),
+.virtual-members-table td:nth-child(4) {
+  width: 44px;
+  text-align: right;
 }
 .virtual-member-edit-input {
   width: 100%;
   min-width: 0;
+}
+.virtual-member-delete-button {
+  width: 32px;
+  height: 32px;
 }
 .lecturer-list {
   display: grid;
@@ -2056,8 +2065,19 @@ textarea { min-height: 88px; resize: vertical; }
   padding-left: 0;
   background: transparent;
 }
-.schedule-delete-button {
-  flex: 0 0 32px;
+.schedule-row-action-wrap {
+  justify-self: end;
+}
+.schedule-row-menu-trigger {
+  width: 32px;
+  height: 32px;
+}
+.schedule-row-menu {
+  width: 210px;
+}
+.schedule-row-menu button:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
 }
 .highlight-tool { background: #fef08a; color: #854d0e; }
 
@@ -5588,7 +5608,6 @@ textarea {
   width: 50%;
   min-width: 96px;
 }
-.schedule-delete-button { flex-basis: 28px; }
 
 .assignment-ratio-row {
   gap: 6px;
