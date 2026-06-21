@@ -5425,7 +5425,7 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
         <div className="empty-state compact-empty">Chưa có nhóm. Có thể tạo placeholder trước hoặc nhập số nhóm trong Card Thành viên.</div>
       ) : (
         <div className="group-topic-list">
-          {sortedGroupCards.map((group) => (
+          {sortedGroupCards.map((group, groupIndex) => (
             <section className="group-topic-card topic-editor-card" key={group.key}>
               <div className="group-topic-header">
                 <div className="group-topic-bar">
@@ -5436,8 +5436,11 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
                       {canEdit ? (
                         <input
                           aria-label={`STT báo cáo ${group.label}`}
+                          data-enter-group="group-topic-order"
                           inputMode="numeric"
                           value={draftOrders[group.key] || ""}
+                          onPaste={(event) => pasteColumnValuesFromClipboard(event, sortedGroupCards, groupIndex, (targetGroup, value) => setDraftOrders((current) => ({ ...current, [targetGroup.key]: value })), "group-topic-order", { headerAliases: ["stt", "no", "no.", "order"], valueForCell: clipboardNumberTextValue })}
+                          onKeyDown={(event) => focusNextInputOnEnter(event, "group-topic-order")}
                           onChange={(event) => setDraftOrders((current) => ({ ...current, [group.key]: event.target.value.replace(/\D/g, "") }))}
                         />
                       ) : (
@@ -5474,7 +5477,10 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
                   {canEdit ? (
                     <input
                       className="topic-line-input"
+                      data-enter-group="group-topic-topic"
                       value={draftTopics[group.key] || ""}
+                      onPaste={(event) => pasteColumnValuesFromClipboard(event, sortedGroupCards, groupIndex, (targetGroup, value) => setDraftTopics((current) => ({ ...current, [targetGroup.key]: value })), "group-topic-topic", { headerAliases: ["topic", "chu de", "de tai"] })}
+                      onKeyDown={(event) => focusNextInputOnEnter(event, "group-topic-topic")}
                       onChange={(event) => setDraftTopics((current) => ({ ...current, [group.key]: event.target.value }))}
                       placeholder={t("enterTopicName", "Nhập tên Topic")}
                     />
@@ -5769,7 +5775,7 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
         <div className="empty-state compact-empty">Chưa có liên nhóm. Có thể tạo placeholder trước hoặc nhập cùng một số ở ô Liên nhóm trong Card Topic Nhóm cho ít nhất 2 nhóm rồi bấm Save.</div>
       ) : (
         <div className="intergroup-list">
-          {linkCards.map((link) => (
+          {linkCards.map((link, linkIndex) => (
             <section className="group-topic-card topic-editor-card intergroup-topic-card" key={link.key}>
               <div className="group-topic-header">
                 <div className="group-topic-bar intergroup-topic-bar">
@@ -5792,7 +5798,10 @@ function IntergroupTopicCard({ admin, canEdit, course, updateCourse }) {
                   {canEdit ? (
                     <input
                       className="topic-line-input"
+                      data-enter-group="intergroup-topic-topic"
                       value={draftTopics[link.key] || ""}
+                      onPaste={(event) => pasteColumnValuesFromClipboard(event, linkCards, linkIndex, (targetLink, value) => setDraftTopics((current) => ({ ...current, [targetLink.key]: value })), "intergroup-topic-topic", { headerAliases: ["topic", "chu de", "de tai"] })}
+                      onKeyDown={(event) => focusNextInputOnEnter(event, "intergroup-topic-topic")}
                       onChange={(event) => setDraftTopics((current) => ({ ...current, [link.key]: event.target.value }))}
                       placeholder={t("enterIntergroupTopicName", "Nhập tên Topic liên nhóm")}
                     />
