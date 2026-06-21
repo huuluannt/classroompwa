@@ -723,6 +723,9 @@ textarea { min-height: 88px; resize: vertical; }
   gap: 8px;
   flex-wrap: wrap;
 }
+.virtual-view-wrap {
+  position: relative;
+}
 .virtual-view-toggle {
   min-height: 34px;
   display: inline-flex;
@@ -750,6 +753,67 @@ textarea { min-height: 88px; resize: vertical; }
 .virtual-view-toggle:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+.virtual-view-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 45;
+  width: min(360px, calc(100vw - 28px));
+  max-height: min(420px, calc(100vh - 118px));
+  overflow-y: auto;
+  border: 1px solid #dce3ee;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 50px rgba(22, 32, 51, 0.16);
+  padding: 6px;
+}
+.virtual-view-option {
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  border-radius: 7px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 9px;
+  background: transparent;
+  color: #172033;
+  padding: 7px 8px;
+  text-align: left;
+}
+.virtual-view-option:hover,
+.virtual-view-option.active {
+  background: #eff6ff;
+}
+.virtual-view-option.active {
+  color: #1d4ed8;
+}
+.virtual-view-option > span {
+  min-width: 0;
+}
+.virtual-view-option strong,
+.virtual-view-option small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.virtual-view-option strong {
+  color: inherit;
+  font-weight: 900;
+}
+.virtual-view-option small {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 11px;
+}
+.virtual-view-empty {
+  display: block;
+  padding: 10px 8px;
+  color: #64748b;
+  font-weight: 800;
 }
 .mobile-back-button,
 .mobile-detail-header {

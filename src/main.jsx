@@ -1516,9 +1516,10 @@ function App() {
     setSaveToast({ id: Date.now(), message });
   }
 
-  function toggleVirtualStudentView() {
+  function selectVirtualStudentView(email) {
     if (!selectedClassAdminReal || !selectedClass?.id) return;
-    if (selectedClassVirtualMember) {
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) {
       setVirtualViewByClass((current) => {
         const next = { ...current };
         delete next[selectedClass.id];
@@ -1527,14 +1528,14 @@ function App() {
       showSaveToast("Đã quay lại góc nhìn giảng viên.");
       return;
     }
-    const nextMember = selectedClassVirtualMembers[0];
+    const nextMember = selectedClassVirtualMembers.find((member) => normalizeEmail(member.email) === normalizedEmail);
     if (!nextMember) {
-      showSaveToast("Chưa có học viên ảo trong lớp. Vào card Thành viên để thêm học viên ảo.");
+      showSaveToast("Học viên ảo không còn trong lớp.");
       return;
     }
     setVirtualViewByClass((current) => ({
       ...current,
-      [selectedClass.id]: normalizeEmail(nextMember.email)
+      [selectedClass.id]: normalizedEmail
     }));
     showSaveToast(`Đang xem như ${nextMember.name || displayMemberEmail(nextMember)}.`);
     setSelectedCard("announcements");
@@ -1809,8 +1810,8 @@ function App() {
           canViewAsVirtualStudent={selectedClassAdminReal}
           viewingAsVirtualStudent={viewingAsVirtualStudent}
           virtualStudentMember={selectedClassVirtualMember}
-          virtualStudentCount={selectedClassVirtualMembers.length}
-          onToggleVirtualStudentView={toggleVirtualStudentView}
+          virtualStudentMembers={selectedClassVirtualMembers}
+          onSelectVirtualStudentView={selectVirtualStudentView}
           language={language}
           canDeleteClass={selectedClassCanDelete}
           canManageCourseLecturers={selectedClassCanManageLecturers}
@@ -2522,13 +2523,106 @@ function ClassRow({ course, selected, pinned, archived, archivedMode, owned, can
   );
 }
 
+function VirtualViewSelector({
+  course,
+  language,
+  viewingAsVirtualStudent,
+  virtualStudentMember,
+  virtualStudentMembers = [],
+  onSelect
+}) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef(null);
+  const t = (key, fallback = "") => uiText(language, key, fallback);
+  useOutsideClick(menuRef, open, () => setOpen(false));
+
+  const ownerEmail = normalizeEmail(course.ownerEmail || SUPREME_EMAIL);
+  const ownerProfile = buildCourseLecturers(course).find((profile) => normalizeEmail(profile.email) === ownerEmail)
+    || { email: ownerEmail, name: course.ownerName || ownerEmail, photoURL: "", role: "owner" };
+  const savedOwnerProfile = course.profiles?.[ownerEmail] || {};
+  const ownerName = savedOwnerProfile.displayName || ownerProfile.name || course.ownerName || ownerEmail;
+  const ownerUser = {
+    displayName: ownerName,
+    email: ownerEmail,
+    photoURL: savedOwnerProfile.photoURL || ownerProfile.photoURL || ""
+  };
+  const currentLabel = viewingAsVirtualStudent
+    ? `${t("viewAs", "View as")}: ${virtualStudentMember?.name || displayMemberEmail(virtualStudentMember) || t("virtualStudent", "học viên ảo")}`
+    : t("viewAsVirtualStudent", "Xem lớp như học viên ảo");
+
+  function selectRole(email) {
+    onSelect?.(email);
+    setOpen(false);
+  }
+
+  return (
+    <div className="virtual-view-wrap" ref={menuRef}>
+      <button
+        className={`virtual-view-toggle ${viewingAsVirtualStudent ? "active" : ""}`}
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        title={currentLabel}
+        aria-label={currentLabel}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        {viewingAsVirtualStudent ? <Eye size={16} /> : <EyeOff size={16} />}
+        <span>{t("viewAs", "View as")}</span>
+        <ChevronDown size={15} />
+      </button>
+      {open && (
+        <div className="virtual-view-menu" role="menu">
+          <button
+            className={`virtual-view-option ${viewingAsVirtualStudent ? "" : "active"}`.trim()}
+            type="button"
+            role="menuitemradio"
+            aria-checked={!viewingAsVirtualStudent}
+            onClick={() => selectRole("")}
+          >
+            <ProfileAvatar user={ownerUser} label={ownerName} small />
+            <span>
+              <strong>{t("membersLecturerOwner", "Giảng viên (owner)")}</strong>
+              <small>{ownerName} - {ownerEmail}</small>
+            </span>
+            {!viewingAsVirtualStudent && <Check size={15} />}
+          </button>
+          {virtualStudentMembers.length === 0 ? (
+            <span className="virtual-view-empty">{t("noVirtualStudent", "Chưa có học viên ảo trong lớp")}</span>
+          ) : virtualStudentMembers.map((member) => {
+            const email = normalizeEmail(member.email);
+            const active = viewingAsVirtualStudent && normalizeEmail(virtualStudentMember?.email) === email;
+            const name = member.name || displayMemberEmail(member);
+            return (
+              <button
+                className={`virtual-view-option ${active ? "active" : ""}`.trim()}
+                type="button"
+                role="menuitemradio"
+                aria-checked={active}
+                key={email}
+                onClick={() => selectRole(email)}
+              >
+                <ProfileAvatar user={{ ...member, displayName: name }} label={name} small />
+                <span>
+                  <strong>{name}</strong>
+                  <small>{member.studentId || "Virtual"} - {displayMemberEmail(member)}</small>
+                </span>
+                {active && <Check size={15} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ClassPane({
   admin,
   canViewAsVirtualStudent,
   viewingAsVirtualStudent,
   virtualStudentMember,
-  virtualStudentCount = 0,
-  onToggleVirtualStudentView,
+  virtualStudentMembers = [],
+  onSelectVirtualStudentView,
   language,
   canManageCourseLecturers,
   user,
@@ -2654,20 +2748,14 @@ function ClassPane({
         </div>
         <div className="class-header-actions">
           {canViewAsVirtualStudent && (
-            <button
-              className={`virtual-view-toggle ${viewingAsVirtualStudent ? "active" : ""}`}
-              type="button"
-              onClick={onToggleVirtualStudentView}
-              disabled={!viewingAsVirtualStudent && virtualStudentCount === 0}
-              title={viewingAsVirtualStudent
-                ? t("backToTeacherView")
-                : (virtualStudentCount > 0 ? t("viewAsVirtualStudent") : t("noVirtualStudent"))}
-              aria-label={viewingAsVirtualStudent ? t("backToTeacherView") : t("viewAsVirtualStudent")}
-              aria-pressed={viewingAsVirtualStudent}
-            >
-              {viewingAsVirtualStudent ? <Eye size={16} /> : <EyeOff size={16} />}
-              <span>{viewingAsVirtualStudent ? `As ${virtualStudentMember?.name || t("virtualStudent")}` : t("viewAs")}</span>
-            </button>
+            <VirtualViewSelector
+              course={course}
+              language={language}
+              viewingAsVirtualStudent={viewingAsVirtualStudent}
+              virtualStudentMember={virtualStudentMember}
+              virtualStudentMembers={virtualStudentMembers}
+              onSelect={onSelectVirtualStudentView}
+            />
           )}
           {googleMeetUrl && (
             <button
