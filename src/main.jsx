@@ -80,7 +80,7 @@ import {
   updateAssignmentReviewerQuestionToCloud,
   uploadClassFile
 } from "./classroomRepository";
-import { downloadDriveFile } from "./driveStorage";
+import { downloadDriveFile, googleDriveFileIdFromUrl } from "./driveStorage";
 import "./styles.css";
 
 function isAdmin(user) {
@@ -8116,9 +8116,14 @@ async function submissionFileBlob(course, submission) {
   const downloadUrl = fileDownloadUrl(submission);
   if (downloadUrl && String(downloadUrl).startsWith("data:")) return fetchDownloadBlob(downloadUrl);
 
-  if (submission?.driveFileId && hasFirebaseConfig) {
+  const driveFileId = submission?.driveFileId
+    || submission?.fileId
+    || googleDriveFileIdFromUrl(downloadUrl)
+    || googleDriveFileIdFromUrl(submission?.webViewLink)
+    || googleDriveFileIdFromUrl(submission?.previewUrl);
+  if (driveFileId && hasFirebaseConfig) {
     try {
-      return await downloadDriveFile(course, submission);
+      return await downloadDriveFile(course, { ...submission, driveFileId });
     } catch (error) {
       if (!downloadUrl) throw error;
       try {

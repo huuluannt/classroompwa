@@ -66,7 +66,15 @@ export async function downloadDriveFile(courseOrId, file) {
   if (!idToken) throw new Error("Missing Firebase session. Please sign in again.");
 
   const courseId = typeof courseOrId === "string" ? courseOrId : courseOrId?.id;
-  const fileId = String(file?.driveFileId || file?.id || "").trim();
+  const fileId = String(
+    file?.driveFileId
+    || file?.fileId
+    || googleDriveFileIdFromUrl(file?.url)
+    || googleDriveFileIdFromUrl(file?.webContentLink)
+    || googleDriveFileIdFromUrl(file?.webViewLink)
+    || googleDriveFileIdFromUrl(file?.previewUrl)
+    || ""
+  ).trim();
   if (!courseId || !fileId) throw new Error("Missing Google Drive file information.");
 
   const response = await fetch("/api/upload-file", {
@@ -87,6 +95,28 @@ export async function downloadDriveFile(courseOrId, file) {
     throw new Error(result.error || `Could not download file (${response.status}).`);
   }
   return response.blob();
+}
+
+export function googleDriveFileIdFromUrl(value = "") {
+  const url = String(value || "").trim();
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (!host.endsWith("drive.google.com") && !host.endsWith("docs.google.com")) return "";
+    const queryId = parsed.searchParams.get("id");
+    if (queryId) return queryId;
+    const fileMatch = parsed.pathname.match(/\/(?:file\/d|document\/d|spreadsheets\/d|presentation\/d)\/([^/]+)/i);
+    if (fileMatch?.[1]) return decodeURIComponent(fileMatch[1]);
+    const foldersMatch = parsed.pathname.match(/\/folders\/([^/]+)/i);
+    if (foldersMatch?.[1]) return decodeURIComponent(foldersMatch[1]);
+  } catch {
+    const queryMatch = url.match(/[?&]id=([^&#]+)/i);
+    if (queryMatch?.[1]) return decodeURIComponent(queryMatch[1]);
+    const fileMatch = url.match(/\/(?:file\/d|document\/d|spreadsheets\/d|presentation\/d)\/([^/?#]+)/i);
+    if (fileMatch?.[1]) return decodeURIComponent(fileMatch[1]);
+  }
+  return "";
 }
 
 async function uploadFileChunks({ uploadUrl, file, idToken }) {
