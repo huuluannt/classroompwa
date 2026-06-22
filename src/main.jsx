@@ -80,6 +80,7 @@ import {
   updateAssignmentReviewerQuestionToCloud,
   uploadClassFile
 } from "./classroomRepository";
+import { downloadDriveFile } from "./driveStorage";
 import "./styles.css";
 
 function isAdmin(user) {
@@ -8074,6 +8075,105 @@ function downloadBlob(blob, fileName) {
   }
 }
 
+async function downloadAssignmentSubmissionsZip(course, assignment, submissions, onProgress = () => {}) {
+  const downloadable = (submissions || []).filter((submission) => submission?.driveFileId || fileDownloadUrl(submission));
+  if (!downloadable.length) throw new Error("Chưa có file bài nộp để tải.");
+
+  const module = await import("jszip");
+  const JSZip = module.default || module;
+  const zip = new JSZip();
+  const usedPaths = new Set();
+
+  for (let index = 0; index < downloadable.length; index += 1) {
+    const submission = downloadable[index];
+    onProgress({ done: index, total: downloadable.length, fileName: submission.fileName || "file" });
+    const submitter = assignmentSubmissionIdentity(course, submission, {
+      email: submission.email,
+      displayName: submission.name,
+      studentId: submission.studentId
+    });
+    const folderName = safeZipSegment([
+      String(index + 1).padStart(2, "0"),
+      submitter.studentId,
+      submitter.name || submission.email
+    ].filter(Boolean).join(" - "), `submission-${index + 1}`);
+    const fileName = safeZipSegment(submission.fileName || `submission-${index + 1}`);
+    const zipPath = uniqueZipPath(usedPaths, `${folderName}/${fileName}`);
+    const blob = await submissionFileBlob(course, submission);
+    zip.file(zipPath, blob);
+    onProgress({ done: index + 1, total: downloadable.length, fileName: submission.fileName || "file" });
+  }
+
+  return zip.generateAsync({
+    type: "blob",
+    mimeType: "application/zip",
+    compression: "DEFLATE",
+    compressionOptions: { level: 6 }
+  });
+}
+
+async function submissionFileBlob(course, submission) {
+  const downloadUrl = fileDownloadUrl(submission);
+  if (downloadUrl && String(downloadUrl).startsWith("data:")) return fetchDownloadBlob(downloadUrl);
+
+  if (submission?.driveFileId && hasFirebaseConfig) {
+    try {
+      return await downloadDriveFile(course, submission);
+    } catch (error) {
+      if (!downloadUrl) throw error;
+      try {
+        return await fetchDownloadBlob(downloadUrl);
+      } catch {
+        throw error;
+      }
+    }
+  }
+
+  if (!downloadUrl) throw new Error(`Không tìm thấy link tải cho "${submission?.fileName || "file"}".`);
+  return fetchDownloadBlob(downloadUrl);
+}
+
+async function fetchDownloadBlob(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.blob();
+}
+
+function assignmentSubmissionsZipFileName(course, assignment) {
+  return `${safeExportFileName(course?.code || course?.name || "class")}-${safeExportFileName(assignment?.title || "assignment")}-submissions.zip`;
+}
+
+function safeZipSegment(value, fallback = "file") {
+  const cleaned = String(value || fallback)
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+  return cleaned || fallback;
+}
+
+function uniqueZipPath(usedPaths, path) {
+  let candidate = path;
+  let counter = 2;
+  while (usedPaths.has(candidate)) {
+    candidate = addFileNameSuffix(path, `-${counter}`);
+    counter += 1;
+  }
+  usedPaths.add(candidate);
+  return candidate;
+}
+
+function addFileNameSuffix(path, suffix) {
+  const slashIndex = path.lastIndexOf("/");
+  const folder = slashIndex >= 0 ? path.slice(0, slashIndex + 1) : "";
+  const fileName = slashIndex >= 0 ? path.slice(slashIndex + 1) : path;
+  const dotIndex = fileName.lastIndexOf(".");
+  if (dotIndex > 0) {
+    return `${folder}${fileName.slice(0, dotIndex)}${suffix}${fileName.slice(dotIndex)}`;
+  }
+  return `${folder}${fileName}${suffix}`;
+}
+
 function readBrowserFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -8956,6 +9056,9 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
   const [showResults, setShowResults] = useState(false);
   const [startExamOpen, setStartExamOpen] = useState(false);
   const [reviewSubmission, setReviewSubmission] = useState(null);
+  const [downloadingAll, setDownloadingAll] = useState(false);
+  const [downloadAllStatus, setDownloadAllStatus] = useState("");
+  const [downloadAllError, setDownloadAllError] = useState("");
   const lastAssignment = assignmentIndex === assignmentCount - 1;
   const assignmentFormat = normalizeAssignmentFormat(assignment.format);
   const assignmentType = normalizeGradebookType(assignment.type, "personal");
@@ -8990,6 +9093,9 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
     : "";
   const visibleSubmissions = canHaveSubmissions
     ? (admin || submissionsPublic ? cleanAssignmentSubmissionList(assignment.submissions || []) : userSubmissions)
+    : [];
+  const downloadableUploadSubmissions = assignmentFormat === "uploadFile"
+    ? completedSubmissions.filter((submission) => submission.driveFileId || fileDownloadUrl(submission))
     : [];
   const assignmentEditDirty = editFilesDraft.length > 0 || jsonSignature(editDraft) !== jsonSignature(assignmentEditDraft(assignment));
 
@@ -9069,6 +9175,28 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
         ? "Đã công khai danh sách bài nộp cho học viên."
         : "Đã ẩn danh sách bài nộp với học viên."
     });
+  }
+
+  async function downloadAllSubmissions() {
+    if (!admin || downloadingAll || assignmentFormat !== "uploadFile" || downloadableUploadSubmissions.length === 0) return;
+    setDownloadingAll(true);
+    setDownloadAllError("");
+    setDownloadAllStatus(`Đang chuẩn bị ${downloadableUploadSubmissions.length} file...`);
+    try {
+      const zipBlob = await downloadAssignmentSubmissionsZip(course, assignment, downloadableUploadSubmissions, ({ done, total, fileName }) => {
+        setDownloadAllStatus(done >= total
+          ? "Đang tạo file zip..."
+          : `Đang tải ${done}/${total}: ${fileName}`);
+      });
+      downloadBlob(zipBlob, assignmentSubmissionsZipFileName(course, assignment));
+      setDownloadAllStatus(`Đã tạo zip ${downloadableUploadSubmissions.length} file bài nộp.`);
+    } catch (error) {
+      console.error(error);
+      setDownloadAllStatus("");
+      setDownloadAllError(formatActionError(error, "Không thể tải toàn bộ bài nộp."));
+    } finally {
+      setDownloadingAll(false);
+    }
   }
 
   function addEditDraftFiles(fileList) {
@@ -9410,7 +9538,22 @@ function AssignmentItem({ admin, course, assignment, assignmentIndex, assignment
                 {t("viewSubmissionResults", "Xem kết quả nộp bài")}
               </button>
             )}
+            {admin && assignmentFormat === "uploadFile" && downloadableUploadSubmissions.length > 0 && (
+              <button
+                className="secondary-action compact assignment-download-all"
+                type="button"
+                onClick={downloadAllSubmissions}
+                disabled={downloadingAll}
+                title="Tải tất cả file bài nộp dạng zip"
+                aria-label="Tải tất cả file bài nộp dạng zip"
+              >
+                {downloadingAll ? <span className="button-spinner" /> : <Download size={15} />}
+                {downloadingAll ? "Zipping" : "Download All"}
+              </button>
+            )}
           </div>}
+          {!editing && downloadAllStatus && <p className="success-text assignment-download-status">{downloadAllStatus}</p>}
+          {!editing && downloadAllError && <p className="error-text assignment-download-status">{downloadAllError}</p>}
           {!editing && reviewerEnabled && (
             <div className="assignment-reviewer-panel">
               <div className="assignment-reviewer-panel-head">

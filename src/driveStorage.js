@@ -61,6 +61,34 @@ export async function uploadDriveFile(courseId, folderPath, file, shareOptions =
   return finishResult.file;
 }
 
+export async function downloadDriveFile(courseOrId, file) {
+  const idToken = await getCurrentIdToken();
+  if (!idToken) throw new Error("Missing Firebase session. Please sign in again.");
+
+  const courseId = typeof courseOrId === "string" ? courseOrId : courseOrId?.id;
+  const fileId = String(file?.driveFileId || file?.id || "").trim();
+  if (!courseId || !fileId) throw new Error("Missing Google Drive file information.");
+
+  const response = await fetch("/api/upload-file", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      action: "download",
+      classId: courseId,
+      fileId
+    })
+  });
+
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new Error(result.error || `Could not download file (${response.status}).`);
+  }
+  return response.blob();
+}
+
 async function uploadFileChunks({ uploadUrl, file, idToken }) {
   const total = file.size;
   const mimeType = file.type || "application/octet-stream";

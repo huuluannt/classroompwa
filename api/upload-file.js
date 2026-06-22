@@ -63,6 +63,23 @@ export default async function handler(request, response) {
     ]);
     const course = decodeFirestoreDocument(courseDoc);
     const member = memberDoc ? decodeFirestoreDocument(memberDoc) : null;
+
+    if (body.action === "download") {
+      if (!canManageCourseFiles(requester.email, course)) {
+        return response.status(403).json({ error: "You do not have download access to this class." });
+      }
+      const driveToken = await getDriveAccessToken({ serviceAccountEmail, privateKey });
+      const file = await downloadDriveFile({
+        classId,
+        fileId: body.fileId,
+        accessToken: driveToken
+      });
+      response.setHeader("Content-Type", file.mimeType || "application/octet-stream");
+      response.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeRFC5987Value(file.name || "submission-file")}`);
+      response.setHeader("Cache-Control", "private, max-age=0, no-store");
+      return response.status(200).send(file.buffer);
+    }
+
     if (!canUploadToCourse(requester.email, course, member, body.folderPath)) {
       return response.status(403).json({ error: "You do not have upload access to this class." });
     }
@@ -217,6 +234,30 @@ function formatDriveFile(driveFile) {
   };
 }
 
+async function downloadDriveFile({ classId, fileId, accessToken }) {
+  const cleanFileId = cleanId(fileId);
+  if (!cleanFileId) throw Object.assign(new Error("Missing Drive file id."), { status: 400 });
+  const driveFile = await driveJson(`${DRIVE_API}/files/${encodeURIComponent(cleanFileId)}?supportsAllDrives=true&fields=id,name,mimeType,appProperties`, {}, accessToken);
+  if (driveFile.appProperties?.classId !== classId) {
+    throw Object.assign(new Error("File does not belong to this class."), { status: 403 });
+  }
+
+  const mediaResponse = await fetch(`${DRIVE_API}/files/${encodeURIComponent(cleanFileId)}?alt=media&supportsAllDrives=true`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+  if (!mediaResponse.ok) {
+    const result = await mediaResponse.json().catch(() => ({}));
+    throw Object.assign(new Error(result.error?.message || `Google Drive download failed (${mediaResponse.status}).`), { status: mediaResponse.status || 502 });
+  }
+  return {
+    name: driveFile.name || "submission-file",
+    mimeType: driveFile.mimeType || mediaResponse.headers.get("content-type") || "application/octet-stream",
+    buffer: Buffer.from(await mediaResponse.arrayBuffer())
+  };
+}
+
 function readBearerToken(request) {
   const header = request.headers.authorization || "";
   const match = header.match(/^Bearer\s+(.+)$/i);
@@ -328,6 +369,19 @@ function canUploadToCourse(email, course, member, folderPath = "") {
   if (permission === "everyone_no_files") return false;
   if (permission === "lecturers_leaders") return member?.classLeader === true || member?.role === "classLeader";
   return false;
+}
+
+function canManageCourseFiles(email, course) {
+  const normalized = normalizeEmail(email);
+  const supremeEmail = normalizeEmail(process.env.SUPREME_EMAIL || "hhluan@hcmus.edu.vn");
+  if (normalized && normalized === supremeEmail) return true;
+  const ownerEmail = normalizeEmail(course.ownerEmail);
+  const lecturerEmails = new Set([
+    ownerEmail,
+    ...(course.lecturerEmails || []).map(normalizeEmail),
+    ...(course.lecturers || []).map((lecturer) => normalizeEmail(lecturer.email))
+  ].filter(Boolean));
+  return lecturerEmails.has(normalized);
 }
 
 function normalizeAnnouncementPostPermission(value) {
@@ -516,4 +570,10 @@ function escapeDriveQueryValue(value) {
 
 function normalizeShareMode(value) {
   return String(value || DEFAULT_SHARE_MODE).toLowerCase() === "private" ? "private" : "anyone";
+}
+
+function encodeRFC5987Value(value) {
+  return encodeURIComponent(String(value || "file"))
+    .replace(/['()]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`)
+    .replace(/\*/g, "%2A");
 }

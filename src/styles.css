@@ -2509,6 +2509,14 @@ textarea { min-height: 88px; resize: vertical; }
   font-weight: 800;
   color: #172033;
 }
+.assignment-download-all {
+  min-height: 34px;
+  gap: 7px;
+  white-space: nowrap;
+}
+.assignment-download-status {
+  margin: -4px 0 10px;
+}
 .assignment-format-row strong {
   color: #334155;
 }
