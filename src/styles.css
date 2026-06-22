@@ -1500,6 +1500,67 @@ textarea { min-height: 88px; resize: vertical; }
   font-size: 17px;
   font-weight: 600;
 }
+.member-group-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #94a3b8;
+}
+.member-group-card-head h4 {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border-bottom: 0;
+}
+.member-intergroup-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #172033;
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.member-intergroup-input,
+.member-intergroup-readonly {
+  width: 72px;
+  min-height: 32px;
+  border: 1px solid #d8dee7;
+  border-radius: 7px;
+  background: #fff;
+  text-align: center;
+}
+.member-intergroup-readonly {
+  display: inline-grid;
+  place-items: center;
+  padding: 6px 8px;
+}
+.member-intergroup-card {
+  overflow-x: visible;
+}
+.member-intergroup-groups {
+  min-width: 0;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: right;
+}
+.member-intergroup-sections {
+  display: grid;
+  gap: 10px;
+}
+.member-intergroup-section {
+  overflow-x: auto;
+}
+.member-intergroup-section h5 {
+  margin: 0 0 6px;
+  color: #172033;
+  font-size: 14px;
+  font-weight: 800;
+}
 .icon-danger {
   border: 0;
   border-radius: 8px;
@@ -1674,13 +1735,11 @@ textarea { min-height: 88px; resize: vertical; }
   font-size: 13px;
   text-align: center;
 }
-.topic-editor-card .topic-intergroup-field input,
 .topic-inline-meta input {
   border: 0;
   box-shadow: none;
   background: rgba(255, 255, 255, 0.62);
 }
-.topic-editor-card .topic-intergroup-field input:focus,
 .topic-inline-meta input:focus {
   outline: 2px solid rgba(37, 99, 235, 0.28);
   outline-offset: 1px;

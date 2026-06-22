@@ -3127,12 +3127,31 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
   const memberDraftSignature = accepted.map((member) => `${member.email}:${member.order || ""}:${member.group || ""}:${isClassLeaderMember(member) ? "1" : "0"}`).join("|");
   const [memberDrafts, setMemberDrafts] = useState({});
   const orderedMembers = [...accepted].sort(compareMemberOrder);
-  const groupedMembers = groupMembersByGroup(accepted);
+  const groupedMembers = useMemo(() => groupMembersByGroup(accepted), [course.members]);
+  const memberGroupCards = useMemo(() => buildGroupTopicCards(course).filter((group) => group.members.length > 0), [course.members, course.groupTopics]);
+  const memberGroupCardByKey = useMemo(() => new Map(memberGroupCards.map((group) => [group.key, group])), [memberGroupCards]);
+  const displayedMemberGroups = useMemo(() => groupedMembers.map((group) => ({
+    ...group,
+    topic: memberGroupCardByKey.get(group.key)?.topic || null
+  })), [groupedMembers, memberGroupCardByKey]);
+  const groupIntergroupSignature = memberGroupCards.map((group) => `${group.key}:${group.topic?.intergroup || ""}`).join("|");
+  const [groupIntergroupDrafts, setGroupIntergroupDrafts] = useState({});
   const memberDraftDirty = accepted.some((member) => {
     const draft = memberDrafts[member.email] || {};
     return String(draft.order ?? "") !== String(member.order || "")
       || String(draft.group ?? "") !== String(member.group || "");
   });
+  const groupIntergroupDirty = memberGroupCards.some((group) => (
+    String(groupIntergroupDrafts[group.key] || "") !== String(group.topic?.intergroup || "")
+  ));
+  const membersDirty = memberDraftDirty || groupIntergroupDirty;
+  const memberIntergroupCards = useMemo(() => buildMemberIntergroupCards(memberGroupCards.map((group) => ({
+    ...group,
+    topic: {
+      ...(group.topic || {}),
+      intergroup: groupIntergroupDrafts[group.key] ?? group.topic?.intergroup ?? ""
+    }
+  }))), [memberGroupCards, groupIntergroupDrafts]);
 
   useOutsideClick(lecturerAddRef, lecturerAddOpen, () => setLecturerAddOpen(false));
   useOutsideClick(virtualAddRef, virtualAddOpen, () => setVirtualAddOpen(false));
@@ -3144,6 +3163,13 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
     }])));
   }, [memberDraftSignature]);
 
+  useEffect(() => {
+    setGroupIntergroupDrafts(Object.fromEntries(memberGroupCards.map((group) => [
+      group.key,
+      String(group.topic?.intergroup || "")
+    ])));
+  }, [groupIntergroupSignature]);
+
   function updateMemberDraft(email, field, value) {
     setMemberDrafts((current) => ({
       ...current,
@@ -3153,6 +3179,27 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
         [field]: value.replace(/\D/g, "")
       }
     }));
+  }
+
+  function updateGroupIntergroupDraft(groupKey, value) {
+    setGroupIntergroupDrafts((current) => ({
+      ...current,
+      [groupKey]: cleanNumberText(value)
+    }));
+  }
+
+  function pasteGroupIntergroups(event, groupIndex) {
+    return pasteColumnValuesFromClipboard(
+      event,
+      memberGroupCards,
+      groupIndex,
+      (targetGroup, value) => updateGroupIntergroupDraft(targetGroup.key, value),
+      "member-intergroup",
+      {
+        headerAliases: ["intergroup", "inter group", "lien nhom"],
+        valueForCell: clipboardNumberTextValue
+      }
+    );
   }
 
   function updateVirtualCountDraft(value) {
@@ -3216,13 +3263,38 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
   }
 
   function saveMembers() {
-    return updateCourse((current) => ({
-      ...current,
-      members: current.members.map((member) => {
+    return updateCourse((current) => {
+      const nextMembers = current.members.map((member) => {
         const draft = memberDrafts[member.email];
         return draft ? { ...member, order: draft.order, group: draft.group } : member;
-      })
-    }), { toast: true, writeClassDoc: false, writeSummary: false, memberFields: ["order", "group"] });
+      });
+      if (!groupIntergroupDirty) {
+        return { ...current, members: nextMembers };
+      }
+
+      let nextGroupTopics = current.groupTopics || [];
+      memberGroupCards.forEach((group) => {
+        const intergroup = cleanNumberText(groupIntergroupDrafts[group.key] || "");
+        const savedTopic = findSavedGroupTopic(nextGroupTopics, group);
+        if (savedTopic || intergroup) {
+          nextGroupTopics = upsertGroupTopicPlaceholder(nextGroupTopics, group.rawGroup, { intergroup });
+        }
+      });
+
+      return {
+        ...current,
+        members: nextMembers,
+        groupTopics: nextGroupTopics,
+        intergroupTopics: reconcileIntergroupTopicsWithGroupTopics(current.intergroupTopics || [], nextGroupTopics, memberGroupCards)
+      };
+    }, {
+      toast: true,
+      writeClassDoc: groupIntergroupDirty,
+      writeSummary: false,
+      writeMembers: memberDraftDirty,
+      memberFields: ["order", "group"],
+      classFields: groupIntergroupDirty ? ["groupTopics", "intergroupTopics"] : null
+    });
   }
 
   function acceptAllPending() {
@@ -3472,25 +3544,71 @@ function MembersCard({ admin, canManageCourseLecturers, classLeader, canEditMemb
             <div className="member-view-toggle" aria-label="Chế độ xem thành viên">
               <button type="button" className={viewMode === "personal" ? "active" : ""} onClick={() => setViewMode("personal")}>{t("personal", "Cá nhân")}</button>
               <button type="button" className={viewMode === "group" ? "active" : ""} onClick={() => setViewMode("group")}>{t("group", "Nhóm")}</button>
+              <button type="button" className={viewMode === "intergroup" ? "active" : ""} onClick={() => setViewMode("intergroup")}>{t("intergroup", "Liên nhóm")}</button>
             </div>
-            {canEditMembers && <SaveButton className="compact" dirty={memberDraftDirty} onClick={saveMembers} />}
+            {canEditMembers && <SaveButton className="compact" dirty={membersDirty} onClick={saveMembers} />}
           </div>
         </div>
         {viewMode === "personal" ? (
           <MembersTable admin={admin} canManageCourseLecturers={canManageCourseLecturers} canEditMembers={canEditMembers} course={course} members={orderedMembers} memberDrafts={memberDrafts} onDraftChange={updateMemberDraft} onPromoteToLecturer={promoteMemberToLecturer} updateCourse={updateCourse} language={language} />
-        ) : (
+        ) : viewMode === "group" ? (
           <div className="member-group-list">
-            {groupedMembers.map((group) => (
+            {displayedMemberGroups.map((group) => {
+              const groupIndex = memberGroupCards.findIndex((item) => item.key === group.key);
+              return (
               <section className="member-group-card" key={group.key}>
-                <h4>{uiGroupLabel(language, group.rawGroup)}</h4>
+                <div className="member-group-card-head">
+                  <h4>{uiGroupLabel(language, group.rawGroup)}</h4>
+                  {group.rawGroup && (
+                    <label className="member-intergroup-field">
+                      <span>{t("intergroup", "Liên nhóm")}:</span>
+                      {canEditMembers ? (
+                        <input
+                          className="member-intergroup-input"
+                          data-enter-group="member-intergroup"
+                          inputMode="numeric"
+                          value={groupIntergroupDrafts[group.key] || ""}
+                          onPaste={(event) => pasteGroupIntergroups(event, groupIndex)}
+                          onKeyDown={(event) => focusNextInputOnEnter(event, "member-intergroup")}
+                          onChange={(event) => updateGroupIntergroupDraft(group.key, event.target.value)}
+                          aria-label={`Liên nhóm của ${group.label}`}
+                        />
+                      ) : (
+                        <strong className="member-intergroup-readonly">{group.topic?.intergroup || ""}</strong>
+                      )}
+                    </label>
+                  )}
+                </div>
                 <MembersTable admin={admin} canManageCourseLecturers={canManageCourseLecturers} canEditMembers={canEditMembers} course={course} members={group.members} memberDrafts={memberDrafts} onDraftChange={updateMemberDraft} onPromoteToLecturer={promoteMemberToLecturer} updateCourse={updateCourse} language={language} />
+              </section>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="member-group-list member-intergroup-list">
+            {memberIntergroupCards.length === 0 ? (
+              <div className="empty-state compact-empty">Chưa có liên nhóm. Nhập cùng một số ở ô Liên nhóm trong mode Group rồi bấm Save.</div>
+            ) : memberIntergroupCards.map((link) => (
+              <section className="member-group-card member-intergroup-card" key={link.key}>
+                <div className="member-group-card-head">
+                  <h4>{uiIntergroupLabel(language, link.rawIntergroup)}</h4>
+                  <span className="member-intergroup-groups">{link.groups.map((group) => uiGroupLabel(language, group.rawGroup)).join(", ")}</span>
+                </div>
+                <div className="member-intergroup-sections">
+                  {link.groups.map((group) => (
+                    <section className="member-intergroup-section" key={group.key}>
+                      <h5>{uiGroupLabel(language, group.rawGroup)}</h5>
+                      <MembersTable admin={admin} canManageCourseLecturers={canManageCourseLecturers} canEditMembers={canEditMembers} course={course} members={group.members} memberDrafts={memberDrafts} onDraftChange={updateMemberDraft} onPromoteToLecturer={promoteMemberToLecturer} updateCourse={updateCourse} language={language} />
+                    </section>
+                  ))}
+                </div>
               </section>
             ))}
           </div>
         )}
         {canEditMembers && (
           <div className="bottom-save-row">
-            <SaveButton className="compact" dirty={memberDraftDirty} onClick={saveMembers} />
+            <SaveButton className="compact" dirty={membersDirty} onClick={saveMembers} />
           </div>
         )}
       </div>
@@ -5885,17 +6003,15 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
   const addPopoverRef = useRef(null);
   const [addOpen, setAddOpen] = useState(false);
   const groupCards = useMemo(() => buildGroupTopicCards(course), [course.members, course.groupTopics]);
-  const topicDraftSignature = groupCards.map((group) => `${group.key}:${group.topic?.topic || ""}:${group.topic?.reportOrder || ""}:${group.topic?.intergroup || ""}`).join("|");
+  const topicDraftSignature = groupCards.map((group) => `${group.key}:${group.topic?.topic || ""}:${group.topic?.reportOrder || ""}`).join("|");
   const [placeholderDraft, setPlaceholderDraft] = useState({ group: "", topic: "" });
   const [draftTopics, setDraftTopics] = useState({});
   const [draftOrders, setDraftOrders] = useState({});
-  const [draftIntergroups, setDraftIntergroups] = useState({});
   const sortedGroupCards = useMemo(() => [...groupCards].sort((first, second) => compareGroupTopicCards(first, second, draftOrders)), [groupCards, draftOrders]);
   const nextGroupNumber = nextNumericText(groupCards.map((group) => group.rawGroup));
   const groupTopicDirty = groupCards.some((group) => (
     String(draftTopics[group.key] || "") !== String(group.topic?.topic || "")
     || String(draftOrders[group.key] || "") !== String(group.topic?.reportOrder ?? "")
-    || String(draftIntergroups[group.key] || "") !== String(group.topic?.intergroup || "")
   ));
 
   useOutsideClick(addPopoverRef, addOpen, () => setAddOpen(false));
@@ -5903,7 +6019,6 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
   useEffect(() => {
     setDraftTopics(Object.fromEntries(groupCards.map((group) => [group.key, group.topic?.topic || ""])));
     setDraftOrders(Object.fromEntries(groupCards.map((group) => [group.key, String(group.topic?.reportOrder ?? "")])));
-    setDraftIntergroups(Object.fromEntries(groupCards.map((group) => [group.key, String(group.topic?.intergroup || "")])));
   }, [topicDraftSignature]);
 
   function saveTopics() {
@@ -5913,7 +6028,7 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
       name: group.label,
       topic: draftTopics[group.key] || "",
       reportOrder: draftOrders[group.key] || "",
-      intergroup: draftIntergroups[group.key] || "",
+      intergroup: group.topic?.intergroup || "",
       memberEmails: group.members.map((member) => member.email)
     }));
     return updateCourse((current) => ({ ...current, groupTopics: nextTopics }), { toast: true, writeMembers: admin, classFields: admin ? null : ["groupTopics"] });
@@ -5926,8 +6041,7 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
       ...current,
       groupTopics: upsertGroupTopicPlaceholder(current.groupTopics || [], rawGroup, {
         topic: placeholderDraft.topic,
-        reportOrder: "",
-        intergroup: ""
+        reportOrder: ""
       })
     }), { toast: true, writeMembers: admin, classFields: admin ? null : ["groupTopics"] });
     setPlaceholderDraft({ group: "", topic: "" });
@@ -6025,19 +6139,6 @@ function GroupTopicCard({ admin, canEdit, course, updateCourse }) {
                       <span>)</span>
                     </span>
                   </span>
-                  <label className="group-topic-compact-field topic-intergroup-field">
-                    <span>{t("intergroup", "Liên nhóm")}:</span>
-                    {canEdit ? (
-                      <input
-                        inputMode="numeric"
-                        aria-label={`Liên nhóm của ${group.label}`}
-                        value={draftIntergroups[group.key] || ""}
-                        onChange={(event) => setDraftIntergroups((current) => ({ ...current, [group.key]: event.target.value.replace(/\D/g, "") }))}
-                      />
-                    ) : (
-                      <strong>{group.topic?.intergroup || ""}</strong>
-                    )}
-                  </label>
                   {canEdit && group.placeholder && group.members.length === 0 && (
                     <button className="placeholder-delete-button" type="button" onClick={() => requestConfirm({
                       title: "Xác nhận xóa nhóm placeholder",
@@ -6109,6 +6210,30 @@ function buildGroupTopicCards(course) {
   return cards;
 }
 
+function buildMemberIntergroupCards(groupCards) {
+  const links = new Map();
+
+  groupCards.forEach((group) => {
+    const rawIntergroup = String(group.topic?.intergroup || "").trim();
+    if (!rawIntergroup) return;
+    const key = `member-intergroup-${rawIntergroup}`;
+    if (!links.has(key)) {
+      links.set(key, {
+        key,
+        rawIntergroup,
+        label: `Liên nhóm ${rawIntergroup}`,
+        groups: []
+      });
+    }
+    links.get(key).groups.push(group);
+  });
+
+  return [...links.values()]
+    .map((link) => ({ ...link, groups: [...link.groups].sort(compareGroupTopicCards) }))
+    .sort((first, second) => compareNumericText(first.rawIntergroup, second.rawIntergroup)
+      || first.label.localeCompare(second.label, "vi", { numeric: true, sensitivity: "base" }));
+}
+
 function compareGroupTopicCards(first, second, draftOrders = {}) {
   return compareNumericText(draftOrders[first.key] ?? first.topic?.reportOrder, draftOrders[second.key] ?? second.topic?.reportOrder)
     || compareNumericText(first.rawGroup, second.rawGroup)
@@ -6159,6 +6284,44 @@ function upsertGroupTopicPlaceholder(groupTopics, rawGroup, patch = {}) {
       memberEmails: topic.memberEmails || []
     };
   });
+}
+
+function reconcileIntergroupTopicsWithGroupTopics(intergroupTopics = [], groupTopics = [], groupCards = []) {
+  const groupMap = new Map(groupCards.map((group) => [group.rawGroup, group]));
+  const groupsByIntergroup = new Map();
+
+  groupTopics.forEach((topic) => {
+    const rawGroup = groupTopicRawGroup(topic);
+    const rawIntergroup = String(topic.intergroup || "").trim();
+    if (!rawGroup || !rawIntergroup) return;
+    const group = groupMap.get(rawGroup) || {
+      key: rawGroup,
+      rawGroup,
+      label: topic.name || groupTopicLabel(rawGroup),
+      members: []
+    };
+    if (!groupsByIntergroup.has(rawIntergroup)) groupsByIntergroup.set(rawIntergroup, []);
+    groupsByIntergroup.get(rawIntergroup).push(group);
+  });
+
+  return (intergroupTopics || [])
+    .map((topic) => {
+      const rawIntergroup = String(topic.intergroup || "").trim();
+      const groups = groupsByIntergroup.get(rawIntergroup) || [];
+      return {
+        ...topic,
+        groupKeys: groups.map((group) => group.rawGroup),
+        groupNames: groups.map((group) => group.label),
+        memberEmails: uniqueValues(groups.flatMap((group) => group.members.map((member) => member.email)))
+      };
+    })
+    .filter((topic) => {
+      const rawIntergroup = String(topic.intergroup || "").trim();
+      if (!rawIntergroup) return false;
+      const hasTopic = String(topic.topic || "").trim();
+      const groupKeys = parseGroupKeys(topic.groupKeys || []);
+      return hasTopic || topic.placeholder || groupKeys.length >= 2;
+    });
 }
 
 function cleanNumberText(value) {
@@ -6434,11 +6597,6 @@ function buildIntergroupTopicCards(course, groupOptions) {
     groupKeys.forEach((rawGroup) => {
       const existingGroup = groupMap.get(rawGroup);
       if (existingGroup) {
-        if (String(existingGroup.topic?.intergroup || "").trim()) return;
-        groupMap.set(rawGroup, {
-          ...existingGroup,
-          topic: { ...(existingGroup.topic || {}), intergroup: rawIntergroup }
-        });
         return;
       }
       const savedGroupTopic = findSavedGroupTopic(course.groupTopics || [], { rawGroup, label: groupTopicLabel(rawGroup) }) || {
