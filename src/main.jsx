@@ -172,12 +172,29 @@ const LANGUAGE_STORAGE_PREFIX = "classroompwa-language:";
 const UI_TEXT = {
   vi: {
     profile: "Profile",
+    installApp: "Cài đặt app",
+    installAppUnavailable: "Trình duyệt chưa sẵn sàng cài app. Hãy dùng nút cài đặt của trình duyệt nếu có.",
+    installAppAccepted: "Đang cài đặt app.",
+    installAppDismissed: "Đã hủy cài đặt app.",
+    installAppAlreadyInstalled: "App đã được cài đặt.",
     manageLecturers: "Manage Lecturers",
     signOut: "Sign out",
     language: "Ngôn ngữ",
     searchClass: "Tìm lớp học",
     addClass: "Thêm lớp học mới",
+    editClass: "Chỉnh sửa lớp học",
+    classNamePlaceholder: "Tên lớp mới",
+    classDescriptionPlaceholder: "Mô tả",
+    createClass: "Tạo lớp mới",
+    saveClass: "Lưu lớp học",
     joinClass: "Tham gia lớp học",
+    joinNamePlaceholder: "Họ và tên",
+    joinStudentIdPlaceholder: "Mã số",
+    joinCodePlaceholder: "Mã lớp",
+    sendJoinRequest: "Gửi yêu cầu tham gia",
+    invalidClassCode: "Mã lớp không đúng.",
+    lecturerCannotJoinAsLearner: "Email này đang là giảng viên của lớp này. Không thể tham gia với vai trò người học.",
+    alreadyJoinedOrPending: "Email này đã gửi yêu cầu hoặc đã tham gia lớp.",
     classList: "Danh sách lớp học",
     archived: "Archived",
     mainClass: "Mainclass",
@@ -237,12 +254,29 @@ const UI_TEXT = {
   },
   en: {
     profile: "Profile",
+    installApp: "Install App",
+    installAppUnavailable: "The browser is not ready to install the app yet. Use the browser install button if available.",
+    installAppAccepted: "Installing app.",
+    installAppDismissed: "App installation canceled.",
+    installAppAlreadyInstalled: "The app is already installed.",
     manageLecturers: "Manage Lecturers",
     signOut: "Sign out",
     language: "Language",
     searchClass: "Search classes",
     addClass: "Add new class",
+    editClass: "Edit class",
+    classNamePlaceholder: "New class name",
+    classDescriptionPlaceholder: "Description",
+    createClass: "Create new class",
+    saveClass: "Save class",
     joinClass: "Join class",
+    joinNamePlaceholder: "Full name",
+    joinStudentIdPlaceholder: "Student ID",
+    joinCodePlaceholder: "Class code",
+    sendJoinRequest: "Send join request",
+    invalidClassCode: "Class code is incorrect.",
+    lecturerCannotJoinAsLearner: "This email is a lecturer in this class and cannot join as a learner.",
+    alreadyJoinedOrPending: "This email has already sent a request or joined the class.",
     classList: "Class list",
     archived: "Archived",
     mainClass: "Mainclass",
@@ -620,6 +654,12 @@ function savePreferredLanguage(email, language) {
   } catch {
     // Language preference is best-effort when storage is unavailable.
   }
+}
+
+function isPwaStandalone() {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia?.("(display-mode: standalone)")?.matches
+    || window.navigator?.standalone === true;
 }
 
 function uiText(language, key, fallback = "") {
@@ -1302,6 +1342,8 @@ function App() {
   const [confirmDialog, setConfirmDialog] = useState(null);
   const [mobileView, setMobileView] = useState(MOBILE_VIEWS.classes);
   const [announcementSeenAt, setAnnouncementSeenAt] = useState(null);
+  const [installPromptEvent, setInstallPromptEvent] = useState(null);
+  const [appInstalled, setAppInstalled] = useState(() => isPwaStandalone());
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
 
   const supreme = isSupremeEmail(user?.email);
@@ -1440,6 +1482,32 @@ function App() {
     const timer = window.setTimeout(() => setSaveToast(null), 2400);
     return () => window.clearTimeout(timer);
   }, [saveToast]);
+
+  useEffect(() => {
+    function handleBeforeInstallPrompt(event) {
+      event.preventDefault();
+      setInstallPromptEvent(event);
+      setAppInstalled(false);
+    }
+    function handleAppInstalled() {
+      setInstallPromptEvent(null);
+      setAppInstalled(true);
+    }
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
+
+    const displayModeQuery = window.matchMedia?.("(display-mode: standalone)");
+    const handleDisplayModeChange = () => setAppInstalled(isPwaStandalone());
+    displayModeQuery?.addEventListener?.("change", handleDisplayModeChange);
+    handleDisplayModeChange();
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleAppInstalled);
+      displayModeQuery?.removeEventListener?.("change", handleDisplayModeChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedClass?.id || !selectedClassVirtualEmail) return;
@@ -1716,6 +1784,31 @@ function App() {
     }
   }
 
+  async function handleInstallApp() {
+    setAccountOpen(false);
+    if (appInstalled || isPwaStandalone()) {
+      setAppInstalled(true);
+      showSaveToast(uiText(language, "installAppAlreadyInstalled"));
+      return;
+    }
+    if (!installPromptEvent?.prompt) {
+      showSaveToast(uiText(language, "installAppUnavailable"));
+      return;
+    }
+    const promptEvent = installPromptEvent;
+    setInstallPromptEvent(null);
+    try {
+      await promptEvent.prompt();
+      const choice = await promptEvent.userChoice?.catch(() => null);
+      showSaveToast(choice?.outcome === "accepted"
+        ? uiText(language, "installAppAccepted")
+        : uiText(language, "installAppDismissed"));
+    } catch (nextError) {
+      console.error(nextError);
+      showSaveToast(uiText(language, "installAppUnavailable"));
+    }
+  }
+
   if (loading) return <LoadingScreen />;
   if (!user) return <LoginScreen onLogin={handleLogin} loginError={loginError} />;
 
@@ -1781,6 +1874,7 @@ function App() {
           setShowProfile(true);
           setAccountOpen(false);
         }}
+        onInstallApp={handleInstallApp}
         onManageLecturers={() => {
           setShowManageLecturers(true);
           setAccountOpen(false);
@@ -1854,6 +1948,7 @@ function App() {
           user={user}
           classes={classes}
           cloudMode={hasFirebaseConfig}
+          language={language}
           initialCode={pendingJoinCode}
           onClose={() => {
             setShowJoin(false);
@@ -1886,6 +1981,7 @@ function App() {
         <NewClassModal
           existing={typeof showNewClass === "object" ? showNewClass : null}
           user={user}
+          language={language}
           onClose={() => setShowNewClass(false)}
           onSave={async (course) => {
             const exists = classes.some((item) => item.id === course.id);
@@ -2177,6 +2273,7 @@ function Sidebar(props) {
     language,
     onLanguageChange,
     onProfile,
+    onInstallApp,
     onManageLecturers,
     onLogout
   } = props;
@@ -2336,6 +2433,10 @@ function Sidebar(props) {
                   <UserRound size={15} />
                   {t("profile")}
                 </button>
+                <button onClick={onInstallApp}>
+                  <Download size={15} />
+                  {t("installApp")}
+                </button>
                 {canManageLecturers && (
                   <button onClick={onManageLecturers}>
                     <UserPlus size={15} />
@@ -2413,6 +2514,10 @@ function Sidebar(props) {
               <button onClick={onProfile}>
                 <UserRound size={15} />
                 {t("profile")}
+              </button>
+              <button onClick={onInstallApp}>
+                <Download size={15} />
+                {t("installApp")}
               </button>
               {canManageLecturers && (
                 <button onClick={onManageLecturers}>
@@ -13942,27 +14047,28 @@ function ProfileModal({ user, onClose, onSave }) {
   );
 }
 
-function JoinClassModal({ user, classes, cloudMode, initialCode = "", onClose, onJoin }) {
+function JoinClassModal({ user, classes, cloudMode, language, initialCode = "", onClose, onJoin }) {
   const [form, setForm] = useState({ name: user.displayName || "", studentId: user.studentId || "", code: initialCode });
   const [error, setError] = useState("");
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   useEffect(() => {
     setForm((current) => ({ ...current, code: initialCode || current.code }));
   }, [initialCode]);
   return (
-    <Modal title="Tham gia lớp học" onClose={onClose}>
-      <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Họ và tên" />
-      <input value={form.studentId} onChange={(event) => setForm({ ...form, studentId: event.target.value })} placeholder="Mã số" />
-      <input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })} placeholder="Mã lớp" />
+    <Modal title={t("joinClass")} onClose={onClose}>
+      <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder={t("joinNamePlaceholder")} />
+      <input value={form.studentId} onChange={(event) => setForm({ ...form, studentId: event.target.value })} placeholder={t("joinStudentIdPlaceholder")} />
+      <input value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })} placeholder={t("joinCodePlaceholder")} />
       {error && <p className="error-text">{error}</p>}
       <button className="primary-action" onClick={() => {
         const course = classes.find((item) => item.code.toUpperCase() === form.code.toUpperCase());
         if (cloudMode) return onJoin(null, form);
-        if (!course) return setError("Mã lớp không đúng.");
+        if (!course) return setError(t("invalidClassCode"));
         const userEmail = normalizeEmail(user.email);
-        if (lecturerEmailSet(course).has(userEmail)) return setError("Email này đang là giảng viên của lớp này. Không thể tham gia với vai trò người học.");
-        if (course.members.some((member) => normalizeEmail(member.email) === userEmail)) return setError("Email này đã gửi yêu cầu hoặc đã tham gia lớp.");
+        if (lecturerEmailSet(course).has(userEmail)) return setError(t("lecturerCannotJoinAsLearner"));
+        if (course.members.some((member) => normalizeEmail(member.email) === userEmail)) return setError(t("alreadyJoinedOrPending"));
         onJoin(course.id, { order: course.members.length + 1, name: form.name, email: userEmail, photoURL: user.photoURL || "", studentId: form.studentId, status: "pending", code: form.code });
-      }}>Gửi yêu cầu tham gia</button>
+      }}>{t("sendJoinRequest")}</button>
     </Modal>
   );
 }
@@ -13983,17 +14089,18 @@ function prepareCourseForSave(course, user) {
   };
 }
 
-function NewClassModal({ existing, user, onClose, onSave }) {
+function NewClassModal({ existing, user, language, onClose, onSave }) {
   const [form, setForm] = useState(() => existing || { id: crypto.randomUUID(), name: "", description: "", code: "", pinned: false, announcementPostPermission: ANNOUNCEMENT_POST_PERMISSIONS.everyone, info: { title: "", size: 0, time: "", room: "", description: "", rules: "", zaloGroupUrl: "", googleMeetUrl: "", gallery: [] }, scheduleRows: defaultScheduleRows(), dutySchedules: [], members: [], announcements: [], groupTopics: [], intergroupTopics: [], personalTopics: [], materials: [], assignments: [], gradebooks: [], peerReviews: [], extraCards: [], hiddenCards: [], pinnedCards: [], cardOrder: [] });
   const classFormDirty = existing ? jsonSignature(form) !== jsonSignature(existing) : true;
+  const t = (key, fallback = "") => uiText(language, key, fallback);
   return (
-    <Modal title={existing ? "Chỉnh sửa lớp học" : "Thêm lớp học mới"} onClose={onClose}>
-      <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value, info: { ...form.info, title: event.target.value } })} placeholder="Tên lớp mới" />
-      <input value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value, info: { ...form.info, description: event.target.value } })} placeholder="Mô tả" />
+    <Modal title={existing ? t("editClass") : t("addClass")} onClose={onClose}>
+      <input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value, info: { ...form.info, title: event.target.value } })} placeholder={t("classNamePlaceholder")} />
+      <input value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value, info: { ...form.info, description: event.target.value } })} placeholder={t("classDescriptionPlaceholder")} />
       {existing ? (
-        <SaveButton dirty={classFormDirty} onClick={() => onSave(form)}>Lưu lớp học</SaveButton>
+        <SaveButton dirty={classFormDirty} onClick={() => onSave(form)}>{t("saveClass")}</SaveButton>
       ) : (
-        <button className="primary-action" onClick={() => onSave(form)}>Tạo lớp mới</button>
+        <button className="primary-action" onClick={() => onSave(form)}>{t("createClass")}</button>
       )}
     </Modal>
   );
