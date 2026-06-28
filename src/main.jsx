@@ -6,6 +6,7 @@ import {
   Archive,
   ArchiveRestore,
   BellRing,
+  Bookmark,
   BookOpen,
   Bell,
   BellDot,
@@ -71,8 +72,10 @@ import {
   subscribeLecturers,
   subscribeClasses,
   subscribeExamFormTemplates,
+  savePrivateExamBank,
   submitAssignmentReviewerQuestionToCloud,
   subscribePrivateClassArchives,
+  subscribePrivateExamBank,
   subscribePrivateClassPins,
   submitAssignmentToCloud,
   submitPeerReviewResponseToCloud,
@@ -173,6 +176,19 @@ const UI_TEXT = {
   vi: {
     profile: "Profile",
     installApp: "Cài đặt app",
+    examBank: "Kho đề thi",
+    examBankEmpty: "Chưa có đề thi nào trong Kho đề thi.",
+    examBankSource: "Nguồn",
+    saveExamToBank: "Lưu vào Kho đề thi",
+    removeExamFromBank: "Bỏ khỏi Kho đề thi",
+    importExam: "Import exam",
+    noExamBankItems: "Chưa có đề thi trong Kho đề thi.",
+    examSavedToBank: "Đã lưu đề thi vào Kho đề thi.",
+    examRemovedFromBank: "Đã bỏ đề thi khỏi Kho đề thi.",
+    importedExamFromBank: "Đã import đề thi. Bấm Save để lưu.",
+    removeExamFromBankTitle: "Bỏ đề thi khỏi Kho đề thi?",
+    removeExamFromBankMessage: "Bạn có chắc muốn loại đề thi này ra khỏi Kho đề thi không?",
+    removeExamFromBankConfirm: "Bỏ khỏi kho",
     installAppUnavailable: "Trình duyệt chưa sẵn sàng cài app. Hãy dùng nút cài đặt của trình duyệt nếu có.",
     installAppAccepted: "Đang cài đặt app.",
     installAppDismissed: "Đã hủy cài đặt app.",
@@ -255,6 +271,19 @@ const UI_TEXT = {
   en: {
     profile: "Profile",
     installApp: "Install App",
+    examBank: "Exam bank",
+    examBankEmpty: "No exams saved in the exam bank yet.",
+    examBankSource: "Source",
+    saveExamToBank: "Save to exam bank",
+    removeExamFromBank: "Remove from exam bank",
+    importExam: "Import exam",
+    noExamBankItems: "No exams in the exam bank yet.",
+    examSavedToBank: "Exam saved to the exam bank.",
+    examRemovedFromBank: "Exam removed from the exam bank.",
+    importedExamFromBank: "Imported exam. Press Save to keep it.",
+    removeExamFromBankTitle: "Remove exam from bank?",
+    removeExamFromBankMessage: "Are you sure you want to remove this exam from the exam bank?",
+    removeExamFromBankConfirm: "Remove from bank",
     installAppUnavailable: "The browser is not ready to install the app yet. Use the browser install button if available.",
     installAppAccepted: "Installing app.",
     installAppDismissed: "App installation canceled.",
@@ -1331,9 +1360,11 @@ function App() {
   const [pendingJoinCode, setPendingJoinCode] = useState(readJoinCodeParam);
   const [showNewClass, setShowNewClass] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const [showExamBank, setShowExamBank] = useState(false);
   const [showManageLecturers, setShowManageLecturers] = useState(false);
   const [lecturers, setLecturers] = useState([]);
   const [examFormTemplates, setExamFormTemplates] = useState(loadLocalExamFormTemplates);
+  const [examBank, setExamBank] = useState([]);
   const [sidebarPinnedClassIds, setSidebarPinnedClassIds] = useState([]);
   const [sidebarArchivedClassIds, setSidebarArchivedClassIds] = useState([]);
   const [classListMode, setClassListMode] = useState("main");
@@ -1462,6 +1493,16 @@ function App() {
       setExamFormTemplates(nextTemplates || {});
     }, (nextError) => {
       console.error(nextError);
+    });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+    return subscribePrivateExamBank(user, (nextItems) => {
+      setExamBank(normalizeExamBankItems(nextItems));
+    }, (nextError) => {
+      console.error(nextError);
+      setError(nextError.message || "Không thể tải Kho đề thi.");
     });
   }, [user]);
 
@@ -1655,6 +1696,32 @@ function App() {
     }
   }
 
+  async function saveExamBankItems(nextItems, toastMessage = "") {
+    const normalizedItems = normalizeExamBankItems(nextItems);
+    setExamBank(normalizedItems);
+    try {
+      await savePrivateExamBank(user, normalizedItems);
+      if (toastMessage) showSaveToast(toastMessage);
+    } catch (nextError) {
+      console.error(nextError);
+      setError(nextError.message || "Không thể lưu Kho đề thi.");
+      throw nextError;
+    }
+  }
+
+  function requestRemoveExamBankItem(item) {
+    requestConfirm({
+      title: uiText(language, "removeExamFromBankTitle"),
+      message: item?.title
+        ? `${uiText(language, "removeExamFromBankMessage")} "${item.title}"`
+        : uiText(language, "removeExamFromBankMessage"),
+      confirmLabel: uiText(language, "removeExamFromBankConfirm")
+    }, () => saveExamBankItems(
+      examBank.filter((bankItem) => bankItem.id !== item.id),
+      uiText(language, "examRemovedFromBank")
+    ));
+  }
+
   async function handleLogin(mode = "learner") {
     setLoginError("");
     try {
@@ -1681,6 +1748,8 @@ function App() {
     setUser(null);
     setSidebarPinnedClassIds([]);
     setSidebarArchivedClassIds([]);
+    setExamBank([]);
+    setShowExamBank(false);
     setClassListMode("main");
     setSupremeShowAllClasses(false);
     setAccountOpen(false);
@@ -1874,6 +1943,10 @@ function App() {
           setShowProfile(true);
           setAccountOpen(false);
         }}
+        onExamBank={() => {
+          setShowExamBank(true);
+          setAccountOpen(false);
+        }}
         onInstallApp={handleInstallApp}
         onManageLecturers={() => {
           setShowManageLecturers(true);
@@ -1914,6 +1987,8 @@ function App() {
           course={selectedClass}
           examFormTemplates={examFormTemplates}
           setExamFormTemplates={setExamFormTemplates}
+          examBank={examBank}
+          onExamBankChange={saveExamBankItems}
           selectedCard={selectedCard}
           setSelectedCard={setSelectedCard}
           isMobile={isMobile}
@@ -2035,6 +2110,14 @@ function App() {
           user={profileFromClasses(user, classes)}
           onClose={() => setShowProfile(false)}
           onSave={handleProfileSave}
+        />
+      )}
+      {showExamBank && (
+        <ExamBankModal
+          items={examBank}
+          language={language}
+          onClose={() => setShowExamBank(false)}
+          onRemove={requestRemoveExamBankItem}
         />
       )}
       </main>
@@ -2273,6 +2356,7 @@ function Sidebar(props) {
     language,
     onLanguageChange,
     onProfile,
+    onExamBank,
     onInstallApp,
     onManageLecturers,
     onLogout
@@ -2433,6 +2517,10 @@ function Sidebar(props) {
                   <UserRound size={15} />
                   {t("profile")}
                 </button>
+                <button onClick={onExamBank}>
+                  <Bookmark size={15} />
+                  {t("examBank")}
+                </button>
                 <button onClick={onInstallApp}>
                   <Download size={15} />
                   {t("installApp")}
@@ -2514,6 +2602,10 @@ function Sidebar(props) {
               <button onClick={onProfile}>
                 <UserRound size={15} />
                 {t("profile")}
+              </button>
+              <button onClick={onExamBank}>
+                <Bookmark size={15} />
+                {t("examBank")}
               </button>
               <button onClick={onInstallApp}>
                 <Download size={15} />
@@ -2735,6 +2827,8 @@ function ClassPane({
   course,
   examFormTemplates,
   setExamFormTemplates,
+  examBank,
+  onExamBankChange,
   selectedCard,
   setSelectedCard,
   isMobile,
@@ -2964,6 +3058,8 @@ function ClassPane({
             course={course}
             examFormTemplates={examFormTemplates}
             setExamFormTemplates={setExamFormTemplates}
+            examBank={examBank}
+            onExamBankChange={onExamBankChange}
             selectedCard={selectedCard}
             setSelectedCard={setSelectedCard}
             reviewerOpenRequest={reviewerOpenRequest}
@@ -3134,7 +3230,7 @@ function CardNavItem({ admin, card, active, pinned, draggable, dragging, dragOve
   );
 }
 
-function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditMembers, canEditTopics, user, course, examFormTemplates, setExamFormTemplates, selectedCard, setSelectedCard, reviewerOpenRequest, onOpenAssignmentReviewer, onReviewerOpenConsumed, showToast, updateCourse }) {
+function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditMembers, canEditTopics, user, course, examFormTemplates, setExamFormTemplates, examBank, onExamBankChange, selectedCard, setSelectedCard, reviewerOpenRequest, onOpenAssignmentReviewer, onReviewerOpenConsumed, showToast, updateCourse }) {
   if (selectedCard === "members") return <MembersCard admin={admin} canManageCourseLecturers={canManageCourseLecturers} classLeader={classLeader} canEditMembers={canEditMembers} user={user} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "announcements") return <AnnouncementsCard admin={admin} classLeader={classLeader} user={user} course={course} showToast={showToast} updateCourse={updateCourse} onOpenAssignments={() => setSelectedCard("assignments")} onOpenGrades={() => setSelectedCard("grades")} onOpenAssignmentReviewer={onOpenAssignmentReviewer} />;
   if (selectedCard === "info") return <InfoCard admin={admin} course={course} updateCourse={updateCourse} />;
@@ -3144,7 +3240,7 @@ function DetailRenderer({ admin, canManageCourseLecturers, classLeader, canEditM
   if (selectedCard === "intergroupTopic") return <IntergroupTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "materials") return <MaterialsCard admin={admin} user={user} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "assignments") return <AssignmentsCard admin={admin} user={user} course={course} reviewerOpenRequest={reviewerOpenRequest} onReviewerOpenConsumed={onReviewerOpenConsumed} updateCourse={updateCourse} />;
-  if (selectedCard === "exams") return admin ? <ExamsCard user={user} course={course} examFormTemplates={examFormTemplates} setExamFormTemplates={setExamFormTemplates} updateCourse={updateCourse} /> : null;
+  if (selectedCard === "exams") return admin ? <ExamsCard user={user} course={course} examFormTemplates={examFormTemplates} setExamFormTemplates={setExamFormTemplates} examBank={examBank} onExamBankChange={onExamBankChange} updateCourse={updateCourse} /> : null;
   if (selectedCard === "grades") return <GradesCard admin={admin} user={user} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "personalTopic") return <PersonalTopicCard admin={admin} canEdit={canEditTopics} course={course} updateCourse={updateCourse} />;
   if (selectedCard === "peerReview") return null;
@@ -7269,7 +7365,7 @@ const EXAM_CHECKBOX_POINT_MODES = [
   { value: "option", label: "pts/option" }
 ];
 
-function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, updateCourse }) {
+function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, examBank = [], onExamBankChange, updateCourse }) {
   const requestConfirm = useConfirmAction();
   const language = useUiLanguage();
   const t = (key, fallback = "") => uiText(language, key, fallback);
@@ -7286,6 +7382,11 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
   const selectedExam = draftExams.find((exam) => exam.id === selectedExamId) || draftExams[0];
   const examIdsKey = draftExams.map((exam) => exam.id).join("|");
   const normalizedExamFormTemplates = normalizeExamFormTemplates(examFormTemplates);
+  const normalizedExamBank = normalizeExamBankItems(examBank);
+  const savedExamBankIds = new Set(normalizedExamBank.map((item) => item.id));
+  const savedExamIds = new Set(normalizedExamBank
+    .filter((item) => item.sourceClassId === course.id)
+    .map((item) => item.sourceExamId));
   const supreme = isSupremeEmail(user?.email);
 
   useOutsideClick(templateMenuRef, templateMenuOpen, () => setTemplateMenuOpen(false));
@@ -7357,6 +7458,36 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
         current === exam.id ? fallbackExams[0]?.id || "" : current
       ));
     });
+  }
+
+  async function toggleExamBookmark(exam) {
+    if (!onExamBankChange) return;
+    const bankItem = examBankItemFromExam(course, exam, user);
+    if (!bankItem) return;
+    const exists = savedExamBankIds.has(bankItem.id);
+    const nextItems = exists
+      ? normalizedExamBank.filter((item) => item.id !== bankItem.id)
+      : [bankItem, ...normalizedExamBank.filter((item) => item.id !== bankItem.id)];
+    setSaveStatus("");
+    setSaveError("");
+    try {
+      await onExamBankChange(
+        nextItems,
+        exists ? t("examRemovedFromBank", "Đã bỏ đề thi khỏi Kho đề thi.") : t("examSavedToBank", "Đã lưu đề thi vào Kho đề thi.")
+      );
+    } catch (error) {
+      console.error(error);
+      setSaveError(error.message || "Không thể lưu Kho đề thi.");
+    }
+  }
+
+  function importExamFromBank(item) {
+    const nextExam = examBankItemToExam(item, draftExams);
+    setSaveStatus("");
+    setSaveError("");
+    setDraftExams((currentExams) => [...currentExams, nextExam]);
+    setSelectedExamId(nextExam.id);
+    setSaveStatus(t("importedExamFromBank", "Đã import đề thi. Bấm Save để lưu."));
   }
 
   function addPart() {
@@ -7575,8 +7706,12 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
           <ExamDropdown
             exams={draftExams}
             selectedExam={selectedExam}
+            examBank={normalizedExamBank}
+            savedExamIds={savedExamIds}
             onCreateExam={createExam}
+            onImportExam={importExamFromBank}
             onSelectExam={setSelectedExamId}
+            onToggleExamBookmark={toggleExamBookmark}
             onRenameExam={renameExam}
             onDeleteExam={requestDeleteExam}
           />
@@ -7765,15 +7900,18 @@ function ExamsCard({ user, course, examFormTemplates, setExamFormTemplates, upda
   );
 }
 
-function ExamDropdown({ exams, selectedExam, onCreateExam, onSelectExam, onRenameExam, onDeleteExam }) {
+function ExamDropdown({ exams, selectedExam, examBank = [], savedExamIds = new Set(), onCreateExam, onImportExam, onSelectExam, onToggleExamBookmark, onRenameExam, onDeleteExam }) {
   const language = useUiLanguage();
   const t = (key, fallback = "") => uiText(language, key, fallback);
   const [open, setOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editingExamId, setEditingExamId] = useState("");
   const [titleDraft, setTitleDraft] = useState("");
   const dropdownRef = useRef(null);
+  const bankItems = normalizeExamBankItems(examBank);
   useOutsideClick(dropdownRef, open, () => {
     setOpen(false);
+    setImportOpen(false);
     setEditingExamId("");
   });
 
@@ -7801,8 +7939,37 @@ function ExamDropdown({ exams, selectedExam, onCreateExam, onSelectExam, onRenam
           }}>
             {t("createNewExam", "Tạo đề thi mới...")}
           </button>
+          <button className="exam-dropdown-create exam-dropdown-import-toggle" type="button" onClick={() => setImportOpen((current) => !current)}>
+            {t("importExam", "Import exam")}
+          </button>
+          {importOpen && (
+            <div className="exam-dropdown-import-list">
+              {bankItems.length === 0 ? (
+                <div className="exam-dropdown-empty">{t("noExamBankItems", "Chưa có đề thi trong Kho đề thi.")}</div>
+              ) : (
+                bankItems.map((item) => (
+                  <button
+                    className="exam-dropdown-import-row"
+                    type="button"
+                    key={item.id}
+                    onClick={() => {
+                      onImportExam?.(item);
+                      setImportOpen(false);
+                      setOpen(false);
+                    }}
+                  >
+                    <span>{item.title}</span>
+                    {(item.sourceClassName || item.sourceClassCode) && (
+                      <small>{[item.sourceClassName, item.sourceClassCode].filter(Boolean).join(" · ")}</small>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
           {exams.map((exam) => {
             const editing = editingExamId === exam.id;
+            const saved = savedExamIds instanceof Set ? savedExamIds.has(exam.id) : savedExamIds.includes?.(exam.id);
             return (
               <div className={`exam-dropdown-row ${selectedExam?.id === exam.id ? "active" : ""}`} key={exam.id}>
                 {editing ? (
@@ -7827,6 +7994,18 @@ function ExamDropdown({ exams, selectedExam, onCreateExam, onSelectExam, onRenam
                   </button>
                 )}
                 <div className="exam-dropdown-icons">
+                  <button
+                    className={saved ? "saved" : ""}
+                    type="button"
+                    title={saved ? t("removeExamFromBank", "Bỏ khỏi Kho đề thi") : t("saveExamToBank", "Lưu vào Kho đề thi")}
+                    aria-label={saved ? t("removeExamFromBank", "Bỏ khỏi Kho đề thi") : t("saveExamToBank", "Lưu vào Kho đề thi")}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onToggleExamBookmark?.(exam);
+                    }}
+                  >
+                    <Bookmark size={14} fill={saved ? "currentColor" : "none"} />
+                  </button>
                   <button type="button" title={t("editExamName", "Sửa tên đề thi")} aria-label={normalizeLanguage(language) === "en" ? `Edit ${exam.title}` : `Sửa tên ${exam.title}`} onClick={(event) => {
                     event.stopPropagation();
                     startEditing(exam);
@@ -8003,6 +8182,103 @@ function normalizeExamAnswers(answers) {
     correct: Boolean(answer.correct),
     order: Number(answer.order || index + 1)
   }));
+}
+
+function examBankItemId(courseId, examId) {
+  return `${courseId || "class"}::${examId || "exam"}`;
+}
+
+function normalizeExamBankItems(items) {
+  return (Array.isArray(items) ? items : [])
+    .filter(Boolean)
+    .map((item, index) => {
+      const sourceClassId = String(item.sourceClassId || item.classId || "");
+      const sourceExamId = String(item.sourceExamId || item.examId || "");
+      const id = String(item.id || examBankItemId(sourceClassId || `class-${index + 1}`, sourceExamId || `exam-${index + 1}`));
+      return {
+        id,
+        sourceClassId,
+        sourceClassName: item.sourceClassName || item.className || "",
+        sourceClassCode: item.sourceClassCode || item.classCode || "",
+        sourceExamId,
+        title: String(item.title || `Đề thi ${index + 1}`).trim() || `Đề thi ${index + 1}`,
+        description: item.description || "",
+        duration: item.duration || "",
+        parts: normalizeExamParts(item.parts),
+        savedBy: normalizeEmail(item.savedBy || ""),
+        savedAtMillis: Number(item.savedAtMillis || item.createdAtMillis || Date.now())
+      };
+    })
+    .filter((item) => item.id && item.title);
+}
+
+function examBankItemFromExam(course, exam, user) {
+  if (!course?.id || !exam?.id) return null;
+  const normalizedExam = normalizeExams([exam])[0];
+  return {
+    id: examBankItemId(course.id, normalizedExam.id),
+    sourceClassId: course.id,
+    sourceClassName: course.name || "",
+    sourceClassCode: course.code || "",
+    sourceExamId: normalizedExam.id,
+    title: normalizedExam.title || "Đề thi",
+    description: normalizedExam.description || "",
+    duration: normalizedExam.duration || "",
+    parts: normalizeExamParts(normalizedExam.parts),
+    savedBy: normalizeEmail(user?.email || ""),
+    savedAtMillis: Date.now()
+  };
+}
+
+function cloneExamBankParts(parts) {
+  return normalizeExamParts(parts).map((part, partIndex) => {
+    const questions = normalizeExamQuestions(part.questions).map((question, questionIndex) => {
+      const answers = normalizeExamAnswers(question.answers).map((answer, answerIndex) => ({
+        ...answer,
+        id: crypto.randomUUID(),
+        order: answerIndex + 1
+      }));
+      return {
+        ...question,
+        id: crypto.randomUUID(),
+        answers,
+        order: questionIndex + 1
+      };
+    });
+    return {
+      ...part,
+      id: crypto.randomUUID(),
+      questions,
+      selectedQuestions: questions.length || Number(part.selectedQuestions || 0),
+      totalQuestions: questions.length || Number(part.totalQuestions || 0),
+      order: partIndex + 1
+    };
+  });
+}
+
+function uniqueExamTitle(title, existingExams) {
+  const baseTitle = String(title || "Đề thi").trim() || "Đề thi";
+  const existingTitles = new Set(normalizeExams(existingExams).map((exam) => String(exam.title || "").trim().toLocaleLowerCase("vi")));
+  if (!existingTitles.has(baseTitle.toLocaleLowerCase("vi"))) return baseTitle;
+  for (let index = 2; index < 1000; index += 1) {
+    const candidate = `${baseTitle} (${index})`;
+    if (!existingTitles.has(candidate.toLocaleLowerCase("vi"))) return candidate;
+  }
+  return `${baseTitle} (${Date.now()})`;
+}
+
+function examBankItemToExam(item, existingExams) {
+  const normalizedItem = normalizeExamBankItems([item])[0];
+  const seed = createExamRecord(Array.isArray(existingExams) ? existingExams.length : 0);
+  if (!normalizedItem) return seed;
+  return {
+    ...seed,
+    title: uniqueExamTitle(normalizedItem.title, existingExams),
+    description: normalizedItem.description || "",
+    duration: normalizedItem.duration || "",
+    parts: cloneExamBankParts(normalizedItem.parts),
+    createdAtMillis: Date.now()
+  };
 }
 
 function defaultExamRecord() {
@@ -14043,6 +14319,52 @@ function ProfileModal({ user, onClose, onSave }) {
         </label>
       </div>
       <SaveButton dirty={profileDirty} onClick={() => onSave({ ...user, ...form })} />
+    </Modal>
+  );
+}
+
+function ExamBankModal({ items = [], language, onClose, onRemove }) {
+  const t = (key, fallback = "") => uiText(language, key, fallback);
+  const bankItems = normalizeExamBankItems(items);
+
+  function examStats(item) {
+    const parts = normalizeExamParts(item.parts);
+    const questionCount = parts.reduce((total, part) => total + normalizeExamQuestions(part.questions).length, 0);
+    return normalizeLanguage(language) === "en"
+      ? `${parts.length} part${parts.length === 1 ? "" : "s"} · ${questionCount} question${questionCount === 1 ? "" : "s"}`
+      : `${parts.length} phần · ${questionCount} câu hỏi`;
+  }
+
+  return (
+    <Modal title={t("examBank", "Kho đề thi")} onClose={onClose} className="exam-bank-modal">
+      {bankItems.length === 0 ? (
+        <div className="exam-bank-empty">{t("examBankEmpty", "Chưa có đề thi nào trong Kho đề thi.")}</div>
+      ) : (
+        <div className="exam-bank-list">
+          {bankItems.map((item) => (
+            <div className="exam-bank-row" key={item.id}>
+              <div className="exam-bank-main">
+                <strong>{item.title}</strong>
+                <div className="exam-bank-meta">
+                  {(item.sourceClassName || item.sourceClassCode) && (
+                    <span>{t("examBankSource", "Nguồn")}: {[item.sourceClassName, item.sourceClassCode].filter(Boolean).join(" · ")}</span>
+                  )}
+                  <span>{examStats(item)}</span>
+                </div>
+              </div>
+              <button
+                className="icon-soft saved"
+                type="button"
+                title={t("removeExamFromBank", "Bỏ khỏi Kho đề thi")}
+                aria-label={t("removeExamFromBank", "Bỏ khỏi Kho đề thi")}
+                onClick={() => onRemove?.(item)}
+              >
+                <Bookmark size={17} fill="currentColor" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </Modal>
   );
 }

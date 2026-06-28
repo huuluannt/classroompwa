@@ -19,6 +19,7 @@ import { uploadDriveFile } from "./driveStorage";
 const LS_KEY = "classroompwa-state";
 const PIN_LS_PREFIX = "classroompwa-class-pins:";
 const ARCHIVE_LS_PREFIX = "classroompwa-class-archives:";
+const EXAM_BANK_LS_PREFIX = "classroompwa-exam-bank:";
 const EXAM_FORM_TEMPLATES_LS_KEY = "classroompwa-exam-form-templates";
 const CLASS_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const CLASS_CODE_LENGTH = 5;
@@ -102,6 +103,22 @@ export function loadLocalClassArchives(email) {
 export function saveLocalClassArchives(email, classIds) {
   if (!email) return;
   localStorage.setItem(`${ARCHIVE_LS_PREFIX}${normalizeEmail(email)}`, JSON.stringify([...new Set(classIds.filter(Boolean))]));
+}
+
+export function loadLocalExamBank(email) {
+  if (!email) return [];
+  try {
+    const saved = localStorage.getItem(`${EXAM_BANK_LS_PREFIX}${normalizeEmail(email)}`);
+    const parsed = saved ? JSON.parse(saved) : [];
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveLocalExamBank(email, items) {
+  if (!email) return;
+  localStorage.setItem(`${EXAM_BANK_LS_PREFIX}${normalizeEmail(email)}`, JSON.stringify(Array.isArray(items) ? items.filter(Boolean) : []));
 }
 
 function randomClassCodeIndex(max) {
@@ -201,6 +218,36 @@ export async function savePrivateClassArchives(user, classIds) {
   await setDoc(doc(db, "profiles", user.email), {
     email: user.email,
     archivedClassIds,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+}
+
+export function subscribePrivateExamBank(user, onExamBank, onError) {
+  if (!user?.email) {
+    onExamBank([]);
+    return () => {};
+  }
+  const fallback = loadLocalExamBank(user.email);
+  onExamBank(fallback);
+  if (!hasFirebaseConfig) return () => {};
+
+  return onSnapshot(doc(db, "profiles", user.email), (snapshot) => {
+    const examBank = snapshot.exists() && Array.isArray(snapshot.data().examBank)
+      ? snapshot.data().examBank.filter(Boolean)
+      : [];
+    saveLocalExamBank(user.email, examBank);
+    onExamBank(examBank);
+  }, onError);
+}
+
+export async function savePrivateExamBank(user, items) {
+  if (!user?.email) return;
+  const examBank = Array.isArray(items) ? items.filter(Boolean) : [];
+  saveLocalExamBank(user.email, examBank);
+  if (!hasFirebaseConfig) return;
+  await setDoc(doc(db, "profiles", user.email), {
+    email: user.email,
+    examBank,
     updatedAt: serverTimestamp()
   }, { merge: true });
 }
